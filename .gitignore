@@ -1,0 +1,38 @@
+    # Python build artifacts and cache
+    __pycache__/
+    *.pyc
+    *.pyo
+    *.pyd
+    build/
+    dist/
+    *.egg-info/
+    *.spec
+
+    # IDE / Editor specific files
+    .vscode/
+    .idea/
+    *.suo
+    *.ntvs*
+    *.njsproj
+    *.sln
+
+    # Executables and dependencies (should be installed separately)
+    *.exe
+    *.dll
+    *.so
+    *.dylib
+
+    # Data / Generated files
+    test_indexdir_small/
+    *.log
+    index_skipped_files.tsv
+    # 如果有其他索引目录或日志文件，也加进来
+
+    # Backup / Temporary files
+    *.bak
+    *_backup.py
+    *_temp.py
+
+    # OS generated files
+    .DS_Store
+    Thumbs.db
