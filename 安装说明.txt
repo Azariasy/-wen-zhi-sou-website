@@ -1,0 +1,119 @@
+# 文件搜索工具 - 外部依赖安装指南 (Windows)
+
+欢迎使用“文件搜索工具”！为了充分利用本工具强大的文件内容搜索能力，特别是针对扫描版 PDF 和图片内容的识别（OCR）以及对 PDF 文件的深入处理，您需要在您的 Windows 系统上安装两个必要的外部程序：Tesseract-OCR 和 Poppler。
+
+请按照以下步骤进行安装和配置：
+
+---
+
+## 一、安装 Tesseract-OCR (用于光学字符识别 - OCR)
+
+**为什么需要？** Tesseract 可以识别图片文件（如 JPG, PNG）以及扫描版 PDF 文件中的文字，让这些文件也能被我们的工具索引和搜索内容。
+
+**1. 下载 Tesseract 安装程序:**
+
+   *   **推荐来源**: 前往 Tesseract 的非官方 Windows 安装包维护页面下载最新版本的安装程序。一个常用的、社区推荐的来源是：
+        *   [https://github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+   *   在该页面找到 "Installer (64 bit)" 或 "Installer (32 bit)"（根据您的 Windows 系统选择，现在绝大多数都是 64 位）。
+   *   **下载 `.exe` 安装文件。**
+
+**2. 运行安装程序:**
+
+   *   双击下载的 `.exe` 文件启动安装。
+   *   **重要步骤 - 选择组件**:
+        *   在选择安装组件的步骤中，找到 **"Language data" (语言数据)**。**尝试勾选**：
+            *   **"Simplified Chinese Script" (简体中文)** (`chi_sim`)
+            *   **"English" (英文)** (`eng`)
+            *   (可选) 您需要的其他语言，如繁体中文 (`chi_tra`)。
+        *   **注意：安装程序在下载这些语言文件时可能会失败或速度很慢。** 如果下载失败，请**不要**取消安装，先完成 Tesseract 主程序的安装。我们可以在之后手动下载语言文件。
+        *   **强烈建议**：在安装过程中，如果看到类似 **"Add Tesseract to system PATH"** 或 **"添加到系统路径"** 的选项，**请务必勾选它**。这可以简化后续的配置。
+   *   其他步骤可以保持默认设置，选择合适的安装路径（例如 `C:\Program Files\Tesseract-OCR`，**请记住这个路径**），然后完成安装。
+
+**3. 手动下载和放置语言文件 (如果安装时下载失败):**
+
+   *   **如果安装时语言文件下载成功，可以跳过此步。**
+   *   **去哪里下载？** 前往 Tesseract 官方 `traineddata` 文件仓库：
+        *   [https://github.com/tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (推荐，速度和精度的良好平衡)
+        *   (备选) [https://github.com/tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata) (标准库)
+        *   (备选) [https://github.com/tesseract-ocr/tessdata_best](https://github.com/tesseract-ocr/tessdata_best) (最精确但速度最慢)
+   *   在文件列表中找到您需要的文件，例如：
+        *   `chi_sim.traineddata` (简体中文)
+        *   `eng.traineddata` (英文)
+   *   点击文件名，在新页面通常会有一个 "Download" 按钮，或者您可以右键点击 "Download" 选择“链接另存为...”。**下载这些 `.traineddata` 文件。**
+   *   **放在哪里？**
+        *   找到您之前安装 Tesseract 的文件夹（例如 `C:\Program Files\Tesseract-OCR`）。
+        *   在该文件夹下找到一个名为 `tessdata` 的子文件夹。
+        *   将您下载好的 `.traineddata` 文件（如 `chi_sim.traineddata`, `eng.traineddata`）直接**复制或移动到这个 `tessdata` 文件夹内**。
+
+**4. 配置环境变量 PATH (如果安装时未自动添加):**
+
+   *   **检查是否已添加**: 打开命令提示符 (cmd) 或 PowerShell，输入 `tesseract --version` 并按回车。如果显示了 Tesseract 的版本信息，说明 PATH 已配置好，可以跳过此步骤。
+   *   **手动添加**: 如果上一步提示找不到命令，您需要手动将 Tesseract 的安装目录添加到系统 PATH：
+        1.  在 Windows 搜索栏搜索“**环境变量**”，选择“编辑系统环境变量”。
+        2.  在弹出的“系统属性”窗口中，点击底部的“**环境变量...**”按钮。
+        3.  在“系统变量”（推荐）或“用户变量”区域找到名为 `Path` 的变量，选中它，然后点击“**编辑...**”。
+        4.  在“编辑环境变量”窗口中，点击“**新建**”。
+        5.  将您之前安装 Tesseract 的**完整路径**（例如 `C:\Program Files\Tesseract-OCR`）粘贴进去。
+        6.  一路点击“确定”保存所有更改。
+
+**5. 验证安装:**
+
+   *   **重新打开**一个新的命令提示符 (cmd) 或 PowerShell 窗口（**必须是新的**，才能加载更改后的环境变量）。
+   *   输入 `tesseract --version` 并回车。如果成功显示版本号，说明 Tesseract 安装和配置完成。
+   *   输入 `tesseract --list-langs` 可以查看已安装的语言列表，确保包含 `chi_sim` 和 `eng` (或其他您手动添加的语言)。
+
+---
+
+## 二、安装 Poppler (用于 PDF 处理)
+
+**为什么需要？** Poppler 提供了一系列工具，我们的程序使用它来提取 PDF 文件中的文本内容，并将 PDF 页面转换为图像，以便 Tesseract 进行 OCR 处理。
+
+**1. 下载 Poppler Windows 二进制文件:**
+
+   *   Poppler 官方不直接提供 Windows 编译好的版本。您可以从社区维护的版本下载。一个更新较为及时的来源是：
+        *   [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases)
+        *   (备选) 如果上述链接失效，您可以搜索 "poppler windows binary github" 或类似关键词查找其他可靠的下载源。
+   *   **寻找最新版本的发布 (Release)，下载标记为 `Poppler-*.zip` 或 `Poppler-*.7z` 的压缩文件** (通常文件名会包含版本号，如 `poppler-24.02.0`）。**请下载非 `*-debug.zip` 的那个版本**。
+
+**2. 解压 Poppler 文件:**
+
+   *   **重要**: 将下载的压缩包解压到您电脑上一个**固定、简单**的路径。避免放在路径过深或包含中文/特殊字符的文件夹中。
+   *   **建议**:
+        1.  例如，在 `C:` 盘根目录下创建一个新文件夹，命名为 `poppler` (即 `C:\poppler`)。
+        2.  将下载的压缩包里的**所有内容**解压到这个 `C:\poppler` 文件夹中。
+        3.  解压完成后，您的目录结构应该看起来类似（具体子文件夹名可能因版本而异）：
+            ```
+            C:\poppler\
+                poppler-版本号\   <-- (这个文件夹名可能包含版本号, 如 poppler-24.02.0)
+                    bin\           <-- 这个 bin 文件夹是关键！
+                    include\
+                    lib\
+                    share\
+            ```
+            或者有时解压出来直接就是 `bin`, `include`, `lib`, `share` 等文件夹在 `C:\poppler` 下。**关键是找到 `bin` 文件夹的位置**。
+   *   **最终目标**: 确定 Poppler 的 `bin` 文件夹的完整路径。在上面的例子中，它可能是 `C:\poppler\poppler-版本号\bin` (请根据您的实际情况替换 `poppler-版本号` 部分)。
+
+**3. 配置环境变量 PATH:**
+
+   *   将 Poppler 的 `bin` 文件夹路径添加到系统 PATH：
+        1.  同样地，在 Windows 搜索栏搜索“**环境变量**”，选择“编辑系统环境变量”。
+        2.  点击“**环境变量...**”。
+        3.  在“系统变量”或“用户变量”中找到 `Path`，选中，点击“**编辑...**”。
+        4.  点击“**新建**”。
+        5.  将您上一步确定的 Poppler 的 `bin` 文件夹的**完整路径**粘贴进去（例如 `C:\poppler\poppler-24.02.0\bin`）。
+        6.  一路点击“确定”保存所有更改。
+
+**4. 验证安装:**
+
+   *   **重新打开**一个新的命令提示符 (cmd) 或 PowerShell 窗口。
+   *   输入 `pdftotext -v` 并回车（或者 `pdfinfo -v`）。如果显示了 `pdftotext version x.xx.x` (或其他版本信息和版权信息)，说明 Poppler 配置成功。
+
+---
+
+**重要提示:**
+
+*   修改环境变量 PATH 后，**通常需要重新启动**“文件搜索工具”才能让它识别到新的路径。有时甚至需要**重启电脑**才能让所有程序都正确加载新的环境变量。
+*   请确保您下载和安装的程序来源可靠，以防安全风险。
+*   如果您在安装或配置过程中遇到问题，可以尝试在网上搜索具体的错误信息，或联系我们寻求帮助。
+
+感谢您的耐心配置！完成这些步骤后，“文件搜索工具”将能够发挥其全部潜力。

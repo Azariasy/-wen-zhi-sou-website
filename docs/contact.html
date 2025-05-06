@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>联系我们 - 文智搜</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        nav ul li a:hover {
+            color: #3498db;
+        }
+        .contact-header {
+            background-color: #3498db;
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        .contact-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .contact-header p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .contact-content {
+            padding: 3rem 0;
+        }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        @media (max-width: 768px) {
+            .contact-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .contact-form {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.05);
+        }
+        .contact-info {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.05);
+        }
+        .contact-info h3 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 0.5rem;
+        }
+        .contact-info-item {
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+        }
+        .contact-info-item i {
+            font-size: 1.2rem;
+            margin-right: 1rem;
+            color: #3498db;
+            min-width: 24px;
+            text-align: center;
+        }
+        .contact-info-item p {
+            margin: 0;
+        }
+        .contact-info-item a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .contact-info-item a:hover {
+            text-decoration: underline;
+        }
+        .faq-link {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #f0f0f0;
+        }
+        .social-links {
+            display: flex;
+            margin-top: 1.5rem;
+        }
+        .social-links a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #f0f0f0;
+            margin-right: 0.8rem;
+            color: #2c3e50;
+            transition: all 0.3s;
+        }
+        .social-links a:hover {
+            background-color: #3498db;
+            color: white;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        textarea.form-control {
+            min-height: 150px;
+            resize: vertical;
+        }
+        .form-check {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        .form-check-input {
+            margin-right: 0.5rem;
+            margin-top: 0.3rem;
+        }
+        .required {
+            color: #e74c3c;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        .btn-block {
+            display: block;
+            width: 100%;
+        }
+        .success-message {
+            display: none;
+            background-color: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .map-container {
+            margin-top: 2rem;
+            height: 300px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        footer p {
+            margin-bottom: 1rem;
+        }
+        footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">文智搜</div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">首页</a></li>
+                    <li><a href="download.html">下载</a></li>
+                    <li><a href="purchase.html">购买专业版</a></li>
+                    <li><a href="faq.html">常见问题</a></li>
+                    <li><a href="contact.html">联系我们</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="contact-header">
+        <div class="container">
+            <h1>联系我们</h1>
+            <p>我们很乐意听取您的意见、问题或建议，请通过以下方式与我们取得联系</p>
+        </div>
+    </section>
+
+    <section class="contact-content">
+        <div class="container">
+            <div class="contact-grid">
+                <div class="contact-form">
+                    <h3>发送消息</h3>
+                    <div class="success-message" id="success-message">
+                        您的消息已成功发送！我们会尽快回复您。
+                    </div>
+                    <form id="contact-form">
+                        <div class="form-group">
+                            <label for="name">姓名 <span class="required">*</span></label>
+                            <input type="text" class="form-control" id="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">电子邮箱 <span class="required">*</span></label>
+                            <input type="email" class="form-control" id="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">主题</label>
+                            <input type="text" class="form-control" id="subject">
+                        </div>
+                        <div class="form-group">
+                            <label for="message">消息内容 <span class="required">*</span></label>
+                            <textarea class="form-control" id="message" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>问题类型</label>
+                            <div class="form-check">
+                                <input type="radio" name="type" id="type-support" class="form-check-input" checked>
+                                <label for="type-support">技术支持</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" name="type" id="type-feature" class="form-check-input">
+                                <label for="type-feature">功能建议</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" name="type" id="type-sales" class="form-check-input">
+                                <label for="type-sales">销售咨询</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" name="type" id="type-other" class="form-check-input">
+                                <label for="type-other">其他</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="newsletter">
+                                <label for="newsletter">订阅我们的新闻通讯，获取最新更新和功能公告</label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">发送消息</button>
+                    </form>
+                </div>
+                
+                <div class="contact-info">
+                    <h3>联系信息</h3>
+                    <div class="contact-info-item">
+                        <i>✉</i>
+                        <div>
+                            <strong>电子邮箱</strong>
+                            <p><a href="mailto:yymham@hotmail.com">yymham@hotmail.com</a></p>
+                        </div>
+                    </div>
+                    <div class="contact-info-item">
+                        <i>⏱</i>
+                        <div>
+                            <strong>支持时间</strong>
+                            <p>工作日: 9:00 - 18:00 (GMT+8)</p>
+                            <p>周末和节假日: 仅提供电子邮件支持</p>
+                        </div>
+                    </div>
+                    <div class="contact-info-item">
+                        <i>⌛</i>
+                        <div>
+                            <strong>响应时间</strong>
+                            <p>我们通常会在1-2个工作日内回复所有咨询</p>
+                            <p>技术支持问题可能需要2-3个工作日</p>
+                        </div>
+                    </div>
+                    
+                    <div class="faq-link">
+                        <p>在联系我们之前，您可能想查看我们的常见问题解答，那里可能已经有您需要的答案：</p>
+                        <p><a href="faq.html">访问 FAQ 页面</a></p>
+                    </div>
+                    
+                    <h3>关注我们</h3>
+                    <div class="social-links">
+                        <a href="javascript:void(0)" onclick="showNotAvailable('GitHub')" title="GitHub"><i>G</i></a>
+                        <a href="javascript:void(0)" onclick="showNotAvailable('微博')" title="微博"><i>W</i></a>
+                        <a href="javascript:void(0)" onclick="showNotAvailable('知乎')" title="知乎"><i>Z</i></a>
+                        <a href="javascript:void(0)" onclick="showNotAvailable('B站')" title="B站"><i>B</i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023-2025 文智搜 版权所有</p>
+            <p><a href="privacy.html">隐私政策</a> | <a href="terms.html">使用条款</a></p>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('contact-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            // 模拟表单提交
+            document.getElementById('success-message').style.display = 'block';
+            document.getElementById('contact-form').reset();
+            
+            // 在实际实现中，这里会添加发送表单数据到服务器的代码
+            // fetch('/api/contact', {
+            //     method: 'POST',
+            //     body: new FormData(this)
+            // })
+            // .then(response => response.json())
+            // .then(data => {
+            //     if (data.success) {
+            //         document.getElementById('success-message').style.display = 'block';
+            //         document.getElementById('contact-form').reset();
+            //     }
+            // });
+        });
+
+        // 显示"功能尚未开通"的提示
+        function showNotAvailable(platform) {
+            alert(`${platform}官方账号尚未开通，敬请期待！`);
+        }
+    </script>
+</body>
+</html> 

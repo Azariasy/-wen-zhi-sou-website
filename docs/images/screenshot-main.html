@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>文件搜索工具界面截图</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .mockup {
+            width: 800px;
+            height: 600px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .toolbar {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .logo {
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        .action-button {
+            padding: 5px 10px;
+            background-color: #3498db;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .upgrade-button {
+            background-color: #2ecc71;
+        }
+        .search-area {
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .search-input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .search-button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        .filters {
+            padding: 10px 15px;
+            background-color: #f9f9f9;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        .filter-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        .filter-label {
+            font-weight: bold;
+            width: 80px;
+        }
+        .results {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .result-item {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        .result-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .result-path {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .result-content {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .highlight {
+            background-color: yellow;
+            padding: 0 2px;
+        }
+        .status-bar {
+            padding: 8px 15px;
+            background-color: #f5f5f5;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="mockup">
+        <div class="toolbar">
+            <div class="logo">文件搜索工具</div>
+            <div class="actions">
+                <div class="action-button">创建索引</div>
+                <div class="action-button">设置</div>
+                <div class="action-button upgrade-button">升级到专业版</div>
+            </div>
+        </div>
+        <div class="search-area">
+            <input type="text" class="search-input" value="合同文档" placeholder="输入搜索词...">
+            <button class="search-button">搜索</button>
+        </div>
+        <div class="filters">
+            <div class="filter-row">
+                <div class="filter-label">范围:</div>
+                <div>● 全文 ○ 文件名</div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-label">模式:</div>
+                <div>● 精确 ○ 模糊</div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-label">文件类型:</div>
+                <div>☑ Word ☑ Excel ☑ PDF ☐ Markdown ☐ 邮件</div>
+            </div>
+        </div>
+        <div class="results">
+            <div class="result-item">
+                <div class="result-title">销售合同模板.docx</div>
+                <div class="result-path">D:\公司文件\合同\销售合同模板.docx</div>
+                <div class="result-content">...双方在平等互利的基础上，经友好协商一致，就<span class="highlight">合同文档</span>的签署达成如下协议，以资双方共同遵守...</div>
+            </div>
+            <div class="result-item">
+                <div class="result-title">2023年度合同汇总.xlsx</div>
+                <div class="result-path">D:\公司文件\财务\2023年度合同汇总.xlsx</div>
+                <div class="result-content">表: Sheet1 - 行: 5<br>
+                合同编号 | 客户名称 | <span class="highlight">合同文档</span>状态 | 签约日期 | 金额</div>
+            </div>
+            <div class="result-item">
+                <div class="result-title">项目合同.pdf</div>
+                <div class="result-path">D:\公司文件\项目\A项目\项目合同.pdf</div>
+                <div class="result-content">...项目实施过程中产生的所有<span class="highlight">合同文档</span>和技术资料的版权归属甲方所有，乙方有义务保护甲方的知识产权...</div>
+            </div>
+        </div>
+        <div class="status-bar">
+            搜索完成: 找到 15 条结果 (0.35秒)
+        </div>
+    </div>
+</body>
+</html> 

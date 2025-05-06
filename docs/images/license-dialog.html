@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>许可证管理对话框</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .dialog {
+            width: 500px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        .dialog-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .dialog-content {
+            padding: 20px;
+        }
+        .status-section {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .status-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .status-box {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .status-free {
+            background-color: #f0f0f0;
+        }
+        .status-pro {
+            background-color: #e8f5e9;
+            border-color: #c8e6c9;
+        }
+        .status-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .icon-free {
+            background-color: #90a4ae;
+        }
+        .icon-pro {
+            background-color: #4caf50;
+        }
+        .license-form {
+            margin-top: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .form-hint {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        .buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 25px;
+        }
+        .btn {
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        .btn-success {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .btn-default {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+        .features-list {
+            margin-top: 20px;
+        }
+        .feature-item {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .feature-check {
+            color: #2ecc71;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="dialog">
+        <div class="dialog-header">许可证管理</div>
+        <div class="dialog-content">
+            <div class="status-section">
+                <div class="status-title">当前许可证状态</div>
+                <div class="status-box status-free">
+                    <span class="status-icon icon-free"></span>
+                    <span>免费版</span>
+                </div>
+                <!-- 专业版状态示例 -->
+                <!--
+                <div class="status-box status-pro">
+                    <span class="status-icon icon-pro"></span>
+                    <span>专业版 (剩余 365 天)</span>
+                </div>
+                -->
+            </div>
+            
+            <div class="license-form">
+                <div class="form-group">
+                    <label class="form-label">输入许可证密钥:</label>
+                    <input type="text" class="form-input" placeholder="XXXX-XXXX-XXXX-XXXX">
+                    <div class="form-hint">密钥格式: XXXX-XXXX-XXXX-XXXX，请确保输入正确的密钥格式</div>
+                </div>
+                
+                <div class="buttons">
+                    <button class="btn btn-success">激活许可证</button>
+                    <button class="btn btn-primary">购买专业版</button>
+                    <button class="btn btn-default">关闭</button>
+                </div>
+            </div>
+            
+            <div class="features-list">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>专业版支持 PDF 文件索引和搜索（含 OCR）</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Markdown 和电子邮件（EML、MSG）支持</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>通配符搜索支持（* 和 ? 符号）</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>无限制的源目录</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

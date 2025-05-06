@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>常见问题解答 (FAQ) - 文智搜</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        nav ul li a:hover {
+            color: #3498db;
+        }
+        .faq-header {
+            background-color: #3498db;
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        .faq-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .faq-header p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .faq-content {
+            padding: 3rem 0;
+            background-color: white;
+        }
+        .faq-categories {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .category-button {
+            padding: 0.8rem 1.5rem;
+            background-color: #f0f0f0;
+            border-radius: 30px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .category-button:hover {
+            background-color: #e0e0e0;
+        }
+        .category-button.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .faq-section {
+            margin-bottom: 3rem;
+        }
+        .faq-section h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: #2c3e50;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 0.5rem;
+        }
+        .faq-item {
+            margin-bottom: 1.5rem;
+            border: 1px solid #f0f0f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .faq-question {
+            padding: 1.2rem;
+            background-color: #f8f9fa;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .faq-question:after {
+            content: "+";
+            font-size: 1.5rem;
+            color: #3498db;
+        }
+        .faq-question.active:after {
+            content: "-";
+        }
+        .faq-answer {
+            padding: 0 1.2rem;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        .faq-answer.active {
+            padding: 1.2rem;
+            max-height: 500px;
+            border-top: 1px solid #f0f0f0;
+        }
+        .faq-answer p {
+            margin-bottom: 1rem;
+        }
+        .faq-answer ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .faq-answer code {
+            background-color: #f0f0f0;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .faq-answer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .faq-answer a:hover {
+            text-decoration: underline;
+        }
+        .contact-cta {
+            padding: 3rem 0;
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+        .contact-cta h2 {
+            margin-bottom: 1rem;
+        }
+        .contact-cta p {
+            margin-bottom: 2rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        footer p {
+            margin-bottom: 1rem;
+        }
+        footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">文智搜</div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">首页</a></li>
+                    <li><a href="download.html">下载</a></li>
+                    <li><a href="purchase.html">购买专业版</a></li>
+                    <li><a href="faq.html">常见问题</a></li>
+                    <li><a href="contact.html">联系我们</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="faq-header">
+        <div class="container">
+            <h1>常见问题解答 (FAQ)</h1>
+            <p>我们收集了用户最常提问的问题，希望能帮助您更好地使用文智搜</p>
+        </div>
+    </section>
+
+    <section class="faq-content">
+        <div class="container">
+            <div class="faq-categories">
+                <button class="category-button active" data-target="all">所有问题</button>
+                <button class="category-button" data-target="install">安装与配置</button>
+                <button class="category-button" data-target="index">索引问题</button>
+                <button class="category-button" data-target="search">搜索功能</button>
+                <button class="category-button" data-target="license">许可证问题</button>
+                <button class="category-button" data-target="troubleshooting">错误与故障排除</button>
+            </div>
+
+            <div class="faq-section" id="install">
+                <h2>安装与配置</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何安装文智搜？</div>
+                    <div class="faq-answer">
+                        <p>文智搜的安装非常简单，只需下载并运行安装程序，按照向导的指引完成安装即可。详细步骤如下：</p>
+                        <ol>
+                            <li>访问 <a href="download.html">下载页面</a> 获取最新安装包。</li>
+                            <li>运行下载的安装程序（通常命名为 DocumentSearchSetup-X.X.X.exe）</li>
+                            <li>按照安装向导的提示完成安装</li>
+                            <li>安装完成后，从开始菜单或桌面快捷方式启动应用程序</li>
+                        </ol>
+                        <p>首次运行时，建议先前往"设置"配置索引目录，然后创建索引。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">需要安装额外的依赖吗？</div>
+                    <div class="faq-answer">
+                        <p>文智搜基本功能无需额外安装依赖，但特定功能需要以下外部组件：</p>
+                        <ul>
+                            <li><strong>Tesseract OCR (专业版功能):</strong> 用于识别图片或扫描版PDF中的文字。</li>
+                        </ul>
+                        <p>详细的安装指南可在<a href="download.html#dependencies">下载页面</a>找到。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">系统要求是什么？</div>
+                    <div class="faq-answer">
+                        <p>文智搜的系统要求较为宽松：</p>
+                        <ul>
+                            <li><strong>操作系统:</strong> Windows 10 / 11 (64位)</li>
+                            <li><strong>处理器</strong>：任何现代处理器（建议双核或更高）</li>
+                            <li><strong>内存</strong>：最低 4GB RAM（OCR功能建议 8GB 或更高）</li>
+                            <li><strong>硬盘空间</strong>：程序本身约 50MB，索引大小取决于文档数量（约为源文件大小的 20-30%）</li>
+                            <li><strong>额外要求</strong>：如需使用 OCR 功能，建议有更多内存和处理器资源</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-section" id="index">
+                <h2>索引问题</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何创建索引？</div>
+                    <div class="faq-answer">
+                        <p>创建索引的步骤如下：</p>
+                        <ol>
+                            <li>打开文智搜</li>
+                            <li>点击主界面上的"文件"菜单，选择"设置" > "索引设置"</li>
+                            <li>在"要索引的文件夹"部分点击"添加目录"，选择您希望索引的文件夹</li>
+                            <li>设置"索引文件存储位置"，默认为用户文档文件夹下的 DocumentSearchIndex 目录</li>
+                            <li>根据需要调整其他设置（如OCR、超时等）</li>
+                            <li>保存设置后，返回主界面点击"创建索引"按钮</li>
+                        </ol>
+                        <p>索引过程会自动开始，期间您可以看到进度显示。索引完成后，即可开始搜索。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">索引过程需要多长时间？</div>
+                    <div class="faq-answer">
+                        <p>索引时间主要取决于以下因素：</p>
+                        <ul>
+                            <li>文件数量和大小</li>
+                            <li>文件类型（PDF 和需要 OCR 的文件处理较慢）</li>
+                            <li>计算机性能（特别是处理器速度和磁盘速度）</li>
+                            <li>是否启用 OCR（OCR 会显著增加处理时间）</li>
+                        </ul>
+                        <p>作为参考，在中等配置的计算机上，不使用 OCR 索引 1000 个普通办公文档（Word、Excel 等）大约需要 5-10 分钟。如果启用 OCR 并处理大量 PDF 文件，可能需要数小时。</p>
+                        <p>索引是增量式的，后续更新只会处理新增、修改或删除的文件，速度会更快。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">我可以索引哪些类型的文件？</div>
+                    <div class="faq-answer">
+                        <p><strong>免费版支持的文件类型：</strong></p>
+                        <ul>
+                            <li>Microsoft Office 文档（.docx, .xlsx, .pptx）</li>
+                            <li>文本文件（.txt, .rtf）</li>
+                            <li>网页文件（.html, .htm）</li>
+                        </ul>
+                        
+                        <p><strong>专业版额外支持的文件类型：</strong></p>
+                        <ul>
+                            <li>PDF 文件（.pdf），包括 OCR 支持</li>
+                            <li>Markdown 文件（.md）</li>
+                            <li>电子邮件文件（.eml, .msg）</li>
+                            <li>压缩包中的文件（.zip, .rar）</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">为什么有些文件被跳过没有索引？</div>
+                    <div class="faq-answer">
+                        <p>文件可能因以下原因被跳过：</p>
+                        <ul>
+                            <li><strong>许可证限制</strong>：PDF、Markdown、邮件等文件类型需要专业版许可证</li>
+                            <li><strong>文件损坏</strong>：文件可能已损坏或格式不兼容</li>
+                            <li><strong>文件太大</strong>：超过了配置的大小限制</li>
+                            <li><strong>处理超时</strong>：文件处理时间超过了配置的超时限制</li>
+                            <li><strong>加密或受保护</strong>：加密的文件无法处理</li>
+                            <li><strong>权限问题</strong>：程序没有足够权限访问该文件</li>
+                        </ul>
+                        <p>您可以通过点击主界面上的"查看跳过文件"按钮查看详细信息，了解每个被跳过文件的具体原因。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-section" id="search">
+                <h2>搜索功能</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">支持哪些高级搜索语法？</div>
+                    <div class="faq-answer">
+                        <p>文智搜支持以下高级搜索语法：</p>
+                        <ul>
+                            <li><strong>AND / + :</strong> 查找必须包含所有关键词的结果 (例如: <code>报告 +项目</code> 或 <code>报告 AND 项目</code>)</li>
+                            <li><strong>OR 操作符</strong>：使用 OR 表示。例如：<code>预算 OR 财务</code></li>
+                            <li><strong>NOT 操作符</strong>：使用 NOT 排除词语。例如：<code>报表 NOT 季度</code></li>
+                            <li><strong>短语搜索</strong>：使用引号搜索完整短语。例如：<code>"年度财务报表"</code></li>
+                            <li><strong>组合使用</strong>：可以组合多个操作符。例如：<code>"财务报表" AND (2022 OR 2023) NOT 草稿</code></li>
+                            <li><strong>通配符</strong>（专业版）：<code>*</code> 代表任意多个字符，<code>?</code> 代表单个字符。例如：<code>财务*报表</code> 或 <code>report-20??.xlsx</code></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何过滤搜索结果？</div>
+                    <div class="faq-answer">
+                        <p>文智搜提供多种过滤选项：</p>
+                        <ul>
+                            <li><strong>文件类型:</strong> 在搜索栏旁或过滤器区域选择特定的文件格式 (如 .docx, .pdf, .txt)。</li>
+                            <li><strong>大小过滤</strong>：在"文件大小(KB)"中指定最小和最大值</li>
+                            <li><strong>日期过滤</strong>：使用"修改日期"选择器指定日期范围</li>
+                            <li><strong>排序</strong>：可按相关度、修改日期、文件大小或文件路径排序</li>
+                            <li><strong>搜索范围</strong>：选择"全文"搜索文件内容，或选择"文件名"仅搜索文件名</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-section" id="license">
+                <h2>许可证问题</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">免费版和专业版有什么区别？</div>
+                    <div class="faq-answer">
+                        <p><strong>免费版功能：</strong></p>
+                        <ul>
+                            <li>常见格式内容索引与搜索: .docx, .xlsx, .pptx, .txt, .html, .rtf</li>
+                            <li>基础搜索语法: AND, OR, NOT, 短语搜索</li>
+                            <li>按文件大小、修改日期过滤</li>
+                            <li>最多 5 个源目录索引</li>
+                        </ul>
+                        
+                        <p><strong>专业版额外功能：</strong></p>
+                        <ul>
+                            <li>PDF 文件支持（包括 OCR）</li>
+                            <li>Markdown 和电子邮件文件支持</li>
+                            <li>压缩包内容索引</li>
+                            <li>通配符搜索 (* 和 ?)</li>
+                            <li>无限制的源目录索引</li>
+                            <li>更详细的索引配置选项</li>
+                        </ul>
+                        
+                        <p>完整的功能对比可以在<a href="purchase.html#comparison">购买页面</a>查看。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何激活专业版？</div>
+                    <div class="faq-answer">
+                        <p>激活专业版许可证的步骤如下：</p>
+                        <ol>
+                            <li>确保您已从官方渠道购买了专业版许可证密钥。</li>
+                            <li>在文智搜中点击"设置"菜单，选择"许可证管理"</li>
+                            <li>在弹出的对话框中，输入或粘贴您的许可证密钥。</li>
+                            <li>点击"激活"按钮。</li>
+                        </ol>
+                        <p>激活成功后，专业版功能将立即可用，无需重启应用程序。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">可以在多台电脑上使用同一个许可证吗？</div>
+                    <div class="faq-answer">
+                        <p>通常，标准许可证仅授权在单台或指定数量的设备上使用。如果您需要在新电脑上使用：</p>
+                        <ol>
+                            <li>(如果可能) 在旧电脑上停用或移除许可证。</li>
+                            <li>在新计算机上安装文智搜</li>
+                            <li>使用您的许可证密钥在新电脑上激活。</li>
+                        </ol>
+                        <p>注意：每个许可证密钥同一时间只能在一台计算机上激活。如需在多台计算机上使用，请购买额外的许可证。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-section" id="troubleshooting">
+                <h2>错误与故障排除</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">程序启动时出现"无法加载配置"错误怎么办？</div>
+                    <div class="faq-answer">
+                        <p>此问题通常与配置文件损坏有关。解决步骤：</p>
+                        <ol>
+                            <li>关闭文智搜</li>
+                            <li>导航到用户目录下的配置文件夹：<code>C:\Users\[用户名]\AppData\Roaming\YourOrganizationName\DocumentSearchToolPySide</code></li>
+                            <li>重命名或删除配置文件（通常是 .ini 文件）</li>
+                            <li>重新启动应用程序，这将创建新的默认配置文件</li>
+                        </ol>
+                        <p>注意：此操作会重置所有设置，您需要重新配置索引目录等。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">OCR 功能无法正常工作怎么办？</div>
+                    <div class="faq-answer">
+                        <p>OCR 功能问题通常与 Tesseract OCR 安装有关。请检查：</p>
+                        <ol>
+                            <li>确认您已安装 Tesseract OCR，并且版本兼容（建议 v5.0.0 或更高版本）</li>
+                            <li>确认环境变量正确设置（Tesseract 的安装目录应在系统 PATH 中）</li>
+                            <li>确认已安装中文语言包（如需处理中文文档）</li>
+                            <li>重启应用程序尝试重新索引</li>
+                        </ol>
+                        <p>详细的 Tesseract OCR 安装和配置指南可在<a href="download.html#tesseract">下载页面</a>找到。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">索引过程中电脑很卡怎么办？</div>
+                    <div class="faq-answer">
+                        <p>首次建立索引或索引大量文件时，可能会消耗较多系统资源。建议：</p>
+                        <ul>
+                            <li>在电脑空闲时进行首次索引。</li>
+                            <li>关闭文智搜，然后重新启动，有时可以解决临时资源占用问题。</li>
+                            <li>检查设置中是否有关于索引性能/线程数的调整选项（如果提供）。</li>
+                            <li>如果问题持续，可以尝试减少一次性索引的目录数量，分批进行。</li>
+                        </ul>
+                        <p>如果问题持续存在，请收集错误日志并<a href="#contact">联系我们</a>获取支持。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="contact-cta" id="contact">
+        <div class="container">
+            <h2>没有找到您的问题？</h2>
+            <p>如果您的问题未在上述FAQ中列出，请直接联系我们获取支持。我们通常会在1-2个工作日内回复。</p>
+            <a href="mailto:support@documentsearchtool.com" class="btn btn-primary">发送邮件获取支持</a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023-2025 文智搜 版权所有</p>
+            <p><a href="privacy.html">隐私政策</a> | <a href="terms.html">使用条款</a></p>
+        </div>
+    </footer>
+
+    <script>
+        // 简单的折叠/展开问题功能
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', () => {
+                const answer = question.nextElementSibling;
+                question.classList.toggle('active');
+                answer.classList.toggle('active');
+            });
+        });
+
+        // 类别过滤和跳转功能
+        const categoryButtons = document.querySelectorAll('.category-button');
+        const faqSections = document.querySelectorAll('.faq-section');
+
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.getAttribute('data-target');
+
+                // 更新按钮激活状态
+                categoryButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                // 隐藏所有FAQ部分，然后显示目标部分或所有部分
+                faqSections.forEach(section => {
+                    section.style.display = 'none';
+                });
+
+                if (targetId === 'all') {
+                    // 显示所有部分
+                    faqSections.forEach(section => {
+                        section.style.display = 'block';
+                    });
+                    // 滚动到页面顶部
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                    const targetSection = document.getElementById(targetId);
+                    if (targetSection) {
+                        targetSection.style.display = 'block';
+                        // 滚动到目标部分，考虑导航栏高度
+                        const headerOffset = 100; // 假设导航栏高度为100px，根据实际调整
+                        const elementPosition = targetSection.getBoundingClientRect().top;
+                        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: 'smooth'
+                        });
+                    }
+                }
+            });
+        });
+
+        // 初始化：确保页面加载时所有部分可见
+        faqSections.forEach(section => {
+            section.style.display = 'block';
+        });
+    </script>
+</body>
+</html> 

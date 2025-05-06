@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>下载与安装 - 文智搜</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        nav ul li a:hover {
+            color: #3498db;
+        }
+        .page-header {
+            background-color: #3498db;
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        .page-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .page-header p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .content-section {
+            padding: 3rem 0;
+            background-color: white;
+        }
+        .section-title {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .section-title h2 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+        }
+        .section-title p {
+            color: #666;
+        }
+        .download-box {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        .download-box h3 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        .download-box p {
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #27ae60;
+        }
+        .requirements {
+            margin-bottom: 2rem;
+        }
+        .requirements h3 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        .requirements ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .requirements li {
+            margin-bottom: 0.5rem;
+        }
+        .installation-guide {
+            margin-bottom: 3rem;
+        }
+        .installation-guide h3 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        .guide-step {
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+        }
+        .guide-step:last-child {
+            border-bottom: none;
+        }
+        .guide-step h4 {
+            margin-bottom: 1rem;
+            color: #3498db;
+        }
+        .guide-step img {
+            max-width: 100%;
+            height: auto;
+            margin: 1rem 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .code-block {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: Consolas, Monaco, 'Andale Mono', monospace;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        .note {
+            background-color: #ffeaa7;
+            padding: 1rem;
+            border-left: 4px solid #fdcb6e;
+            margin: 1rem 0;
+        }
+        .warning {
+            background-color: #fab1a0;
+            padding: 1rem;
+            border-left: 4px solid #e17055;
+            margin: 1rem 0;
+        }
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        footer p {
+            margin-bottom: 1rem;
+        }
+        footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">文智搜</div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">首页</a></li>
+                    <li><a href="download.html">下载</a></li>
+                    <li><a href="purchase.html">购买专业版</a></li>
+                    <li><a href="faq.html">常见问题</a></li>
+                    <li><a href="contact.html">联系我们</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="page-header">
+        <div class="container">
+            <h1>下载与安装</h1>
+            <p>获取最新版本的文智搜，并按照指南完成安装</p>
+        </div>
+    </section>
+
+    <section class="content-section">
+        <div class="container">
+            <div class="section-title">
+                <h2>下载</h2>
+                <p>选择适合您系统的版本</p>
+            </div>
+            
+            <div class="download-box">
+                <h3>文智搜 v1.0.0</h3>
+                <p>适用于 Windows 10/11 (64位)</p>
+                <a href="https://github.com/yourusername/document-search-tool/releases/download/v1.0.0/文智搜-v1.0.0-setup.exe" class="btn btn-primary">下载安装包 (32MB)</a>
+            </div>
+            
+            <div class="requirements">
+                <h3>系统要求</h3>
+                <ul>
+                    <li>操作系统: Windows 10/11 (64位)</li>
+                    <li>处理器: 双核处理器，1.8GHz 或更高</li>
+                    <li>内存: 最低 4GB RAM</li>
+                    <li>硬盘空间: 最低 100MB 可用空间</li>
+                    <li>显示分辨率: 1366 x 768 或更高</li>
+                </ul>
+                <p>若要使用高级功能（如OCR识别），建议配置更高的内存和处理器。</p>
+            </div>
+            
+            <div class="section-title">
+                <h2>依赖项安装</h2>
+                <p>要充分利用文智搜的所有功能，需安装以下依赖项</p>
+            </div>
+            
+            <div class="installation-guide">
+                <div class="guide-step">
+                    <h3>1. Tesseract OCR (用于图像和扫描PDF的文字识别)</h3>
+                    <p>Tesseract OCR是专业版文智搜用于从图像和扫描文档中提取文字的引擎。</p>
+                    
+                    <h4>安装步骤：</h4>
+                    <ol>
+                        <li>访问 <a href="https://github.com/UB-Mannheim/tesseract/wiki" target="_blank">Tesseract OCR 下载页面</a></li>
+                        <li>下载最新版本的Windows安装包 (例如: tesseract-ocr-w64-setup-v5.3.0.20221222.exe)</li>
+                        <li>运行安装程序，选择要安装的语言，确保至少选择：
+                            <ul>
+                                <li>中文简体 (chi_sim)</li>
+                                <li>英语 (eng)</li>
+                            </ul>
+                        </li>
+                        <li>安装到默认位置 (<code>C:\Program Files\Tesseract-OCR</code>)</li>
+                    </ol>
+                    
+                    <div class="note">
+                        <strong>注意：</strong> 安装时请确保选择"将Tesseract添加到系统PATH"选项，这样文智搜可以自动找到Tesseract。
+                    </div>
+                </div>
+                
+                <div class="guide-step">
+                    <h3>2. Poppler (用于PDF处理)</h3>
+                    <p>Poppler是专业版文智搜用于处理和转换PDF文件的库。</p>
+                    
+                    <h4>安装步骤：</h4>
+                    <ol>
+                        <li>访问 <a href="https://github.com/oschwartz10612/poppler-windows/releases/" target="_blank">Poppler Windows 发布页面</a></li>
+                        <li>下载最新版本的ZIP包 (例如: Release-24.05.0-0.zip)</li>
+                        <li>解压缩文件到 <code>C:\Program Files\poppler-24.05.0\</code></li>
+                        <li>添加Poppler的bin目录到系统PATH:
+                            <ol>
+                                <li>右键点击"此电脑"，选择"属性"</li>
+                                <li>点击"高级系统设置"</li>
+                                <li>点击"环境变量"</li>
+                                <li>在"系统变量"部分，找到并选择"Path"变量，然后点击"编辑"</li>
+                                <li>点击"新建"，添加 <code>C:\Program Files\poppler-24.05.0\Library\bin</code></li>
+                                <li>点击"确定"保存更改</li>
+                            </ol>
+                        </li>
+                    </ol>
+                    
+                    <div class="warning">
+                        重要：安装完Poppler后，您需要重新启动电脑或注销后重新登录，以使PATH环境变量的更改生效。
+                    </div>
+                </div>
+                
+                <div class="guide-step">
+                    <h3>3. 验证安装</h3>
+                    <p>安装上述依赖项后，您可以通过以下步骤验证安装是否成功：</p>
+                    
+                    <h4>验证Tesseract:</h4>
+                    <ol>
+                        <li>打开命令提示符 (cmd.exe)</li>
+                        <li>输入以下命令并回车：</li>
+                    </ol>
+                    <div class="code-block">tesseract --version</div>
+                    <p>如果安装正确，您应该看到类似以下的输出：</p>
+                    <div class="code-block">tesseract 5.3.0<br>
+ libgif 5.2.1 : libjpeg 9d : libpng 1.6.37 : libtiff 4.4.0 : zlib 1.2.12 : libwebp 1.2.4</div>
+                    
+                    <h4>验证Poppler:</h4>
+                    <ol>
+                        <li>打开命令提示符 (cmd.exe)</li>
+                        <li>输入以下命令并回车：</li>
+                    </ol>
+                    <div class="code-block">pdfinfo -v</div>
+                    <p>如果安装正确，您应该看到类似以下的输出：</p>
+                    <div class="code-block">pdfinfo version 24.05.0</div>
+                </div>
+            </div>
+            
+            <div class="section-title">
+                <h2>安装文智搜</h2>
+                <p>完成依赖项安装后，安装文智搜</p>
+            </div>
+            
+            <div class="installation-guide">
+                <div class="guide-step">
+                    <h3>安装步骤</h3>
+                    <ol>
+                        <li>运行您下载的安装包 (文智搜-v1.0.0-setup.exe)</li>
+                        <li>按照安装向导的提示完成安装</li>
+                        <li>安装完成后，从桌面或开始菜单启动"文智搜"</li>
+                        <li>首次启动时，您需要设置索引存储位置和添加要索引的文件夹</li>
+                    </ol>
+                    
+                    <div class="note">
+                        提示：如果您已安装了依赖项但文智搜无法识别它们，可以在设置中手动指定Tesseract和Poppler的路径。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023-2025 文智搜 版权所有</p>
+            <p>
+                <a href="privacy.html">隐私政策</a> | 
+                <a href="terms.html">使用条款</a> | 
+                <a href="faq.html">常见问题</a> | 
+                <a href="contact.html">联系我们</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html> 

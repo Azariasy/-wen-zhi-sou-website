@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文智搜 - 为中文优化的本地文件内容搜索引擎</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        nav ul li a:hover {
+            color: #3498db;
+        }
+        .hero {
+            background-color: #3498db;
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .hero p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+        }
+        .hero-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #27ae60;
+        }
+        .btn-secondary {
+            background-color: white;
+            color: #3498db;
+        }
+        .btn-secondary:hover {
+            background-color: #f5f5f5;
+        }
+        .features {
+            padding: 4rem 0;
+            background-color: white;
+        }
+        .section-title {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .section-title h2 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .section-title p {
+            color: #666;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        .feature-card {
+            background-color: #f8f9fa;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        .feature-card h3 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        .comparison {
+            padding: 4rem 0;
+            background-color: #f8f9fa;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 2rem;
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .comparison-table th, .comparison-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .comparison-table thead {
+            background-color: #2c3e50;
+            color: white;
+        }
+        .comparison-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+        .check {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        .cross {
+            color: #e74c3c;
+        }
+        .cta {
+            padding: 4rem 0;
+            text-align: center;
+            background-color: #3498db;
+            color: white;
+        }
+        .cta h2 {
+            margin-bottom: 1rem;
+        }
+        .cta p {
+            margin-bottom: 2rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        footer p {
+            margin-bottom: 1rem;
+        }
+        footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+        .interface-showcase {
+            padding: 4rem 0;
+            background-color: #ffffff;
+            text-align: center;
+        }
+        .showcase-content {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        .showcase-item {
+            flex-basis: calc(50% - 1rem);
+            min-width: 300px;
+            text-align: center;
+        }
+        .showcase-item h4 {
+            margin-bottom: 1rem;
+            color: #3498db;
+            font-size: 1.1rem;
+        }
+        .showcase-item img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">文智搜</div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">首页</a></li>
+                    <li><a href="download.html">下载</a></li>
+                    <li><a href="purchase.html">购买专业版</a></li>
+                    <li><a href="faq.html">常见问题</a></li>
+                    <li><a href="contact.html">联系我们</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>为中文优化的本地文件内容搜索引擎</h1>
+            <p>快速、精准地搜索本地文档内容，支持多种文件格式，保护隐私，不联网，无需上传文件。</p>
+            <div class="hero-buttons">
+                <a href="download.html" class="btn btn-primary">免费下载</a>
+                <a href="purchase.html" class="btn btn-secondary">了解专业版</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="container">
+            <div class="section-title">
+                <h2>核心功能</h2>
+                <p>专为快速检索本地文档内容而设计</p>
+            </div>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>多格式文件支持</h3>
+                    <p>支持搜索多种文件格式的内容，包括Word、Excel、PowerPoint、PDF、文本文件等，轻松找到所需信息。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>中文分词优化</h3>
+                    <p>内置中文分词引擎，针对中文语境进行了专门优化，提供更准确的搜索结果。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>OCR文本识别</h3>
+                    <p>专业版支持从PDF扫描件和图片中提取文字，让不可搜索的内容变得可以搜索。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>高级搜索语法</h3>
+                    <p>支持AND、OR、NOT等搜索运算符，以及短语搜索和通配符（专业版），精确定位您需要的内容。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>智能结果预览</h3>
+                    <p>在搜索结果中直接显示关键字上下文，无需打开文件即可预览相关内容。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>完全离线运行</h3>
+                    <p>所有处理都在本地完成，不会上传您的文件，保护您的数据隐私。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="interface-showcase">
+        <div class="container">
+            <div class="section-title">
+                <h2>直观易用的搜索界面</h2>
+                <p>快速上手，轻松查找所需文件。</p>
+            </div>
+            <div class="showcase-content">
+                <div class="showcase-item">
+                    <h4>强大的全文内容搜索</h4>
+                    <img src="images/fulltext-search.jpg" alt="文智搜全文搜索结果界面截图">
+                </div>
+                <div class="showcase-item">
+                    <h4>精准的文件名搜索</h4>
+                    <img src="images/filename-search.jpg" alt="文智搜文件名搜索结果界面截图">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="comparison">
+        <div class="container">
+            <div class="section-title">
+                <h2>版本对比</h2>
+                <p>选择最适合您需求的版本</p>
+            </div>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>功能</th>
+                        <th>免费版</th>
+                        <th>专业版</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>基础格式支持 (DOCX, XLSX, PPTX, TXT)</td>
+                        <td><span class="check">✓</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>基础搜索语法 (AND, OR, NOT)</td>
+                        <td><span class="check">✓</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>文件名搜索</td>
+                        <td><span class="check">✓</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>PDF文本和OCR支持</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>Markdown文件支持</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>邮件文件支持 (EML, MSG)</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>压缩包内容支持 (ZIP, RAR)</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>通配符搜索 (*, ?)</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>源目录数量</td>
+                        <td>最多5个</td>
+                        <td>无限制</td>
+                    </tr>
+                    <tr>
+                        <td>优先技术支持</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="cta">
+        <div class="container">
+            <h2>立即开始使用</h2>
+            <p>免费版即可满足基本需求，专业版解锁更多高级功能。无需重新安装，购买许可证即可一键升级。</p>
+            <div class="hero-buttons">
+                <a href="download.html" class="btn btn-primary">免费下载</a>
+                <a href="purchase.html" class="btn btn-secondary">购买专业版</a>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023-2025 文智搜 版权所有 | <a href="privacy.html">隐私政策</a></p>
+        </div>
+    </footer>
+</body>
+</html> 
