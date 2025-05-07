@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "mongodb": "^6.16.0"
+    "mongodb": "^6.16.0",
+    "nodemailer": "^7.0.2"
   }
 }

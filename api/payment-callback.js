@@ -10,6 +10,7 @@
 
 import clientPromise from '../lib/mongodb'; // 导入数据库连接
 const crypto = require('crypto'); // 用于 MD5 签名验证
+const nodemailer = require('nodemailer'); // 确保 nodemailer 已导入
 // const nodemailer = require('nodemailer'); // 用于发送邮件
 
 // --- 易支付配置 (从环境变量读取) ---
@@ -118,8 +119,15 @@ module.exports = async (req, res) => {
       console.log(`Generated license key for ${orderDetails.email}: ${licenseKey}`);
 
       // 7. 存储许可证信息到数据库
-      // await storeLicenseInDB(internalOrderNo, mockOrderDetails.email, licenseKey);
-      console.log(`Stored license key for order ${internalOrderNo}.`);
+      const licenseDocument = {
+        orderNo: internalOrderNo,
+        email: orderDetails.email,
+        productId: orderDetails.productId,
+        licenseKey: licenseKey,
+        createdAt: new Date(),
+      };
+      await licensesCollection.insertOne(licenseDocument);
+      console.log(`Stored license key for order ${internalOrderNo} to licenses collection.`);
 
       // 8. 发送许可证邮件给用户
       try {
@@ -171,14 +179,51 @@ function generateLicense(email, productId) {
 
 // 发送许可证邮件的函数
 async function sendLicenseEmail(email, licenseKey, orderNo) {
-  console.log(`--- Simulating Sending Email ---`);
-  console.log(`To: ${email}`);
-  console.log(`Order: ${orderNo}`);
-  console.log(`License Key: ${licenseKey}`);
-  console.log(`--- End Simulation ---`);
-  // 在这里实现真实的邮件发送逻辑，使用 nodemailer 或其他服务
-  // 例如:
-  // const transporter = nodemailer.createTransport({...});
-  // await transporter.sendMail({...});
-  return true; // 假设发送成功
+  console.log(`Attempting to send license email to: ${email} for order: ${orderNo}`);
+
+  // 1. 创建 Transporter 对象 (配置您的邮件服务)
+  //    重要：请使用环境变量存储敏感信息！
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_SMTP_HOST, // 例如：'smtp.example.com'
+    port: parseInt(process.env.EMAIL_SMTP_PORT, 10) || 587, // 例如：587 或 465
+    secure: (process.env.EMAIL_SMTP_SECURE === 'true'), // true for 465, false for other ports
+    auth: {
+      user: process.env.EMAIL_SMTP_USER, // 您的邮箱用户名
+      pass: process.env.EMAIL_SMTP_PASS, // 您的邮箱密码或应用专用密码
+    },
+    tls: {
+      // 如果您的SMTP服务器使用自签名证书，可能需要这个
+      // rejectUnauthorized: false
+    }
+  });
+
+  // 2. 定义邮件内容
+  const mailOptions = {
+    from: `"文智搜支持" <${process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_SMTP_USER}>`, // 发件人地址
+    to: email, // 收件人地址 (从订单详情中获取)
+    subject: `您的 文智搜 专业版许可证密钥 - 订单 ${orderNo}`, // 邮件主题
+    text: `感谢您购买文智搜专业版！\n\n您的订单号是: ${orderNo}\n您的许可证密钥是: ${licenseKey}\n\n请妥善保管您的密钥。\n\n感谢您的支持！\n文智搜团队`, // 纯文本内容
+    html: `
+      <p>尊敬的用户，</p>
+      <p>感谢您购买文智搜专业版！</p>
+      <p>您的订单号是: <strong>${orderNo}</strong></p>
+      <p>您的许可证密钥是: <strong>${licenseKey}</strong></p>
+      <p>请妥善保管您的密钥。</p>
+      <p>如有任何疑问，请随时与我们联系。</p>
+      <p>感谢您的支持！<br>文智搜团队</p>
+    ` // HTML 内容 (更美观)
+  };
+
+  try {
+    // 3. 发送邮件
+    let info = await transporter.sendMail(mailOptions);
+    console.log('License email sent successfully: %s', info.messageId);
+    // console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info)); // 仅在用 ethereal.email 测试时有用
+    return true;
+  } catch (error) {
+    console.error(`Error sending license email to ${email} for order ${orderNo}:`, error);
+    // 即使邮件发送失败，也不应该影响给易支付返回 'success'
+    // 但需要记录错误，以便后续处理 (例如手动补发)
+    return false;
+  }
 } 
