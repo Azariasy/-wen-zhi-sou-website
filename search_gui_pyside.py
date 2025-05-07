@@ -12,6 +12,11 @@ from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, 
 from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor # Added QColor here
 import html  # Import html module for escaping
 
+# --- ADDED: Network and Version Comparison Imports ---
+import requests
+from packaging import version
+# -----------------------------------------------------
+
 # Standard library imports
 from pathlib import Path  # Added
 import document_search  # Uncommented backend import
@@ -53,6 +58,11 @@ SETTINGS_EXTRACTION_TIMEOUT = "indexing/extractionTimeout"
 SETTINGS_TXT_CONTENT_LIMIT = "indexing/txtContentLimitKb"
 SETTINGS_CASE_SENSITIVE = "search/caseSensitive"
 
+# --- ADDED: Version Info ---
+CURRENT_VERSION = "1.0.0"  # <--- Update this for each new release!
+UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_version.json" # URL to your version info file
+# -------------------------
+
 # --- Worker Class for Background Tasks ---
 class Worker(QObject):
     # Signals to communicate with the main thread
@@ -63,6 +73,11 @@ class Worker(QObject):
     resultsReady = Signal(list)       # Search results list[dict]
     indexingComplete = Signal(dict)   # Summary dict from backend
     errorOccurred = Signal(str)       # Error message
+    # --- ADDED: Signals for update check --- 
+    updateAvailableSignal = Signal(dict) # Sends dict with version info
+    upToDateSignal = Signal()
+    updateCheckFailedSignal = Signal(str) # Sends error message
+    # ---------------------------------------
     
     def __init__(self):
         super().__init__()
@@ -259,6 +274,53 @@ class Worker(QObject):
         print(f"--- Clearing search cache ({cache_info.hits} hits, {cache_info.misses} misses, {cache_info.currsize}/{cache_info.maxsize} size) ---")
         self._perform_search_with_cache.cache_clear()
         print("--- Search cache cleared. ---")
+
+    # --- ADDED: Worker method for checking updates --- 
+    @Slot(str, str) # current_version, update_url
+    def run_update_check(self, current_version_str, update_url):
+        """Performs the update check in the background."""
+        try:
+            print(f"Checking for updates at {update_url}...")
+            response = requests.get(update_url, timeout=10) # 10 second timeout
+            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            
+            latest_info = response.json()
+            latest_version_str = latest_info.get("version")
+            
+            if not latest_version_str:
+                raise ValueError("Version information missing in update file.")
+            
+            print(f"Current version: {current_version_str}, Latest version from server: {latest_version_str}")
+            
+            # Compare versions
+            current_v = version.parse(current_version_str)
+            latest_v = version.parse(latest_version_str)
+            
+            if latest_v > current_v:
+                print("Update available.")
+                self.updateAvailableSignal.emit(latest_info) # Send all info back
+            else:
+                print("Already up to date.")
+                self.upToDateSignal.emit()
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"检查更新时网络错误: {e}"
+            print(f"Error: {error_msg}")
+            self.updateCheckFailedSignal.emit(error_msg)
+        except json.JSONDecodeError:
+            error_msg = "无法解析更新信息文件。文件格式可能不正确。"
+            print(f"Error: {error_msg}")
+            self.updateCheckFailedSignal.emit(error_msg)
+        except ValueError as e:
+            error_msg = f"更新信息文件内容错误: {e}"
+            print(f"Error: {error_msg}")
+            self.updateCheckFailedSignal.emit(error_msg)
+        except Exception as e:
+            error_msg = f"检查更新时发生未知错误: {e}"
+            print(f"Error: {error_msg}")
+            # traceback.print_exc() # Optional: more detailed logging
+            self.updateCheckFailedSignal.emit(error_msg)
+    # --------------------------------------------------
 
 # --- Settings Dialog Class --- (NEW)
 class SettingsDialog(QDialog):
@@ -678,6 +740,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # ---------------------------------------------------------
     # Signal to trigger search in the worker thread (add types for size, date, file type, and case sensitivity)
     startSearchSignal = Signal(str, str, object, object, object, object, object, str, bool, str) # Added str for search_scope
+    # --- ADDED: Signal for update check --- 
+    startUpdateCheckSignal = Signal(str, str) # current_version, update_url
+    # ----------------------------------------
 
     def __init__(self):
         super().__init__()
@@ -995,9 +1060,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.worker.indexingComplete.connect(self.indexing_finished_slot)
             self.worker.errorOccurred.connect(self.handle_error_slot)
             
+            # --- ADDED: Connect update check signals ---
+            self.worker.updateAvailableSignal.connect(self.show_update_available_dialog_slot)
+            self.worker.upToDateSignal.connect(self.show_up_to_date_dialog_slot)
+            self.worker.updateCheckFailedSignal.connect(self.show_update_check_failed_dialog_slot)
+            # -----------------------------------------
+            
             # 连接主线程信号到工作线程槽函数
             self.startIndexingSignal.connect(self.worker.run_indexing)
             self.startSearchSignal.connect(self.worker.run_search)
+            # --- ADDED: Connect update check signal to worker ---
+            self.startUpdateCheckSignal.connect(self.worker.run_update_check)
+            # ---------------------------------------------------
             
             # 连接线程完成信号
             self.worker_thread.finished.connect(self.thread_finished_slot)
@@ -1690,7 +1764,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def _filter_results_by_type_slot(self):
         """Filters the original search results based on checked file types and updates display."""
-        # print("_filter_results_by_type_slot triggered")  # DEBUG
+        print("DEBUG: _filter_results_by_type_slot triggered")  # DEBUG
         # REMOVED BUSY CHECK - Checkboxes are disabled by set_busy_state anyway
         # if self.is_busy:
         #     # print("  Busy, skipping filter")  # DEBUG
@@ -1700,18 +1774,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # if not self.last_search_results:
 
         checked_types = [ftype for cb, ftype in self.file_type_checkboxes.items() if cb.isChecked()]
-        # print(f"  Checked types: {checked_types}")  # DEBUG
+        print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
         
         if not checked_types:
             # If no types are checked, show all original results
-            # print("  No types checked, displaying all original results")  # DEBUG
+            print("DEBUG: No file types checked, displaying all original results")  # DEBUG
             self.display_search_results_slot(self.original_search_results)
         else:
             # Filter the ORIGINAL stored results based on checked types
-            # print("  Filtering original results...")  # DEBUG
+            print("DEBUG: Filtering original results based on checked types...")  # DEBUG
             filtered_results = [item for item in self.original_search_results 
-                                if item.get('file_type') in checked_types]
-            # print(f"  Filtered count: {len(filtered_results)}")  # DEBUG
+                                if item.get('file_type', '').lstrip('.').lower() in checked_types]
+            print(f"DEBUG: Filtered results count: {len(filtered_results)}")  # DEBUG
             self.display_search_results_slot(filtered_results)
 
     # --- Link Handling Slot ---
@@ -1943,6 +2017,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         help_menu.addSeparator()  # 添加分隔线
         # ---------------------------------
         
+        # --- ADDED: Check for updates menu item --- 
+        check_update_action = QAction("检查更新(&U)...", self)
+        check_update_action.triggered.connect(self.check_for_updates_slot) # Connect later
+        help_menu.addAction(check_update_action)
+        # ------------------------------------------
+        
         about_action = QAction("关于(&A)...", self)  # Add & for shortcut Alt+A
         about_action.triggered.connect(self.show_about_dialog_slot)
         help_menu.addAction(about_action)
@@ -2008,13 +2088,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def show_about_dialog_slot(self):
         """Shows the About dialog."""
-        about_text = """
+        # --- UPDATED: Include CURRENT_VERSION in About dialog --- 
+        about_text = f"""
         <b>文智搜</b><br><br>
-        版本: 1.2 (PySide6 - 重写)<br>
+        版本: {CURRENT_VERSION}<br> 
         一个用于本地文档全文搜索的工具。<br><br>
         使用 Whoosh 索引, 支持多种文件类型。
         """
         QMessageBox.about(self, "关于", about_text)
+        # ---------------------------------------------------------
 
     # --- Theme Handling ---
     def apply_theme(self, theme_name):
@@ -2196,6 +2278,70 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         current_font.setPointSize(font_size)     # Set the desired point size
         self.results_text.setFont(current_font)  # Apply the modified font
 
+    # --- ADDED: Slots for handling update check results ---
+    @Slot()
+    def check_for_updates_slot(self):
+        """Initiates the update check process."""
+        if self.is_busy:
+            QMessageBox.warning(self, "忙碌中", "请等待当前操作完成。")
+            return
+        
+        # Show immediate feedback that check is starting
+        self.statusBar().showMessage("正在检查更新...", 0) 
+        self.set_busy_state(True) # Prevent other actions during check
+        
+        # Trigger the worker
+        # Pass current version and URL from constants
+        self.startUpdateCheckSignal.emit(CURRENT_VERSION, UPDATE_INFO_URL)
+
+    @Slot(dict)
+    def show_update_available_dialog_slot(self, update_info):
+        """Displays a dialog indicating an update is available."""
+        self.set_busy_state(False) # Reset busy state
+        self.statusBar().showMessage("发现新版本", 5000) # Update status
+        
+        latest_version = update_info.get('version', '未知')
+        release_date = update_info.get('release_date', '未知')
+        notes = update_info.get('notes', '无说明')
+        download_url = update_info.get('download_url', '')
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("发现新版本")
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setTextFormat(Qt.RichText) # Allow HTML link
+        
+        text = f"发现新版本: <b>{latest_version}</b> (发布于 {release_date})<br><br>"
+        text += f"<b>更新内容:</b><br>{html.escape(notes)}<br><br>"
+        if download_url:
+            text += f"是否前往下载页面？<br><a href=\"{download_url}\">{download_url}</a>"
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.Yes)
+        else:
+            text += "请访问官方渠道获取更新。"
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            
+        msg_box.setText(text)
+        
+        result = msg_box.exec()
+        
+        if download_url and result == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl(download_url))
+
+    @Slot()
+    def show_up_to_date_dialog_slot(self):
+        """Displays a dialog indicating the application is up to date."""
+        self.set_busy_state(False) # Reset busy state
+        self.statusBar().showMessage("已是最新版本", 3000)
+        QMessageBox.information(self, "检查更新", "您当前使用的是最新版本。")
+
+    @Slot(str)
+    def show_update_check_failed_dialog_slot(self, error_message):
+        """Displays a dialog indicating the update check failed."""
+        self.set_busy_state(False) # Reset busy state
+        self.statusBar().showMessage("检查更新失败", 3000)
+        QMessageBox.warning(self, "检查更新失败", f"无法完成更新检查：\n{error_message}")
+    # ------------------------------------------------------
+
     # --- Cleanup --- 
     def closeEvent(self, event):
         """Handle window close event to clean up the worker thread and save settings."""
@@ -2224,6 +2370,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 断开主线程发送到工作线程的信号
                     self.startIndexingSignal.disconnect()
                     self.startSearchSignal.disconnect()
+                    # --- ADDED: Connect update check signal to worker ---
+                    self.startUpdateCheckSignal.disconnect()
+                    # ---------------------------------------------------
                 except Exception as e:
                     print(f"  断开信号时发生错误: {str(e)}")
                     pass  # 忽略任何断开连接错误
