@@ -377,27 +377,28 @@
 
     <script>
         document.getElementById('buy-now-button').addEventListener('click', async function(event) {
-            event.preventDefault(); // 阻止链接的默认跳转行为
+            event.preventDefault(); // Prevent default link behavior
 
-            // 产品信息 (可以根据需要调整或从页面元素获取)
-            const productId = 'WZS_PRO_PERPETUAL'; // 您定义的产品ID
-            const price = 9.9; // 当前优惠价格
-            const paymentMethod = 'alipay'; // 或者 'wxpay', 'qqpay' - 用户选择或默认
+            // Product information (can be adjusted or retrieved from page elements if needed)
+            const productId = 'WZS_PRO_PERPETUAL'; // Your defined product ID
+            const price = 9.9; // Current promotional price
+            const paymentMethod = 'alipay'; // Or 'wxpay', 'qqpay' - user choice or default
             
-            // 用户邮箱 - 从新添加的输入框获取
+            // User email - get from the input field
             const userEmailInput = document.getElementById('user-email-input');
             const userEmail = userEmailInput.value.trim(); 
             
+            // Validate email
             if (!userEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
                 alert('请输入有效的电子邮件地址！');
                 userEmailInput.focus();
-                // 恢复按钮状态
+                // Restore button state
                 this.textContent = '立即购买';
                 this.disabled = false;
-                return; // 阻止后续操作
+                return; // Stop further execution
             }
 
-            // 显示加载状态或禁用按钮，防止重复点击
+            // Show loading state or disable button to prevent multiple clicks
             this.textContent = '正在创建订单...';
             this.disabled = true;
 
@@ -415,23 +416,34 @@
                     })
                 });
 
-                const data = await response.json();
+                // Try to parse the response as JSON regardless of response.ok status first
+                // This helps in cases where the server sends a JSON error message
+                let data;
+                try {
+                    data = await response.json();
+                } catch (jsonError) {
+                    console.error('Error parsing JSON response:', jsonError);
+                    // If JSON parsing fails, it means the response was not valid JSON (e.g., an HTML error page)
+                    // We can check response.text() for more details if needed, but for now, assume a server error.
+                    throw new Error(`服务器响应无效，状态码: ${response.status}`);
+                }
 
                 if (response.ok && data.success && data.paymentUrl) {
-                    // 订单创建成功，跳转到支付网关
+                    // Order creation successful, redirect to payment gateway
                     window.location.href = data.paymentUrl;
                 } else {
-                    // 订单创建失败，显示错误信息
-                    console.error('订单创建失败:', data);
-                    alert('订单创建失败: ' + (data.message || data.error || '未知错误'));
-                    this.textContent = '立即购买'; // 恢复按钮文字
-                    this.disabled = false;    // 恢复按钮可用性
+                    // Order creation failed, display error message from server or a generic one
+                    console.error('订单创建失败 (server response):', data);
+                    alert('订单创建失败: ' + (data.message || data.error || '未知服务器错误'));
+                    this.textContent = '立即购买'; // Restore button text
+                    this.disabled = false;    // Restore button availability
                 }
             } catch (error) {
-                console.error('调用创建订单API时发生网络错误:', error);
-                alert('创建订单过程中发生网络错误，请稍后重试。');
-                this.textContent = '立即购买'; // 恢复按钮文字
-                this.disabled = false;    // 恢复按钮可用性
+                // This catch block handles network errors or errors thrown from the try block (like JSON parsing error)
+                console.error('调用创建订单API时发生错误:', error);
+                alert('创建订单过程中发生错误: ' + error.message + ' 请稍后重试。');
+                this.textContent = '立即购买'; // Restore button text
+                this.disabled = false;    // Restore button availability
             }
         });
     </script>
