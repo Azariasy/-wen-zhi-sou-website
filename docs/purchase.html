@@ -402,7 +402,7 @@
             this.disabled = true;
 
             try {
-                const response = await fetch('/api/create-order', { // 使用相对路径，确保API和网站在同一Vercel项目下
+                const response = await fetch('https://wen-zhi-sou-website.vercel.app/api/create-order', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -412,7 +412,7 @@
                         productId: productId,
                         price: price,
                         paymentMethod: paymentMethod 
-                    }),
+                    })
                 });
 
                 const data = await response.json();
