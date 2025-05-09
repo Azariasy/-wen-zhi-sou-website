@@ -26,6 +26,8 @@ function generateSign(params, apiKey) {
 }
 
 export default async function handler(req, res) {
+    console.log('--- create-order function invoked ---');
+
     // CORS 处理
     // 注意：'https://azariasy.github.io' 应该替换为您的实际 GitHub Pages 域名
     // 或者从环境变量读取允许的源
