@@ -1077,7 +1077,35 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         return layout
 
     # (Add other _create_* helper methods if they were inline before)
-            def _create_sort_bar(self):
+        def _create_date_filter_bar(self):
+        date_filter_layout = QHBoxLayout()
+        date_filter_label = QLabel("修改日期:")
+        start_date_label = QLabel("从:")
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.default_start_date = QDate(1900, 1, 1)
+        self.start_date_edit.setDate(self.default_start_date)
+        self.start_date_edit.setMaximumDate(QDate.currentDate())
+        self.start_date_edit.setMinimumWidth(100)
+        end_date_label = QLabel("到:")
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.default_end_date = QDate.currentDate()
+        self.end_date_edit.setDate(self.default_end_date)
+        self.end_date_edit.setMinimumWidth(100)
+        self.clear_dates_button = QPushButton("清除日期")
+        date_filter_layout.addWidget(date_filter_label)
+        date_filter_layout.addWidget(start_date_label)
+        date_filter_layout.addWidget(self.start_date_edit)
+        date_filter_layout.addWidget(end_date_label)
+        date_filter_layout.addWidget(self.end_date_edit)
+        date_filter_layout.addWidget(self.clear_dates_button)
+        date_filter_layout.addStretch(1)
+        return date_filter_layout
+
+    def _create_sort_bar(self):
         sort_layout = QHBoxLayout()
         sort_label = QLabel("排序方式:")
         self.sort_combo = QComboBox()
@@ -1498,7 +1526,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.collapse_states = {}
         self.original_search_results = []
 
-        # UNIFIED Search Slot (Handles button click, enter press, combo activation)
+    def clear_dates_slot(self):
+        """Slot to clear the date edits to default values."""
+        # Reset dates to indicate 'no date filter'
+        self.start_date_edit.setDate(self.default_start_date)
+        self.end_date_edit.setDate(self.default_end_date)
+
+    # UNIFIED Search Slot (Handles button click, enter press, combo activation)
     @Slot()
     def start_search_slot(self):
         """Unified slot to initiate search based on combo box text and radio button mode."""

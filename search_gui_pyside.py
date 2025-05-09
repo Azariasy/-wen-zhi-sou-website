@@ -6,10 +6,11 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QDateEdit, QCheckBox, QComboBox, QRadioButton, QDialog, QDialogButtonBox, QSpinBox,
     QButtonGroup, QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar, # ADDED QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar
     QStatusBar, # Ensure QProgressBar is imported if not already
-    QTableWidget, QHeaderView, QTableWidgetItem
+    QTableWidget, QHeaderView, QTableWidgetItem,
+    QTreeView, QSplitter, # 添加文件夹树视图所需的组件
 )
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize # Added QSize here
-from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor # Added QColor here
+from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex # Added QSize, QDir and QModelIndex 
+from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem # Added QStandardItemModel and QStandardItem
 import html  # Import html module for escaping
 
 # --- ADDED: Network and Version Comparison Imports ---
@@ -41,6 +42,39 @@ try:
 except ImportError:
     pass # qdarkstyle not installed, will use basic dark theme
 # -------------------------------------
+
+# --- 添加资源文件路径解析器 ---
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，适用于开发环境和打包后的环境
+    
+    Args:
+        relative_path (str): 相对于应用程序根目录的资源文件路径
+        
+    Returns:
+        str: 资源文件的绝对路径
+    """
+    # 如果路径带有特殊前缀，则移除
+    if relative_path.startswith('qss-resource:'):
+        relative_path = relative_path[len('qss-resource:'):]
+    
+    # 如果路径被引号包围，则移除引号
+    if (relative_path.startswith('"') and relative_path.endswith('"')) or \
+       (relative_path.startswith("'") and relative_path.endswith("'")):
+        relative_path = relative_path[1:-1]
+    
+    # 判断是否在PyInstaller环境中运行
+    if getattr(sys, 'frozen', False):
+        # 在PyInstaller环境中
+        base_path = sys._MEIPASS
+    else:
+        # 在开发环境中
+        base_path = os.path.dirname(__file__)
+    
+    # 组合路径并返回
+    resource_path = os.path.join(base_path, relative_path)
+    print(f"资源路径解析: {relative_path} -> {resource_path}")
+    return resource_path
+# ------------------------------
 
 # --- Constants ---
 ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
@@ -448,6 +482,69 @@ class SettingsDialog(QDialog):
         # search_group_layout.addWidget(search_settings_label)
         self.case_sensitive_checkbox = QCheckBox("区分大小写")
         search_group_layout.addWidget(self.case_sensitive_checkbox)
+        
+        # --- ADDED: 文件大小筛选控件 ---
+        size_filter_group = QGroupBox("文件大小筛选 (KB)")
+        size_filter_layout = QHBoxLayout(size_filter_group)
+        
+        min_size_label = QLabel("最小:")
+        self.min_size_entry = QLineEdit()
+        self.min_size_entry.setPlaceholderText("可选")
+        self.min_size_entry.setMaximumWidth(120)
+        self.min_size_entry.setValidator(QIntValidator(0, 999999999))
+        
+        max_size_label = QLabel("最大:")
+        self.max_size_entry = QLineEdit()
+        self.max_size_entry.setPlaceholderText("可选")
+        self.max_size_entry.setMaximumWidth(120)
+        self.max_size_entry.setValidator(QIntValidator(0, 999999999))
+        
+        size_filter_layout.addWidget(min_size_label)
+        size_filter_layout.addWidget(self.min_size_entry)
+        size_filter_layout.addWidget(max_size_label)
+        size_filter_layout.addWidget(self.max_size_entry)
+        size_filter_layout.addStretch()
+        
+        search_group_layout.addWidget(size_filter_group)
+        # -----------------------------
+        
+        # --- ADDED: 修改日期筛选控件 ---
+        date_filter_group = QGroupBox("修改日期筛选")
+        date_filter_layout = QVBoxLayout(date_filter_group)
+        
+        date_row_layout = QHBoxLayout()
+        start_date_label = QLabel("从:")
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.setDate(QDate(1900, 1, 1))
+        self.start_date_edit.setMaximumDate(QDate.currentDate())
+        
+        end_date_label = QLabel("到:")
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit.setDate(QDate.currentDate())
+        
+        date_row_layout.addWidget(start_date_label)
+        date_row_layout.addWidget(self.start_date_edit)
+        date_row_layout.addWidget(end_date_label)
+        date_row_layout.addWidget(self.end_date_edit)
+        date_row_layout.addStretch()
+        
+        # 添加清除日期按钮
+        clear_dates_layout = QHBoxLayout()
+        self.clear_dates_button = QPushButton("清除日期筛选")
+        self.clear_dates_button.clicked.connect(self._clear_dates)
+        clear_dates_layout.addStretch()
+        clear_dates_layout.addWidget(self.clear_dates_button)
+        
+        date_filter_layout.addLayout(date_row_layout)
+        date_filter_layout.addLayout(clear_dates_layout)
+        
+        search_group_layout.addWidget(date_filter_group)
+        # -----------------------------
+        
         # Add more search settings here later if needed
         # search_group_layout.addStretch(1) # Remove stretch
 
@@ -663,6 +760,33 @@ class SettingsDialog(QDialog):
         # --- Load Search Settings ---
         case_sensitive = settings.value("search/caseSensitive", False, type=bool)
         self.case_sensitive_checkbox.setChecked(case_sensitive)
+        
+        # --- ADDED: Load Size Filter Settings ---
+        min_size = settings.value("search/minSizeKB", "", type=str)
+        self.min_size_entry.setText(min_size)
+        
+        max_size = settings.value("search/maxSizeKB", "", type=str)
+        self.max_size_entry.setText(max_size)
+        # ------------------------------------
+        
+        # --- ADDED: Load Date Filter Settings ---
+        # 设置默认日期范围
+        default_start_date = QDate(1900, 1, 1)
+        default_end_date = QDate.currentDate()
+        
+        # 从设置中读取日期
+        start_date_str = settings.value("search/startDate", "")
+        if start_date_str:
+            self.start_date_edit.setDate(QDate.fromString(start_date_str, "yyyy-MM-dd"))
+        else:
+            self.start_date_edit.setDate(default_start_date)
+            
+        end_date_str = settings.value("search/endDate", "")
+        if end_date_str:
+            self.end_date_edit.setDate(QDate.fromString(end_date_str, "yyyy-MM-dd"))
+        else:
+            self.end_date_edit.setDate(default_end_date)
+        # ------------------------------------
 
         # --- Load UI Settings ---
         theme = settings.value("ui/theme", "现代蓝") # Default to 'Modern Blue'
@@ -698,6 +822,25 @@ class SettingsDialog(QDialog):
 
         # --- Save Search Settings ---
         settings.setValue("search/caseSensitive", self.case_sensitive_checkbox.isChecked())
+        
+        # --- ADDED: Save Size Filter Settings ---
+        settings.setValue("search/minSizeKB", self.min_size_entry.text())
+        settings.setValue("search/maxSizeKB", self.max_size_entry.text())
+        # ------------------------------------
+        
+        # --- ADDED: Save Date Filter Settings ---
+        # 保存日期设置
+        if self.start_date_edit.date() != QDate(1900, 1, 1):  # 如果不是默认日期，才保存
+            settings.setValue("search/startDate", self.start_date_edit.date().toString("yyyy-MM-dd"))
+        else:
+            settings.setValue("search/startDate", "")
+            
+        if self.end_date_edit.date() != QDate.currentDate():  # 如果不是默认日期，才保存
+            settings.setValue("search/endDate", self.end_date_edit.date().toString("yyyy-MM-dd"))
+        else:
+            settings.setValue("search/endDate", "")
+        # ------------------------------------
+        
         # --- Save UI Settings ---
         settings.setValue("ui/theme", self.theme_combo.currentText())
         # Save Result Font Size Setting
@@ -709,6 +852,10 @@ class SettingsDialog(QDialog):
         print(f"Enable OCR: {self.enable_ocr_checkbox.isChecked()}")
         print(f"Extraction Timeout: {self.extraction_timeout_spinbox.value()}") # Debug print
         print(f"Case Sensitive: {self.case_sensitive_checkbox.isChecked()}")
+        print(f"Min Size (KB): {self.min_size_entry.text()}")
+        print(f"Max Size (KB): {self.max_size_entry.text()}")
+        print(f"Start Date: {self.start_date_edit.date().toString('yyyy-MM-dd')}")
+        print(f"End Date: {self.end_date_edit.date().toString('yyyy-MM-dd')}")
         print(f"Theme: {self.theme_combo.currentText()}")
         print(f"Result Font Size: {self.result_font_size_spinbox.value()}")
         print("-----------------------")
@@ -731,6 +878,11 @@ class SettingsDialog(QDialog):
     def reject(self):
         print("Settings changes rejected.")
         super().reject()
+
+    def _clear_dates(self):
+        """清除日期筛选，恢复为默认值"""
+        self.start_date_edit.setDate(QDate(1900, 1, 1))
+        self.end_date_edit.setDate(QDate.currentDate())
 
 # --- Main GUI Window ---
 class MainWindow(QMainWindow):  # Changed base class to QMainWindow
@@ -764,6 +916,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.current_sort_descending = True # Default sort order
         self.last_search_scope = 'fulltext' # ADDED: Store last search scope, default to fulltext
         self.skipped_files_dialog = None # ADDED: Initialize skipped files dialog instance
+        
+        # --- 添加文件夹树与搜索结果的过滤变量 ---
+        self.filtered_by_folder = False  # 是否按文件夹进行了过滤
+        self.current_filter_folder = None  # 当前过滤的文件夹路径
+        # ---------------------------------------
 
         # --- Central Widget and Main Layout ---
         central_widget = QWidget()
@@ -784,10 +941,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         main_layout.addLayout(search_bar_layout)
 
         # --- Filters ---
-        size_filter_layout = self._create_size_filter_bar() # Assume helper exists
-        main_layout.addLayout(size_filter_layout)
-        date_filter_layout = self._create_date_filter_bar() # Assume helper exists
-        main_layout.addLayout(date_filter_layout)
+        # 移除文件大小筛选条件
+        # 移除修改日期筛选条件
         sort_layout = self._create_sort_bar() # Assume helper exists
         main_layout.addLayout(sort_layout)
         type_filter_layout = self._create_type_filter_bar() # Assume helper exists
@@ -797,11 +952,28 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         action_layout = self._create_action_buttons() # Assume helper exists
         main_layout.addLayout(action_layout)
         
-        # --- Results Display ---
+        # --- 创建水平分隔器，添加文件夹树视图和搜索结果 ---
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        # 设置分隔器手柄样式
+        self.main_splitter.setHandleWidth(5)
+        self.main_splitter.setChildrenCollapsible(False)
+        
+        # 创建文件夹树视图
+        self.folder_tree = FolderTreeWidget()
+        self.main_splitter.addWidget(self.folder_tree)
+        
+        # 创建搜索结果显示区
         self.results_text = QTextBrowser() 
         self.results_text.setOpenLinks(False)
-        main_layout.addWidget(self.results_text, 1)
-
+        self.main_splitter.addWidget(self.results_text)
+        
+        # 设置初始分隔比例 (文件夹树:搜索结果 = 1:3)
+        self.main_splitter.setSizes([200, 600])
+        
+        # 将分隔器添加到主布局
+        main_layout.addWidget(self.main_splitter, 1)
+        # ----------------------------------------------
+        
         # --- Status Bar ---
         self._setup_status_bar() # Call helper
 
@@ -815,7 +987,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self._setup_connections() # Setup AFTER all UI elements are created
 
         # --- Restore Window Geometry --- 
-        self._restore_window_geometry()
+        # 直接在这里实现窗口几何恢复，而不是调用方法
+        geometry = self.settings.value("windowGeometry")
+        if geometry:
+            self.restoreGeometry(geometry)
         
         # --- ADDED: Initialize license manager AFTER UI elements but BEFORE applying settings ---
         self._init_license_manager()
@@ -834,6 +1009,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- ADDED: Set initial state for mode buttons ---
         self._update_mode_buttons_state_slot()
         # ------------------------------------------------
+        
+        # --- 保存和恢复分隔器位置 ---
+        splitter_state = self.settings.value("ui/splitterState")
+        if splitter_state:
+            self.main_splitter.restoreState(splitter_state)
 
     def _create_search_bar(self):
         layout = QHBoxLayout()
@@ -897,57 +1077,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         return layout
 
     # (Add other _create_* helper methods if they were inline before)
-    def _create_size_filter_bar(self):
-        size_filter_layout = QHBoxLayout()
-        size_filter_label = QLabel("文件大小 (KB):")
-        min_size_label = QLabel("最小:")
-        self.min_size_entry = QLineEdit()
-        self.min_size_entry.setPlaceholderText("可选")
-        self.min_size_entry.setMaximumWidth(80)
-        self.min_size_entry.setMinimumWidth(60) # ADDED: Minimum width for size entry
-        self.min_size_entry.setValidator(QIntValidator(0, 999999999))
-        max_size_label = QLabel("最大:")
-        self.max_size_entry = QLineEdit()
-        self.max_size_entry.setPlaceholderText("可选")
-        self.max_size_entry.setMaximumWidth(80)
-        self.max_size_entry.setMinimumWidth(60) # ADDED: Minimum width for size entry
-        self.max_size_entry.setValidator(QIntValidator(0, 999999999))
-        size_filter_layout.addWidget(size_filter_label)
-        size_filter_layout.addWidget(min_size_label)
-        size_filter_layout.addWidget(self.min_size_entry)
-        size_filter_layout.addWidget(max_size_label)
-        size_filter_layout.addWidget(self.max_size_entry)
-        size_filter_layout.addStretch(1)
-        return size_filter_layout
-
-    def _create_date_filter_bar(self):
-        date_filter_layout = QHBoxLayout()
-        date_filter_label = QLabel("修改日期:")
-        start_date_label = QLabel("从:")
-        self.start_date_edit = QDateEdit()
-        self.start_date_edit.setCalendarPopup(True)
-        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.default_start_date = QDate(1900, 1, 1)
-        self.start_date_edit.setDate(self.default_start_date)
-        self.start_date_edit.setMaximumDate(QDate.currentDate())
-        self.start_date_edit.setMinimumWidth(100)
-        end_date_label = QLabel("到:")
-        self.end_date_edit = QDateEdit()
-        self.end_date_edit.setCalendarPopup(True)
-        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.default_end_date = QDate.currentDate()
-        self.end_date_edit.setDate(self.default_end_date)
-        self.end_date_edit.setMinimumWidth(100)
-        self.clear_dates_button = QPushButton("清除日期")
-        date_filter_layout.addWidget(date_filter_label)
-        date_filter_layout.addWidget(start_date_label)
-        date_filter_layout.addWidget(self.start_date_edit)
-        date_filter_layout.addWidget(end_date_label)
-        date_filter_layout.addWidget(self.end_date_edit)
-        date_filter_layout.addWidget(self.clear_dates_button)
-        date_filter_layout.addStretch(1)
-        return date_filter_layout
-
     def _create_sort_bar(self):
         sort_layout = QHBoxLayout()
         sort_label = QLabel("排序方式:")
@@ -1104,33 +1233,239 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _setup_connections(self):
         # --- Directory/Index buttons (REMOVED browse_button connection) ---
         # self.browse_button.clicked.connect(self.browse_directory_slot) # REMOVED
+
+        # --- 添加索引按钮的信号连接 ---
         self.index_button.clicked.connect(self.start_indexing_slot)
         self.view_skipped_button.clicked.connect(self.show_skipped_files_dialog_slot)
-        # --- 删除升级按钮连接 ---
-        
-        # --- Search buttons/actions ---
+        # --------------------------------
+
+        # --- Search buttons ---
         self.search_button.clicked.connect(self.start_search_slot)
         self.clear_search_button.clicked.connect(self.clear_search_entry_slot)
-        self.search_line_edit.returnPressed.connect(self.start_search_slot)
-        self.search_combo.activated.connect(self.start_search_slot)
-        # Clear buttons
         self.clear_results_button.clicked.connect(self.clear_results_slot)
-        self.clear_dates_button.clicked.connect(self.clear_dates_slot)
-        # Result area links
+
+        # --- Date fields ---
+
+        # --- Results text browser ---
         self.results_text.anchorClicked.connect(self.handle_link_clicked_slot)
-        # File type checkboxes
-        for checkbox in self.file_type_checkboxes.keys():
+
+        # --- Worker thread signals ---
+        if self.worker:
+            # Check that worker exists (just in case)
+            self.worker.statusChanged.connect(self.update_status_label_slot)
+            self.worker.progressUpdated.connect(self.update_progress_bar_slot)
+            self.worker.resultsReady.connect(self.display_search_results_slot)
+            self.worker.indexingComplete.connect(self.indexing_finished_slot)
+            self.worker.errorOccurred.connect(self.handle_error_slot)
+            # --- ADDED: Update check connections ---
+            self.worker.updateAvailableSignal.connect(self.show_update_available_dialog_slot)
+            self.worker.upToDateSignal.connect(self.show_up_to_date_dialog_slot)
+            self.worker.updateCheckFailedSignal.connect(self.show_update_check_failed_dialog_slot)
+            # --------------------------------------
+            # Connect our signals to worker slots
+            self.startIndexingSignal.connect(self.worker.run_indexing)
+            self.startSearchSignal.connect(self.worker.run_search)
+            # --- ADDED: Update check signal ---
+            self.startUpdateCheckSignal.connect(self.worker.run_update_check)
+            # --------------------------------
+        
+        # --- File type filter change and sorting ---
+        for checkbox in self.file_type_checkboxes:  # Assume these checkboxes setup earlier
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
-        # Sort controls
+            
+        # --- Sort option changes trigger redisplay ---
         self.sort_combo.currentIndexChanged.connect(self._sort_and_redisplay_results_slot)
+        # Direction also changes the sorting
         self.sort_desc_radio.toggled.connect(self._sort_and_redisplay_results_slot)
-        # --- ADDED: Connect scope buttons to update mode button state --- 
-        self.scope_fulltext_radio.toggled.connect(self._update_mode_buttons_state_slot)
-        self.scope_filename_radio.toggled.connect(self._update_mode_buttons_state_slot)
-        # -------------------------------------------------------------
-        # --- ADDED: Connect the view skipped files button ---
-        self.view_skipped_files_button.clicked.connect(self.show_skipped_files_dialog_slot)
-        # --------------------------------------------------
+        
+        # --- ADDED: Scope radio buttons toggle affects mode buttons ---
+        self.scope_button_group.buttonToggled.connect(self._update_mode_buttons_state_slot)
+        # ----------------------------------------------------------
+        
+        # --- 文件夹树视图信号连接 ---
+        self.folder_tree.folderSelected.connect(self._filter_results_by_folder_slot)
+        # --------------------------
+    
+    @Slot(list)
+    def _handle_new_search_results_slot(self, backend_results):
+        """处理从Worker接收到的新搜索结果，存储并显示"""
+        print(f"Received {len(backend_results)} search results from backend")
+        
+        # Store original results
+        self.original_search_results = backend_results
+        
+        # Apply any type filters
+        self._filter_results_by_type_slot()
+        
+        # 根据搜索结果构建文件夹树
+        self.folder_tree.build_folder_tree_from_results(backend_results)
+    
+    @Slot(str)
+    def _filter_results_by_folder_slot(self, folder_path):
+        """按文件夹路径过滤搜索结果
+        
+        Args:
+            folder_path: 要过滤的文件夹路径
+        """
+        if not self.original_search_results:
+            return  # 没有结果可过滤
+            
+        if self.filtered_by_folder and self.current_filter_folder == folder_path:
+            # 如果已经按此文件夹过滤，则取消过滤
+            self.filtered_by_folder = False
+            self.current_filter_folder = None
+            self.statusBar().showMessage(f"已清除文件夹过滤", 3000)
+        else:
+            self.filtered_by_folder = True
+            self.current_filter_folder = folder_path
+            self.statusBar().showMessage(f"正在过滤 '{folder_path}' 中的结果", 3000)
+            
+        # 重新应用过滤并显示结果
+        self._filter_results_by_type_slot()
+    
+    @Slot()
+    def _filter_results_by_type_slot(self):
+        """基于所选文件类型复选框过滤搜索结果"""
+        # First, check if any filters are applied
+        selected_types = []
+        for checkbox, type_value in self.file_type_checkboxes.items():
+            if checkbox.isChecked():
+                selected_types.append(type_value)
+        
+        # If no filters selected, use all original results
+        if not selected_types:
+            filtered_results = self.original_search_results
+        else:
+            # Filter results based on selected file types
+            filtered_results = []
+            for result in self.original_search_results:
+                file_path = result.get('file_path', '')
+                file_type = None
+                
+                # Extract file extension
+                if file_path:
+                    lower_path = file_path.lower()
+                    for ext in ['.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md']:
+                        if lower_path.endswith(ext):
+                            file_type = ext[1:]  # Remove leading dot
+                            # Special case for .htm -> html
+                            if file_type == 'htm':
+                                file_type = 'html'
+                            break
+                
+                # Add result if it matches selected types
+                if file_type and file_type in selected_types:
+                    filtered_results.append(result)
+        
+        # --- 添加文件夹过滤 ---
+        if self.filtered_by_folder and self.current_filter_folder:
+            folder_filtered_results = []
+            for result in filtered_results:
+                file_path = result.get('file_path', '')
+                if not file_path:
+                    continue
+                    
+                # 处理存档文件中的项目
+                if '::' in file_path:
+                    archive_path = file_path.split('::', 1)[0]
+                    folder_path = str(Path(archive_path).parent)
+                else:
+                    folder_path = str(Path(file_path).parent)
+                    
+                # 检查文件路径是否属于所选文件夹
+                # 特殊处理根目录情况
+                is_match = False
+                if self.current_filter_folder.endswith(':\\'):  # 根目录情况
+                    # 对于D:\这样的根目录，直接检查文件路径是否以此开头
+                    is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
+                else:
+                    # 非根目录的正常情况
+                    is_match = (folder_path == self.current_filter_folder or 
+                               folder_path.startswith(self.current_filter_folder + os.path.sep))
+                
+                if is_match:
+                    folder_filtered_results.append(result)
+                    
+            # 更新过滤后的结果
+            filtered_results = folder_filtered_results
+        # -----------------------
+        
+        # Store filtered results
+        self.search_results = filtered_results
+        
+        # Sort and display
+        self._sort_and_redisplay_results_slot()
+        
+    @Slot()
+    def _sort_and_redisplay_results_slot(self):
+        """Sort results based on current sort settings and redisplay."""
+        # 获取排序键
+        combo_text = self.sort_combo.currentText()
+        if combo_text == "相关度":
+            sort_key = 'score'
+        elif combo_text == "文件路径":
+            sort_key = 'path'
+        elif combo_text == "修改日期":
+            sort_key = 'date'
+        elif combo_text == "文件大小":
+            sort_key = 'size'
+        else:
+            sort_key = 'score'  # 默认为相关度
+        
+        # 获取排序方向
+        is_descending = self.sort_desc_radio.isChecked()
+        
+        # 如果排序配置已更改，更新并保存设置
+        if sort_key != self.current_sort_key or is_descending != self.current_sort_descending:
+            self.current_sort_key = sort_key
+            self.current_sort_descending = is_descending
+            self._save_default_sort()
+        
+        # 对结果进行排序
+        results_to_sort = list(self.search_results)  # 创建副本进行排序
+        
+        def get_sort_key(item):
+            if sort_key == 'score':
+                # 相关度得分，可能是None
+                return item.get('score', 0) or 0
+            elif sort_key == 'path':
+                # 按文件路径排序
+                return item.get('file_path', '').lower()
+            elif sort_key == 'date':
+                # 按修改日期排序，格式为ISO字符串
+                date_str = item.get('file_date', '')
+                if not date_str:
+                    # 如果没有日期，归为最早或最晚
+                    return '1900-01-01' if is_descending else '9999-12-31'
+                return date_str
+            elif sort_key == 'size':
+                # 按文件大小排序
+                return item.get('file_size_kb', 0) or 0
+            else:
+                # 默认按相关度排序
+                return item.get('score', 0) or 0
+        
+        # 执行排序
+        results_to_sort.sort(
+            key=get_sort_key,
+            reverse=is_descending
+        )
+        
+        # 更新并显示排序后的结果
+        self.search_results = results_to_sort
+        self.display_search_results_slot(self.search_results)
+        
+        # 更新状态消息（反映过滤状态）
+        result_count = len(self.search_results)
+        total_count = len(self.original_search_results)
+        
+        if self.filtered_by_folder and self.current_filter_folder:
+            self.statusBar().showMessage(f"显示 '{self.current_filter_folder}' 中的 {result_count} 条结果 (总共 {total_count} 条)", 0)
+        elif result_count != total_count:
+            # 其他过滤条件（如文件类型）
+            self.statusBar().showMessage(f"显示 {result_count} / {total_count} 条经过过滤的结果", 0)
+        else:
+            self.statusBar().showMessage(f"显示 {result_count} 条结果", 0)
 
     def _load_search_history(self):
         """Loads search history from QSettings and populates the search combo box."""
@@ -1162,13 +1497,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.collapse_states = {}
         self.original_search_results = []
 
-    def clear_dates_slot(self):
-        """Slot to clear the date edits to default values."""
-        # Reset dates to indicate 'no date filter'
-        self.start_date_edit.setDate(self.default_start_date)
-        self.end_date_edit.setDate(self.default_end_date)
-
-    # UNIFIED Search Slot (Handles button click, enter press, combo activation)
+        # UNIFIED Search Slot (Handles button click, enter press, combo activation)
     @Slot()
     def start_search_slot(self):
         """Unified slot to initiate search based on combo box text and radio button mode."""
@@ -1268,11 +1597,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
              return
         # -------------------------------------------
             
-        min_size_str = self.min_size_entry.text().strip()
-        max_size_str = self.max_size_entry.text().strip()
-        # Get dates from QDateEdit
-        start_qdate = self.start_date_edit.date()
-        end_qdate = self.end_date_edit.date()
+        # --- 从设置中读取文件大小筛选条件 ---
+        min_size_str = settings.value("search/minSizeKB", "", type=str)
+        max_size_str = settings.value("search/maxSizeKB", "", type=str)
+        # --------------------------------------
+        
+        # --- 从设置中读取日期筛选条件 ---
+        default_start_date = QDate(1900, 1, 1)
+        default_end_date = QDate.currentDate()
+        
+        start_date_str = settings.value("search/startDate", "")
+        start_qdate = QDate.fromString(start_date_str, "yyyy-MM-dd") if start_date_str else default_start_date
+        
+        end_date_str = settings.value("search/endDate", "")
+        end_qdate = QDate.fromString(end_date_str, "yyyy-MM-dd") if end_date_str else default_end_date
+        # --------------------------------------
 
         # --- Validate Size Inputs --- 
         min_size_kb = None
@@ -1323,15 +1662,33 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
              #      return
              pass  # Allow searching only by date range for now
         
-        if not query and min_size_kb is None and max_size_kb is None and start_date_obj == QDate(2000, 1, 1) and end_date_obj == QDate.currentDate():
-            QMessageBox.warning(self, "输入错误", "请输入搜索词或修改文件大小/日期过滤器以进行搜索。")
+        if not query and min_size_kb is None and max_size_kb is None and start_qdate == QDate(1900, 1, 1) and end_qdate == QDate.currentDate():
+            QMessageBox.warning(self, "输入错误", "请输入搜索词或修改搜索设置中的文件大小/日期过滤器以进行搜索。")
             return
             
         # --- MODIFIED: Use scope in status message (optional, but good) ---
         search_type_text = "精确" if mode == 'phrase' else "模糊"
         scope_ui_map = {'fulltext': '全文', 'filename': '文件名'}
         scope_text = scope_ui_map.get(search_scope, search_scope)
-        self.statusBar().showMessage(f"正在进行 {search_type_text} ({scope_text}) 搜索: '{query}'...")
+        
+        # 构建包含筛选条件的状态消息
+        status_msg = f"正在进行 {search_type_text} ({scope_text}) 搜索: '{query}'"
+        
+        # 添加筛选条件到状态消息
+        filter_parts = []
+        if min_size_kb is not None:
+            filter_parts.append(f"最小: {min_size_kb}KB")
+        if max_size_kb is not None:
+            filter_parts.append(f"最大: {max_size_kb}KB")
+        if start_date_str:
+            filter_parts.append(f"开始日期: {start_date_str}")
+        if end_date_str:
+            filter_parts.append(f"结束日期: {end_date_str}")
+            
+        if filter_parts:
+            status_msg += f" (筛选条件: {', '.join(filter_parts)})"
+        
+        self.statusBar().showMessage(status_msg + "...", 0)
         # --------------------------------------------------------------
         self.progress_bar.setVisible(False)  # Hide progress during search
 
@@ -1712,10 +2069,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print("Received new results from backend.")  # DEBUG
         self.original_search_results = backend_results
         self.collapse_states = {}  # Reset collapse states on new search
+        
+        # 重置文件夹过滤状态
+        self.filtered_by_folder = False
+        self.current_filter_folder = None
+        
+        # 根据搜索结果构建文件夹树
+        self.folder_tree.build_folder_tree_from_results(backend_results)
+        
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
         # Note: set_busy_state(False) is called within display_search_results_slot's finally block
-
+    
     # --- NEW Slot for Sorting (Called by sort controls) ---
     @Slot()
     def _sort_and_redisplay_results_slot(self):
@@ -1776,17 +2141,67 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         checked_types = [ftype for cb, ftype in self.file_type_checkboxes.items() if cb.isChecked()]
         print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
         
+        # 应用文件类型过滤
         if not checked_types:
             # If no types are checked, show all original results
-            print("DEBUG: No file types checked, displaying all original results")  # DEBUG
-            self.display_search_results_slot(self.original_search_results)
+            print("DEBUG: No file types checked, using all original results")  # DEBUG
+            filtered_results = self.original_search_results.copy()
         else:
             # Filter the ORIGINAL stored results based on checked types
             print("DEBUG: Filtering original results based on checked types...")  # DEBUG
             filtered_results = [item for item in self.original_search_results 
                                 if item.get('file_type', '').lstrip('.').lower() in checked_types]
-            print(f"DEBUG: Filtered results count: {len(filtered_results)}")  # DEBUG
-            self.display_search_results_slot(filtered_results)
+            print(f"DEBUG: Filtered results count after type filtering: {len(filtered_results)}")  # DEBUG
+        
+        # 应用文件夹过滤
+        if self.filtered_by_folder and self.current_filter_folder:
+            print(f"DEBUG: Applying folder filter for '{self.current_filter_folder}'")  # DEBUG
+            folder_filtered_results = []
+            for result in filtered_results:
+                file_path = result.get('file_path', '')
+                if not file_path:
+                    continue
+                    
+                # 处理存档文件中的项目
+                if '::' in file_path:
+                    # 对于存档内的文件，只显示存档文件所在的文件夹
+                    archive_path = file_path.split('::', 1)[0]
+                    folder_path = str(Path(archive_path).parent)
+                else:
+                    folder_path = str(Path(file_path).parent)
+                    
+                # 检查文件路径是否属于所选文件夹
+                # 特殊处理根目录情况
+                is_match = False
+                if self.current_filter_folder.endswith(':\\'):  # 根目录情况
+                    # 对于D:\这样的根目录，直接检查文件路径是否以此开头
+                    is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
+                else:
+                    # 非根目录的正常情况
+                    is_match = (folder_path == self.current_filter_folder or 
+                               folder_path.startswith(self.current_filter_folder + os.path.sep))
+                
+                if is_match:
+                    folder_filtered_results.append(result)
+            
+            print(f"DEBUG: Filtered results count after folder filtering: {len(folder_filtered_results)}")  # DEBUG
+            filtered_results = folder_filtered_results
+        
+        # 保存过滤后的结果并显示
+        self.search_results = filtered_results
+        
+        # 更新状态栏消息
+        total_count = len(self.original_search_results)
+        filtered_count = len(filtered_results)
+        
+        if self.filtered_by_folder and self.current_filter_folder:
+            folder_name = os.path.basename(self.current_filter_folder) or self.current_filter_folder
+            self.statusBar().showMessage(f"显示文件夹 '{folder_name}' 中的 {filtered_count}/{total_count} 条结果", 0)
+        elif filtered_count != total_count:
+            self.statusBar().showMessage(f"显示 {filtered_count}/{total_count} 条经过过滤的结果", 0)
+        
+        # 使用过滤后的结果更新显示
+        self.display_search_results_slot(filtered_results)
 
     # --- Link Handling Slot ---
     @Slot(QUrl)
@@ -1797,17 +2212,56 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print(f"--- Link Clicked: Scheme='{scheme}', Raw URL='{raw_url_str}' --- ")  # DEBUG
         
         if scheme == "openfile":
-            path_str = url.toLocalFile() if url.isLocalFile() else url.path()
-            if sys.platform == 'win32' and path_str.startswith('/') and not path_str.startswith('//'): path_str = path_str[1:]
+            # 解码URL路径，处理百分比编码
+            encoded_path = raw_url_str.split(scheme + ":", 1)[1]
+            path_str = QUrl.fromPercentEncoding(encoded_path.encode('utf-8'))
+            
+            # 移除Windows路径的前导斜杠
+            if sys.platform == 'win32' and path_str.startswith('/') and not path_str.startswith('//'): 
+                path_str = path_str[1:]
+                
+            print(f"解码后的文件路径: {path_str}")
             target_path = path_str
+            folder_path = None
+            
+            # 解析路径并选择文件夹
             if "::" in path_str:
                 archive_file_path = path_str.split("::", 1)[0]
                 target_path = archive_file_path
+                folder_path = str(Path(archive_file_path).parent)
+            else:
+                folder_path = str(Path(path_str).parent)
+            
+            # 在文件夹树视图中选择对应文件夹
+            try:
+                if folder_path:
+                    self.folder_tree.select_folder(folder_path)
+            except Exception as e:
+                print(f"选择文件夹时出错: {e}")
+            
+            # 打开文件
             self._open_path_with_desktop_services(target_path, is_file=True)
+            
         elif scheme == "openfolder":
-            path_str = url.toLocalFile() if url.isLocalFile() else url.path()
-            if sys.platform == 'win32' and path_str.startswith('/') and not path_str.startswith('//'): path_str = path_str[1:]
+            # 解码URL路径，处理百分比编码
+            encoded_path = raw_url_str.split(scheme + ":", 1)[1]
+            path_str = QUrl.fromPercentEncoding(encoded_path.encode('utf-8'))
+            
+            # 移除Windows路径的前导斜杠
+            if sys.platform == 'win32' and path_str.startswith('/') and not path_str.startswith('//'):
+                path_str = path_str[1:]
+                
+            print(f"解码后的文件夹路径: {path_str}")
+            
+            # 在文件夹树视图中选择对应文件夹
+            try:
+                self.folder_tree.select_folder(path_str)
+            except Exception as e:
+                print(f"选择文件夹时出错: {e}")
+            
+            # 打开文件夹
             self._open_path_with_desktop_services(path_str, is_file=False)
+            
         elif scheme == "toggle":
             try:
                 # Extract the full key after "toggle::"
@@ -1831,112 +2285,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             except Exception as e:
                 print(f"Error processing toggle link {raw_url_str}: {e}")
 
-    # --- Utility Methods ---
-    def set_busy_state(self, busy):
-        """Enable/disable controls based on busy state."""
-        print(f"--- set_busy_state called with busy={busy} ---") # DEBUG
-        self.is_busy = busy
-        # Disable buttons while busy
-        # self.browse_button.setEnabled(not busy) # REMOVED this line
-        self.index_button.setEnabled(not busy)
-        self.search_button.setEnabled(not busy) # Need to disable search button too
-        # --- MODIFIED: Let _update_mode_buttons_state_slot handle mode buttons ---
-        # self.phrase_search_radio.setEnabled(not busy)
-        # self.fuzzy_search_radio.setEnabled(not busy)
-        # --------------------------------------------------------------------
-        self.clear_search_button.setEnabled(not busy)
-        self.clear_results_button.setEnabled(not busy)
-        self.clear_dates_button.setEnabled(not busy)  # Also disable date clear button
-
-        # Disable entries? Optional but recommended
-        # self.dir_entry.setEnabled(not busy) # REMOVED
-        self.search_line_edit.setEnabled(not busy)
-        self.search_combo.setEnabled(not busy) # Also disable the combo box itself
-        self.min_size_entry.setEnabled(not busy)
-        self.max_size_entry.setEnabled(not busy)
-        self.start_date_edit.setEnabled(not busy)
-        self.end_date_edit.setEnabled(not busy)
-
-        # Disable file type checkboxes
-        for checkbox in self.file_type_checkboxes.keys():
-            checkbox.setEnabled(not busy)
-
-        # Disable sort controls
-        self.sort_combo.setEnabled(not busy)
-        self.sort_desc_radio.setEnabled(not busy)
-        self.sort_asc_radio.setEnabled(not busy)
-        
-        # --- ADDED: Disable Scope Radio buttons too --- 
-        self.scope_fulltext_radio.setEnabled(not busy)
-        self.scope_filename_radio.setEnabled(not busy)
-        # --------------------------------------------
-
-        if not busy:
-             self.progress_bar.setVisible(False)  # Hide progress bar when not busy
-             self.phase_label.setVisible(False) # Hide phase label when not busy
-             self.detail_label.setVisible(False) # <<< ADDED: Hide detail label when not busy
-             # Optionally reset progress bar value
-             # self.progress_bar.setValue(0)
-             # Optionally clear labels
-             # self.phase_label.clear()
-             # self.detail_label.clear()
-        else:
-             # Make sure they are visible when busy state starts
-             self.phase_label.setVisible(True)
-             self.detail_label.setVisible(True) # <<< ADDED: Show detail label when busy
-             self.progress_bar.setVisible(True)
-
-        # Update mode buttons state based on current scope (even when busy, relies on scope buttons only)
-        self._update_mode_buttons_state_slot() # Call this AFTER potentially disabling scope buttons
-
-        print(f"Progress bar visible: {self.progress_bar.isVisible()}, Phase label visible: {self.phase_label.isVisible()}, Detail label visible: {self.detail_label.isVisible()}") # Updated DEBUG
-        print(f"--- set_busy_state finished for busy={busy} ---") # DEBUG
-
-    def _open_path_with_desktop_services(self, path_str: str, is_file: bool):
-        """Uses QDesktopServices to open a file or folder path."""
-        path_obj = Path(path_str)
-        log_prefix = "文件" if is_file else "文件夹"
-        
-        print(f"Attempting to open {log_prefix}: {path_obj}")
-        
-        exists = path_obj.is_file() if is_file else path_obj.is_dir()
-        
-        if not exists:
-            # Show error message box later using QMessageBox
-            #print(f"错误: {log_prefix}不存在: {path_obj}", file=sys.stderr)
-            # Use self.handle_error_slot or a dedicated message box
-            QMessageBox.warning(self, "打开错误", f"{log_prefix}不存在:\n{path_obj}")
-            self.statusBar().showMessage(f"错误: {log_prefix}不存在", 3000)  # Show error temporarily
-            return
-
-        # Construct a QUrl suitable for local files/directories
-        qurl = QUrl.fromLocalFile(str(path_obj.resolve()))
-        
-        if not QDesktopServices.openUrl(qurl):
-            # Show error message box later
-            #print(f"错误: 无法使用系统默认方式打开 {log_prefix}: {path_obj}", file=sys.stderr)
-            QMessageBox.critical(self, "打开错误", f"无法打开 {log_prefix}:\n{path_obj}")
-            self.statusBar().showMessage(f"错误: 无法打开 {log_prefix}", 3000)  # Show error temporarily
-
-    # --- Config Handling Methods (Using QSettings) ---
-    def _restore_window_geometry(self):
-        """Restores window geometry from QSettings."""
-        geometry_bytes = self.settings.value("windowGeometry")
-        if geometry_bytes:
-            print("恢复窗口几何状态...")
-            try:
-                 self.restoreGeometry(geometry_bytes)
-            except Exception as e:
-                 print(f"警告: 无法恢复窗口几何状态: {e}")
-                 self.resize(800, 600)  # Fallback size
-        else:
-            # print("未找到窗口几何状态，使用默认大小。")
-            self.resize(800, 600)  # Apply default size only if no geometry saved
-
     def _save_window_geometry(self):
         """Saves window geometry to QSettings."""
         # print("保存窗口几何状态...")
         self.settings.setValue("windowGeometry", self.saveGeometry())
+
+    def _restore_window_geometry(self):
+        """从QSettings恢复窗口几何状态。"""
+        geometry = self.settings.value("windowGeometry")
+        if geometry:
+            self.restoreGeometry(geometry)
 
     def _load_last_directory(self) -> str:
         """Loads the last used directory from QSettings."""
@@ -2128,13 +2486,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if theme_name == "现代蓝":
             # 使用现代蓝色主题
             try:
-                # 加载蓝色样式表
-                style_path = os.path.join(os.path.dirname(__file__), "blue_style.qss")
+                # 加载蓝色样式表，使用资源路径解析器
+                style_path = get_resource_path("blue_style.qss")
                 if os.path.exists(style_path):
                     with open(style_path, "r", encoding="utf-8") as f:
                         stylesheet = f.read()
-                    # 确保QSS使用正确的checkmark图标
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                    
+                    # 检查打包环境下的路径并修改URL引用
+                    import sys
+                    if getattr(sys, 'frozen', False):
+                        # 在PyInstaller打包后的环境中
+                        print("检测到打包环境，应用相对路径处理...")
+                        # 获取资源文件所在的目录
+                        base_path = sys._MEIPASS
+                        
+                        # 修改样式表中的图片URL路径为绝对路径
+                        # 这解决了在打包环境中图片路径引用的问题
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('.png)', '.png")')
+                        
+                        # 同时保持原有的替换逻辑
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
+                    else:
+                        # 在开发环境中
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
                     
                     # 确保进度条使用正确的蓝色主题颜色
                     progress_color = "#3498db"
@@ -2145,8 +2522,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         stylesheet
                     )
                     
+                    # 应用样式表
                     app.setStyleSheet(stylesheet)
                     print("Applied modern blue theme.")
+                    
+                    # 通过编程方式直接设置下拉箭头和单选按钮图标
+                    # 这是一种备选方法，如果通过样式表无法正确设置图标
+                    try:
+                        from PySide6.QtGui import QIcon, QPixmap
+                        arrow_icon_path = get_resource_path("down_arrow_blue.png")
+                        radio_icon_path = get_resource_path("radio_checked_blue.png")
+                        check_icon_path = get_resource_path("checkmark_blue.png")
+                        
+                        if os.path.exists(arrow_icon_path):
+                            down_arrow_icon = QIcon(arrow_icon_path)
+                            # 将图标应用于应用程序范围的图标设置
+                            app.setProperty("down_arrow_icon", down_arrow_icon)
+                            print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                    except Exception as e:
+                        print(f"通过代码设置图标时发生错误: {e}")
                 else:
                     print(f"Blue style file not found: {style_path}")
                     # 回退到系统默认
@@ -2158,13 +2552,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         elif theme_name == "现代绿":
             # 使用现代绿色主题
             try:
-                # 加载绿色样式表
-                style_path = os.path.join(os.path.dirname(__file__), "green_style.qss")
+                # 加载绿色样式表，使用资源路径解析器
+                style_path = get_resource_path("green_style.qss")
                 if os.path.exists(style_path):
                     with open(style_path, "r", encoding="utf-8") as f:
                         stylesheet = f.read()
-                    # 确保QSS使用正确的checkmark图标
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
+                    
+                    # 检查打包环境下的路径并修改URL引用
+                    import sys
+                    if getattr(sys, 'frozen', False):
+                        # 在PyInstaller打包后的环境中
+                        print("检测到打包环境，应用相对路径处理...")
+                        # 获取资源文件所在的目录
+                        base_path = sys._MEIPASS
+                        
+                        # 修改样式表中的图片URL路径为绝对路径
+                        # 这解决了在打包环境中图片路径引用的问题
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('.png)', '.png")')
+                        
+                        # 同时保持原有的替换逻辑
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_green.png)")
+                    else:
+                        # 在开发环境中
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_green.png)")
                     
                     # 确保进度条使用正确的绿色主题颜色
                     progress_color = "#2ecc71"
@@ -2177,6 +2590,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                     app.setStyleSheet(stylesheet)
                     print("Applied modern green theme.")
+                    
+                    # 通过编程方式直接设置下拉箭头和单选按钮图标
+                    try:
+                        from PySide6.QtGui import QIcon, QPixmap
+                        arrow_icon_path = get_resource_path("down_arrow_green.png")
+                        radio_icon_path = get_resource_path("radio_checked_green.png")
+                        check_icon_path = get_resource_path("checkmark_green.png")
+                        
+                        if os.path.exists(arrow_icon_path):
+                            down_arrow_icon = QIcon(arrow_icon_path)
+                            # 将图标应用于应用程序范围的图标设置
+                            app.setProperty("down_arrow_icon", down_arrow_icon)
+                            print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                    except Exception as e:
+                        print(f"通过代码设置图标时发生错误: {e}")
                 else:
                     print(f"Green style file not found: {style_path}")
                     # 回退到现代蓝
@@ -2188,13 +2616,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         elif theme_name == "现代紫":
             # 使用现代紫色主题
             try:
-                # 加载紫色样式表
-                style_path = os.path.join(os.path.dirname(__file__), "purple_style.qss")
+                # 加载紫色样式表，使用资源路径解析器
+                style_path = get_resource_path("purple_style.qss")
                 if os.path.exists(style_path):
                     with open(style_path, "r", encoding="utf-8") as f:
                         stylesheet = f.read()
-                    # 确保QSS使用正确的checkmark图标
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
+                    
+                    # 检查打包环境下的路径并修改URL引用
+                    import sys
+                    if getattr(sys, 'frozen', False):
+                        # 在PyInstaller打包后的环境中
+                        print("检测到打包环境，应用相对路径处理...")
+                        # 获取资源文件所在的目录
+                        base_path = sys._MEIPASS
+                        
+                        # 修改样式表中的图片URL路径为绝对路径
+                        # 这解决了在打包环境中图片路径引用的问题
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('.png)', '.png")')
+                        
+                        # 同时保持原有的替换逻辑
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_purple.png)")
+                    else:
+                        # 在开发环境中
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
+                        stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_purple.png)")
                     
                     # 确保进度条使用正确的紫色主题颜色
                     progress_color = "#9b59b6"
@@ -2207,6 +2654,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                     app.setStyleSheet(stylesheet)
                     print("Applied modern purple theme.")
+                    
+                    # 通过编程方式直接设置下拉箭头和单选按钮图标
+                    try:
+                        from PySide6.QtGui import QIcon, QPixmap
+                        arrow_icon_path = get_resource_path("down_arrow_purple.png")
+                        radio_icon_path = get_resource_path("radio_checked_purple.png")
+                        check_icon_path = get_resource_path("checkmark_purple.png")
+                        
+                        if os.path.exists(arrow_icon_path):
+                            down_arrow_icon = QIcon(arrow_icon_path)
+                            # 将图标应用于应用程序范围的图标设置
+                            app.setProperty("down_arrow_icon", down_arrow_icon)
+                            print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                    except Exception as e:
+                        print(f"通过代码设置图标时发生错误: {e}")
                 else:
                     print(f"Purple style file not found: {style_path}")
                     # 回退到现代蓝
@@ -2219,22 +2681,63 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self._apply_fallback_blue_theme()
 
     def _apply_fallback_blue_theme(self):
-        """应用蓝色主题作为默认回退主题"""
+        """在其他主题不可用时应用默认蓝色主题"""
         app = QApplication.instance()
         try:
-            style_path = os.path.join(os.path.dirname(__file__), "blue_style.qss")
+            # 使用资源路径解析器加载蓝色样式表
+            style_path = get_resource_path("blue_style.qss")
             if os.path.exists(style_path):
                 with open(style_path, "r", encoding="utf-8") as f:
                     stylesheet = f.read()
-                    # 确保QSS使用正确的checkmark图标
+                
+                # 检查打包环境下的路径并修改URL引用
+                if getattr(sys, 'frozen', False):
+                    # 在PyInstaller打包后的环境中
+                    print("检测到打包环境，应用相对路径处理...")
+                    # 获取资源文件所在的目录
+                    base_path = sys._MEIPASS
+                    
+                    # 修改样式表中的图片URL路径为绝对路径
+                    # 这解决了在打包环境中图片路径引用的问题
+                    stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                    stylesheet = stylesheet.replace('.png)', '.png")')
+                    
+                    # 同时保持原有的替换逻辑
                     stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
-                    app.setStyleSheet(stylesheet)
-                    print("Applied fallback modern blue theme.")
+                    stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
+                else:
+                    # 在开发环境中
+                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                    stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
+                
+                app.setStyleSheet(stylesheet)
+                print("Applied fallback blue theme.")
+                
+                # 通过编程方式直接设置下拉箭头和单选按钮图标
+                # 这是一种备选方法，如果通过样式表无法正确设置图标
+                try:
+                    from PySide6.QtGui import QIcon, QPixmap
+                    arrow_icon_path = get_resource_path("down_arrow_blue.png")
+                    radio_icon_path = get_resource_path("radio_checked_blue.png")
+                    check_icon_path = get_resource_path("checkmark_blue.png")
+                    
+                    if os.path.exists(arrow_icon_path):
+                        down_arrow_icon = QIcon(arrow_icon_path)
+                        # 将图标应用于应用程序范围的图标设置
+                        app.setProperty("down_arrow_icon", down_arrow_icon)
+                        print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                except Exception as e:
+                    print(f"通过代码设置图标时发生错误: {e}")
+                
+                # 更新样式设置
+                self.settings.setValue("ui/theme", "现代蓝")
             else:
-                print(f"Fallback blue style file not found: {style_path}")
+                print(f"Blue style file not found: {style_path}")
+                # 如果找不到样式表文件，使用系统默认样式
                 app.setStyleSheet("")
         except Exception as e:
             print(f"Error applying fallback blue style: {e}. Using system default.")
+            # 如果出现错误，使用系统默认样式
             app.setStyleSheet("")
 
     # --- Load and Apply Default Sort Settings --- 
@@ -2351,7 +2854,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- Save Settings --- 
         self._save_window_geometry() 
         self._save_default_sort() # Save current sort settings as default
-        # ---------------------
+        
+        # --- 保存分隔器状态 ---
+        self.settings.setValue("ui/splitterState", self.main_splitter.saveState())
+        # -----------------------
 
         # --- Stop Worker Thread --- 
         if self.worker_thread and self.worker_thread.isRunning():
@@ -2449,6 +2955,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             QMessageBox.critical(self, "错误", "未配置索引存储位置！请在设置中指定。")
             return
         # ------------------------------------------
+
+        # --- ADDED: Check if index directory exists, create if it doesn't ---
+        index_path = Path(index_dir)
+        if not index_path.exists():
+            try:
+                index_path.mkdir(parents=True, exist_ok=True)
+                print(f"索引目录不存在，已创建: {index_dir}")
+                self.statusBar().showMessage(f"已创建索引目录: {index_dir}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"无法创建索引目录: {index_dir}\n错误: {e}")
+                return
+        # -------------------------------------------------------------------
 
         # --- ADDED: Get OCR Setting --- 
         enable_ocr = self.settings.value("indexing/enableOcr", True, type=bool)
@@ -2598,6 +3116,80 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         else:
             # 免费版无需特别提示
             pass
+
+    def _restore_window_geometry(self):
+        """从QSettings恢复窗口几何状态。"""
+        geometry = self.settings.value("windowGeometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+
+    def set_busy_state(self, is_busy):
+        """设置UI的忙碌状态，禁用或启用相关控件
+        
+        Args:
+            is_busy (bool): True表示正在执行操作，禁用控件；False表示空闲，启用控件
+        """
+        self.is_busy = is_busy
+        
+        # 禁用或启用搜索相关控件
+        self.search_button.setEnabled(not is_busy)
+        self.clear_search_button.setEnabled(not is_busy)
+        self.clear_results_button.setEnabled(not is_busy)
+        self.search_combo.setEnabled(not is_busy)
+        
+        # 禁用或启用索引相关控件
+        self.index_button.setEnabled(not is_busy)
+        self.view_skipped_button.setEnabled(not is_busy)
+        
+        # 禁用或启用过滤器控件
+        for checkbox in self.file_type_checkboxes:
+            checkbox.setEnabled(not is_busy)
+        
+        # 如果状态为空闲，隐藏进度条和阶段标签
+        if not is_busy:
+            self.progress_bar.setVisible(False)
+            self.phase_label.setVisible(False)
+            self.detail_label.setVisible(False)
+        
+        # 更新光标
+        if is_busy:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+        else:
+            QApplication.restoreOverrideCursor()
+
+    def _open_path_with_desktop_services(self, path, is_file=True):
+        """使用系统默认程序打开文件或文件夹
+        
+        Args:
+            path (str): 文件或文件夹的路径
+            is_file (bool): 是否是文件，如果为False则表示是文件夹
+        """
+        try:
+            # 确保路径是绝对路径
+            abs_path = os.path.abspath(path)
+            print(f"尝试打开{'文件' if is_file else '文件夹'}: {abs_path}")
+            
+            # 处理URL编码
+            # 在Windows系统上，需要特别处理路径中的特殊字符
+            url = QUrl.fromLocalFile(abs_path)
+            
+            # 使用系统默认程序打开
+            result = QDesktopServices.openUrl(url)
+            
+            if not result:
+                print(f"打开{'文件' if is_file else '文件夹'}失败: {abs_path}")
+                QMessageBox.warning(
+                    self, 
+                    "打开失败", 
+                    f"无法打开{'文件' if is_file else '文件夹'}: {abs_path}\n\n可能是路径不存在或没有关联的应用程序。"
+                )
+        except Exception as e:
+            print(f"打开{'文件' if is_file else '文件夹'}时出错: {e}")
+            QMessageBox.warning(
+                self, 
+                "打开错误", 
+                f"打开{'文件' if is_file else '文件夹'}时发生错误: {abs_path}\n\n错误: {e}"
+            )
 
 # --- Skipped Files Dialog Class --- (NEW)
 class SkippedFilesDialog(QDialog):
@@ -3010,6 +3602,163 @@ class SkippedFilesDialog(QDialog):
         self.open_file_button.setEnabled(has_selection)
         self.open_folder_button.setEnabled(has_selection)
 
+# --- 文件夹树视图组件 ---
+class FolderTreeWidget(QWidget):
+    """提供文件夹树视图，显示搜索结果的源文件夹结构"""
+    
+    # 定义信号，当用户点击文件夹时触发
+    folderSelected = Signal(str)  # 发送所选文件夹路径
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumWidth(200)  # 设置最小宽度
+        
+        # 创建布局
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加标题标签
+        title_label = QLabel("文件夹结构")
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+        
+        # 创建树视图
+        self.tree_view = QTreeView()
+        self.tree_view.setHeaderHidden(True)  # 隐藏表头
+        self.tree_view.setEditTriggers(QTreeView.NoEditTriggers)  # 禁止编辑
+        self.tree_view.setContextMenuPolicy(Qt.CustomContextMenu)  # 允许自定义右键菜单
+        
+        # 创建模型
+        self.tree_model = QStandardItemModel()
+        self.tree_view.setModel(self.tree_model)
+        
+        # 添加到布局
+        layout.addWidget(self.tree_view)
+        
+        # 设置连接
+        self.tree_view.clicked.connect(self._on_tree_item_clicked)
+        
+        # 初始化变量
+        self.root_item = QStandardItem("搜索结果")
+        self.tree_model.appendRow(self.root_item)
+        self.folder_paths = set()  # 存储已添加的文件夹路径
+        self.path_items = {}  # 存储路径到项目的映射
+        
+    def _on_tree_item_clicked(self, index):
+        """当用户点击树中的项目时处理"""
+        item = self.tree_model.itemFromIndex(index)
+        if item and item.data():
+            folder_path = item.data()
+            print(f"选择了文件夹: {folder_path}")
+            self.folderSelected.emit(folder_path)
+    
+    def clear(self):
+        """清除树视图中的所有项目"""
+        self.tree_model.clear()
+        self.root_item = QStandardItem("搜索结果")
+        self.tree_model.appendRow(self.root_item)
+        self.folder_paths = set()
+        self.path_items = {}
+    
+    def build_folder_tree_from_results(self, results):
+        """从搜索结果中构建文件夹树
+        
+        Args:
+            results: 搜索结果列表
+        """
+        self.clear()
+        
+        # 收集所有唯一的文件夹路径
+        for result in results:
+            file_path = result.get('file_path', '')
+            if not file_path:
+                continue
+                
+            # 处理存档文件中的项目
+            if '::' in file_path:
+                # 对于存档内的文件，只显示存档文件所在的文件夹
+                archive_path = file_path.split('::', 1)[0]
+                folder_path = str(Path(archive_path).parent)
+            else:
+                folder_path = str(Path(file_path).parent)
+                
+            self._add_folder_path(folder_path)
+        
+        # 展开根节点
+        self.tree_view.expandToDepth(0)
+        
+    def _add_folder_path(self, folder_path):
+        """添加文件夹路径到树中，确保创建完整的路径层次结构
+        
+        Args:
+            folder_path: 要添加的文件夹路径
+        """
+        if folder_path in self.folder_paths:
+            return
+            
+        self.folder_paths.add(folder_path)
+        
+        # 创建路径的各个部分
+        path = Path(folder_path)
+        parts = list(path.parts)
+        
+        # 找出根目录（盘符或最顶层目录）
+        root_part = parts[0]
+        
+        # 从根目录开始构建路径
+        current_path = root_part
+        parent_item = self.root_item
+        
+        # 检查根目录是否已存在
+        root_exists = False
+        for i in range(self.root_item.rowCount()):
+            child = self.root_item.child(i)
+            if child.text() == root_part:
+                parent_item = child
+                root_exists = True
+                break
+                
+        # 如果根目录不存在，创建它
+        if not root_exists:
+            root_item = QStandardItem(root_part)
+            root_item.setData(root_part)
+            self.root_item.appendRow(root_item)
+            parent_item = root_item
+            self.path_items[root_part] = root_item
+            
+        # 构建路径的其余部分
+        for i in range(1, len(parts)):
+            current_path = os.path.join(current_path, parts[i])
+            
+            # 检查此部分是否已存在
+            child_exists = False
+            for j in range(parent_item.rowCount()):
+                child = parent_item.child(j)
+                if child.text() == parts[i]:
+                    parent_item = child
+                    child_exists = True
+                    break
+                    
+            # 如果不存在，创建它
+            if not child_exists:
+                new_item = QStandardItem(parts[i])
+                new_item.setData(current_path)
+                parent_item.appendRow(new_item)
+                parent_item = new_item
+                self.path_items[current_path] = new_item
+    
+    def select_folder(self, folder_path):
+        """选择指定的文件夹在树中
+        
+        Args:
+            folder_path: 要选择的文件夹路径
+        """
+        if folder_path in self.path_items:
+            item = self.path_items[folder_path]
+            index = self.tree_model.indexFromItem(item)
+            self.tree_view.setCurrentIndex(index)
+            self.tree_view.scrollTo(index)
+
 # --- Main Execution --- 
 if __name__ == "__main__":
     import multiprocessing
@@ -3067,4 +3816,27 @@ if __name__ == "__main__":
 
     window = MainWindow()  # Create the main window
     window.show()  # Show the window
-    sys.exit(app.exec())  # Start the application event loop
+    
+    # 确保应用程序退出前正确清理工作线程
+    exit_code = app.exec()
+    
+    # 执行额外的清理工作
+    if hasattr(window, 'worker_thread') and window.worker_thread:
+        print("应用程序退出，正在等待工作线程结束...")
+        if window.worker_thread.isRunning():
+            # 如果工作线程还在运行，请求它退出
+            if hasattr(window.worker, 'stop_requested'):
+                window.worker.stop_requested = True
+                
+            window.worker_thread.quit()
+            # 给线程一些时间来退出
+            if not window.worker_thread.wait(3000):  # 等待3秒
+                print("工作线程未能及时退出，强制终止...")
+                window.worker_thread.terminate()
+                window.worker_thread.wait(1000)  # 再给1秒确保终止完成
+    
+    # 显式删除窗口实例以触发closeEvent
+    del window
+    
+    # 最后退出应用程序
+    sys.exit(exit_code)

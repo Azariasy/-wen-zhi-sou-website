@@ -1245,7 +1245,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.clear_results_button.clicked.connect(self.clear_results_slot)
 
         # --- Date fields ---
-        self.clear_dates_button.clicked.connect(self.clear_dates_slot)
 
         # --- Results text browser ---
         self.results_text.anchorClicked.connect(self.handle_link_clicked_slot)

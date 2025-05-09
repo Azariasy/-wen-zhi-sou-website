@@ -422,33 +422,4 @@ QToolTip {
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 4px;
-}
-
-/* 表格和树视图样式 */
-QTableView, QListView, QTreeView {
-    background-color: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    alternate-background-color: #f8f9fa;
-    selection-background-color: #e3f2fd;
-    selection-color: #2980b9;
-    gridline-color: #ddd;
-}
-
-QTableView::item, QListView::item, QTreeView::item {
-    padding: 4px;
-    border-radius: 2px;
-}
-
-QTableView::item:selected, QListView::item:selected, QTreeView::item:selected {
-    background-color: #e3f2fd;
-    color: #2980b9;
-}
-
-QHeaderView::section {
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    padding: 4px;
-    font-weight: bold;
-    color: #34495e;
 } 

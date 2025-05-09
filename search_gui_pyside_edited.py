@@ -534,8 +534,7 @@ class SettingsDialog(QDialog):
         
         # 添加清除日期按钮
         clear_dates_layout = QHBoxLayout()
-        self.clear_dates_button = QPushButton("清除日期筛选")
-        self.clear_dates_button.clicked.connect(self._clear_dates)
+                self.clear_dates_button.clicked.connect(self._clear_dates)
         clear_dates_layout.addStretch()
         clear_dates_layout.addWidget(self.clear_dates_button)
         
@@ -1245,8 +1244,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.clear_results_button.clicked.connect(self.clear_results_slot)
 
         # --- Date fields ---
-        self.clear_dates_button.clicked.connect(self.clear_dates_slot)
-
+        
         # --- Results text browser ---
         self.results_text.anchorClicked.connect(self.handle_link_clicked_slot)
 
