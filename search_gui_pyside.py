@@ -973,7 +973,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 将分隔器添加到主布局
         main_layout.addWidget(self.main_splitter, 1)
         # ----------------------------------------------
-        
+
         # --- Status Bar ---
         self._setup_status_bar() # Call helper
 
@@ -1238,7 +1238,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.index_button.clicked.connect(self.start_indexing_slot)
         self.view_skipped_button.clicked.connect(self.show_skipped_files_dialog_slot)
         # --------------------------------
-
+        
         # --- Search buttons ---
         self.search_button.clicked.connect(self.start_search_slot)
         self.clear_search_button.clicked.connect(self.clear_search_entry_slot)
@@ -1497,7 +1497,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.collapse_states = {}
         self.original_search_results = []
 
-        # UNIFIED Search Slot (Handles button click, enter press, combo activation)
+    # UNIFIED Search Slot (Handles button click, enter press, combo activation)
     @Slot()
     def start_search_slot(self):
         """Unified slot to initiate search based on combo box text and radio button mode."""
@@ -2080,7 +2080,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
         # Note: set_busy_state(False) is called within display_search_results_slot's finally block
-    
+
     # --- NEW Slot for Sorting (Called by sort controls) ---
     @Slot()
     def _sort_and_redisplay_results_slot(self):
@@ -2201,7 +2201,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.statusBar().showMessage(f"显示 {filtered_count}/{total_count} 条经过过滤的结果", 0)
         
         # 使用过滤后的结果更新显示
-        self.display_search_results_slot(filtered_results)
+            self.display_search_results_slot(filtered_results)
 
     # --- Link Handling Slot ---
     @Slot(QUrl)
@@ -2506,7 +2506,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
                     else:
                         # 在开发环境中
@@ -2572,7 +2572,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
+                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_green.png)")
                     else:
                         # 在开发环境中
@@ -2636,7 +2636,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
+                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_purple.png)")
                     else:
                         # 在开发环境中
@@ -2710,7 +2710,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
                     stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
                 
-                app.setStyleSheet(stylesheet)
+                    app.setStyleSheet(stylesheet)
                 print("Applied fallback blue theme.")
                 
                 # 通过编程方式直接设置下拉箭头和单选按钮图标
