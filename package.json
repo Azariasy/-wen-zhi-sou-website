@@ -1,19 +1,21 @@
 {
-  "name": "wen-zhi-sou-api",
+  "name": "wen-zhi-sou-api-ecs",
   "version": "1.0.0",
-  "description": "API for WenZhiSou payment and activation",
-  "main": "index.js",
+  "description": "API for WenZhiSou payment and activation on ECS",
+  "main": "server.js",
   "scripts": {
-    "start": "echo \"No start script specified\" && exit 0",
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "axios": "^1.9.0",
     "mongodb": "^6.16.0",
-    "nodemailer": "^6.9.13"
+    "nodemailer": "^6.9.13",
+    "express": "^4.19.2",
+    "body-parser": "^1.20.2"
   },
   "engines": {
-    "node": "16.x"
+    "node": ">=16.0.0"
   },
   "author": "",
   "license": "ISC"
