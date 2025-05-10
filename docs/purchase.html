@@ -411,8 +411,8 @@
                     body: JSON.stringify({
                         email: userEmail,
                         productId: productId,
-                        price: price,
-                        paymentMethod: paymentMethod 
+                        amount: price,
+                        paymentType: paymentMethod
                     })
                 });
 
@@ -428,13 +428,13 @@
                     throw new Error(`服务器响应无效，状态码: ${response.status}`);
                 }
 
-                if (response.ok && data.success && data.paymentUrl) {
+                if (response.ok && data.code === 0 && data.payUrl) {
                     // Order creation successful, redirect to payment gateway
-                    window.location.href = data.paymentUrl;
+                    window.location.href = data.payUrl;
                 } else {
                     // Order creation failed, display error message from server or a generic one
                     console.error('订单创建失败 (server response):', data);
-                    alert('订单创建失败: ' + (data.message || data.error || '未知服务器错误'));
+                    alert('订单创建失败: ' + (data.msg || '未知服务器错误'));
                     this.textContent = '立即购买'; // Restore button text
                     this.disabled = false;    // Restore button availability
                 }
