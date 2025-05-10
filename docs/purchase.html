@@ -403,8 +403,10 @@
             this.disabled = true;
 
             try {
+                // 尝试直接使用fetch，明确指定mode: 'cors'
                 const response = await fetch('https://wen-zhi-sou-website.vercel.app/api/create-order', {
                     method: 'POST',
+                    mode: 'cors',
                     headers: {
                         'Content-Type': 'application/json',
                     },
@@ -412,7 +414,8 @@
                         email: userEmail,
                         productId: productId,
                         amount: price,
-                        paymentType: paymentMethod
+                        paymentType: paymentMethod,
+                        description: 'WenZhiSou Professional License'
                     })
                 });
 
