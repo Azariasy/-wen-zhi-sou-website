@@ -202,6 +202,76 @@ class LicenseManager:
         else:
             return True, f"许可证已成功激活，有效期至 {expiration_date.strftime('%Y-%m-%d')}"
     
+    def update_and_save_license_details(self, details_dict):
+        """
+        用从API成功激活后获得的详细信息更新并保存许可证状态。
+
+        Args:
+            details_dict (dict): 包含许可证详细信息的字典，
+                                 例如: {"key": "...", "user_email": "...", 
+                                        "product_id": "...", "activation_date": "YYYY-MM-DD",
+                                        "status": LicenseStatus.ACTIVE, ...}
+        Returns:
+            bool: 如果更新和保存成功则返回True，否则返回False。
+        """
+        logger.info(f"正在使用API返回的详细信息更新许可证: {details_dict}")
+        try:
+            # 更新内部许可证信息
+            self._license_info["status"] = details_dict.get("status", LicenseStatus.INACTIVE)
+            self._license_info["key"] = details_dict.get("key", "").upper() # 确保密钥大写
+            
+            # 处理激活日期
+            activation_date_str = details_dict.get("activation_date", "")
+            if activation_date_str:
+                 # 尝试将多种可能的日期时间格式转换为 YYYY-MM-DD
+                try:
+                    if 'T' in activation_date_str: # ISO format like "2023-10-26T10:00:00Z" or "2023-10-26T10:00:00.123Z"
+                        activation_dt_obj = datetime.fromisoformat(activation_date_str.replace('Z', '+00:00'))
+                    elif ' ' in activation_date_str: # Format like "YYYY-MM-DD HH:MM:SS"
+                        activation_dt_obj = datetime.strptime(activation_date_str.split(' ')[0], "%Y-%m-%d")
+                    else: # Assume "YYYY-MM-DD"
+                        activation_dt_obj = datetime.strptime(activation_date_str, "%Y-%m-%d")
+                    self._license_info["activation_date"] = activation_dt_obj.isoformat() # Store as full ISO
+                except ValueError as ve:
+                    logger.warning(f"提供的激活日期格式无法解析 '{activation_date_str}': {ve}. 将尝试使用当前日期。")
+                    self._license_info["activation_date"] = datetime.now().isoformat()
+            else:
+                self._license_info["activation_date"] = datetime.now().isoformat() # Fallback to current date
+
+            # 根据product_id等信息确定过期日期
+            product_id = details_dict.get("product_id", "")
+            self._license_info["product_id"] = product_id # Store product_id
+
+            if "PERPETUAL" in product_id.upper():
+                self._license_info["expiration_date"] = "" # 永久版无过期
+                logger.info(f"产品 {product_id} 是永久版，无过期日期。")
+            else:
+                # 对于非永久版，尝试从激活日期计算一年有效期
+                # 注意：更可靠的做法是服务器API应该直接返回过期日期
+                try:
+                    # 从存储的ISO格式激活日期创建datetime对象
+                    # self._license_info["activation_date"] 现在应该是ISO格式字符串
+                    activation_dt_for_expiry = datetime.fromisoformat(self._license_info["activation_date"])
+                    expiration_dt = activation_dt_for_expiry + timedelta(days=365) # 假设一年有效期
+                    self._license_info["expiration_date"] = expiration_dt.isoformat()
+                    logger.info(f"产品 {product_id} (非永久) 激活，计算有效期至: {self._license_info['expiration_date']}")
+                except ValueError as ve:
+                    logger.error(f"计算过期日期时，激活日期 '{self._license_info['activation_date']}' 格式无效: {ve}。过期日期未设置。")
+                    self._license_info["expiration_date"] = ""
+
+
+            self._license_info["user_name"] = details_dict.get("user_name", "") 
+            self._license_info["user_email"] = details_dict.get("user_email", "")
+            
+            self._save_license_info()
+            logger.info("已成功使用API返回的详细信息更新并保存许可证。")
+            return True
+        except Exception as e:
+            logger.error(f"使用API详细信息更新许可证时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+    
     def deactivate_license(self):
         """
         停用当前许可证
@@ -296,27 +366,36 @@ class LicenseManager:
             bool: 如果格式正确返回True，否则返回False
         """
         # 如果密钥为空或格式不对，返回False
-        if not key or len(key) != 19:  # 总长度应为19 (XXXX-XXXX-XXXX-XXXX)
+        if not key: #  or len(key) != 19:  # 总长度应为19 (XXXX-XXXX-XXXX-XXXX) # 长度可变
             return False
             
-        # 检查格式: XXXX-XXXX-XXXX-XXXX (四组字母数字，每组4个字符，中间用连字符分隔)
+        # 检查格式: WZS-PRODUCTID-XXXX-XXXX-XXXX-XXXX
+        # 例如: WZS-PROPERPETUAL-A1B2-C3D4-E5F6-G7H8
         import re
-        if not re.match(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$', key):
+        # 正则表达式解释：
+        # ^WZS-  : 以 "WZS-" 开头
+        # [A-Z0-9]+- : 产品ID部分 (大写字母和数字，后跟一个连字符)
+        # ([A-Z0-9]{4}-){3} : 三组 "XXXX-"
+        # [A-Z0-9]{4}$ : 最后一组 "XXXX"
+        # 允许产品ID包含连字符，例如 WZS-PRO-MONTHLY-XXXX...
+        # pattern = r'^WZS-[A-Z0-9]+-([A-Z0-9]{4}-){3}[A-Z0-9]{4}$' 
+        pattern = r'^WZS-([A-Z0-9]+(?:-[A-Z0-9]+)*)-([A-Z0-9]{4}-){3}[A-Z0-9]{4}$'
+
+        if not re.match(pattern, key.upper()): # 统一转大写进行匹配
+            logger.warning(f"许可证密钥格式 '{key}' 不匹配预期模式: {pattern}")
             return False
             
-        # 简单的校验算法，确保密钥结构合理
-        # 这里我们检查每个分段的第一个字符和最后一个字符的ASCII值之和是否为偶数
-        # 这只是个简单的示例，实际产品中应该有更强的验证逻辑
-        segments = key.split('-')
-        for segment in segments:
-            if len(segment) != 4:  # 再次检查每段长度，以防万一
-                return False
-                
-            # 简单校验：第一个和最后一个字符的ASCII值之和应为偶数
-            first_char_val = ord(segment[0])
-            last_char_val = ord(segment[3])
-            if (first_char_val + last_char_val) % 2 != 0:
-                return False
+        # 不再需要旧的简单校验逻辑，因为服务器会进行最终验证
+        # segments = key.split('-')
+        # for segment in segments:
+        #     if len(segment) != 4:  # 再次检查每段长度，以防万一
+        #         return False
+        #         
+        #     # 简单校验：第一个和最后一个字符的ASCII值之和应为偶数
+        #     first_char_val = ord(segment[0])
+        #     last_char_val = ord(segment[3])
+        #     if (first_char_val + last_char_val) % 2 != 0:
+        #         return False
                 
         return True
 

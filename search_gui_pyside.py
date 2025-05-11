@@ -1326,38 +1326,47 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def _filter_results_by_type_slot(self):
         """基于所选文件类型复选框过滤搜索结果"""
-        # First, check if any filters are applied
-        selected_types = []
+        print("DEBUG: _filter_results_by_type_slot triggered")  # DEBUG
+        
+        # 检查是否有已选的文件类型
+        checked_types = []
         for checkbox, type_value in self.file_type_checkboxes.items():
             if checkbox.isChecked():
-                selected_types.append(type_value)
+                checked_types.append(type_value)
         
-        # If no filters selected, use all original results
-        if not selected_types:
-            filtered_results = self.original_search_results
+        print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
+        
+        # 如果没有选择文件类型，使用所有原始结果
+        if not checked_types:
+            print("DEBUG: No file types checked, using all original results")  # DEBUG
+            # 重要修复：必须创建原始结果的副本，而不是直接引用
+            filtered_results = self.original_search_results.copy()
         else:
-            # Filter results based on selected file types
+            # 根据所选文件类型过滤原始结果
+            print("DEBUG: Filtering original results based on checked types...")  # DEBUG
             filtered_results = []
             for result in self.original_search_results:
                 file_path = result.get('file_path', '')
                 file_type = None
                 
-                # Extract file extension
+                # 提取文件扩展名
                 if file_path:
                     lower_path = file_path.lower()
                     for ext in ['.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md']:
                         if lower_path.endswith(ext):
-                            file_type = ext[1:]  # Remove leading dot
-                            # Special case for .htm -> html
+                            file_type = ext[1:]  # 移除前导点
+                            # .htm特殊情况，处理为html
                             if file_type == 'htm':
                                 file_type = 'html'
                             break
                 
-                # Add result if it matches selected types
-                if file_type and file_type in selected_types:
+                # 如果文件类型匹配所选类型，添加结果
+                if file_type and file_type in checked_types:
                     filtered_results.append(result)
+            
+            print(f"DEBUG: Filtered results count after type filtering: {len(filtered_results)}")  # DEBUG
         
-        # --- 添加文件夹过滤 ---
+        # 应用文件夹过滤
         if self.filtered_by_folder and self.current_filter_folder:
             folder_filtered_results = []
             for result in filtered_results:
@@ -1388,14 +1397,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
             # 更新过滤后的结果
             filtered_results = folder_filtered_results
-        # -----------------------
         
-        # Store filtered results
+        # 保存过滤后的结果
         self.search_results = filtered_results
         
-        # Sort and display
-        self._sort_and_redisplay_results_slot()
-        
+        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
+        # 避免递归调用
+        self.display_search_results_slot(filtered_results)
+    
     @Slot()
     def _sort_and_redisplay_results_slot(self):
         """Sort results based on current sort settings and redisplay."""
@@ -1424,32 +1433,36 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 对结果进行排序
         results_to_sort = list(self.search_results)  # 创建副本进行排序
         
-        def get_sort_key(item):
-            if sort_key == 'score':
-                # 相关度得分，可能是None
-                return item.get('score', 0) or 0
-            elif sort_key == 'path':
-                # 按文件路径排序
-                return item.get('file_path', '').lower()
-            elif sort_key == 'date':
-                # 按修改日期排序，格式为ISO字符串
-                date_str = item.get('file_date', '')
-                if not date_str:
-                    # 如果没有日期，归为最早或最晚
-                    return '1900-01-01' if is_descending else '9999-12-31'
-                return date_str
-            elif sort_key == 'size':
-                # 按文件大小排序
-                return item.get('file_size_kb', 0) or 0
-            else:
-                # 默认按相关度排序
-                return item.get('score', 0) or 0
-        
-        # 执行排序
-        results_to_sort.sort(
-            key=get_sort_key,
-            reverse=is_descending
-        )
+        try:
+            def get_sort_key(item):
+                if sort_key == 'score':
+                    # 相关度得分，可能是None
+                    return item.get('score', 0) or 0
+                elif sort_key == 'path':
+                    # 按文件路径排序
+                    return item.get('file_path', '').lower()
+                elif sort_key == 'date':
+                    # 按修改日期排序，格式为ISO字符串
+                    date_str = item.get('file_date', '')
+                    if not date_str:
+                        # 如果没有日期，归为最早或最晚
+                        return '1900-01-01' if is_descending else '9999-12-31'
+                    return date_str
+                elif sort_key == 'size':
+                    # 按文件大小排序
+                    return item.get('file_size_kb', 0) or 0
+                else:
+                    # 默认按相关度排序
+                    return item.get('score', 0) or 0
+            
+            # 执行排序
+            results_to_sort.sort(
+                key=get_sort_key,
+                reverse=is_descending
+            )
+        except Exception as e:
+            print(f"Error during sorting: {e}")
+            # 出错时继续使用未排序的结果
         
         # 更新并显示排序后的结果
         self.search_results = results_to_sort
@@ -2130,32 +2143,47 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _filter_results_by_type_slot(self):
         """Filters the original search results based on checked file types and updates display."""
         print("DEBUG: _filter_results_by_type_slot triggered")  # DEBUG
-        # REMOVED BUSY CHECK - Checkboxes are disabled by set_busy_state anyway
-        # if self.is_busy:
-        #     # print("  Busy, skipping filter")  # DEBUG
-        #     return # Don\'t filter if an operation is in progress
         
-        # REMOVED check for empty last_search_results, now rely on original_search_results
-        # if not self.last_search_results:
-
-        checked_types = [ftype for cb, ftype in self.file_type_checkboxes.items() if cb.isChecked()]
+        # 检查是否有已选的文件类型
+        checked_types = []
+        for checkbox, type_value in self.file_type_checkboxes.items():
+            if checkbox.isChecked():
+                checked_types.append(type_value)
+        
         print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
         
-        # 应用文件类型过滤
+        # 如果没有选择文件类型，使用所有原始结果
         if not checked_types:
-            # If no types are checked, show all original results
             print("DEBUG: No file types checked, using all original results")  # DEBUG
+            # 重要修复：必须创建原始结果的副本，而不是直接引用
             filtered_results = self.original_search_results.copy()
         else:
-            # Filter the ORIGINAL stored results based on checked types
+            # 根据所选文件类型过滤原始结果
             print("DEBUG: Filtering original results based on checked types...")  # DEBUG
-            filtered_results = [item for item in self.original_search_results 
-                                if item.get('file_type', '').lstrip('.').lower() in checked_types]
+            filtered_results = []
+            for result in self.original_search_results:
+                file_path = result.get('file_path', '')
+                file_type = None
+                
+                # 提取文件扩展名
+                if file_path:
+                    lower_path = file_path.lower()
+                    for ext in ['.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md']:
+                        if lower_path.endswith(ext):
+                            file_type = ext[1:]  # 移除前导点
+                            # .htm特殊情况，处理为html
+                            if file_type == 'htm':
+                                file_type = 'html'
+                            break
+                
+                # 如果文件类型匹配所选类型，添加结果
+                if file_type and file_type in checked_types:
+                    filtered_results.append(result)
+            
             print(f"DEBUG: Filtered results count after type filtering: {len(filtered_results)}")  # DEBUG
         
         # 应用文件夹过滤
         if self.filtered_by_folder and self.current_filter_folder:
-            print(f"DEBUG: Applying folder filter for '{self.current_filter_folder}'")  # DEBUG
             folder_filtered_results = []
             for result in filtered_results:
                 file_path = result.get('file_path', '')
@@ -2164,7 +2192,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                 # 处理存档文件中的项目
                 if '::' in file_path:
-                    # 对于存档内的文件，只显示存档文件所在的文件夹
                     archive_path = file_path.split('::', 1)[0]
                     folder_path = str(Path(archive_path).parent)
                 else:
@@ -2183,25 +2210,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 
                 if is_match:
                     folder_filtered_results.append(result)
-            
-            print(f"DEBUG: Filtered results count after folder filtering: {len(folder_filtered_results)}")  # DEBUG
+                    
+            # 更新过滤后的结果
             filtered_results = folder_filtered_results
         
-        # 保存过滤后的结果并显示
+        # 保存过滤后的结果
         self.search_results = filtered_results
         
-        # 更新状态栏消息
-        total_count = len(self.original_search_results)
-        filtered_count = len(filtered_results)
-        
-        if self.filtered_by_folder and self.current_filter_folder:
-            folder_name = os.path.basename(self.current_filter_folder) or self.current_filter_folder
-            self.statusBar().showMessage(f"显示文件夹 '{folder_name}' 中的 {filtered_count}/{total_count} 条结果", 0)
-        elif filtered_count != total_count:
-            self.statusBar().showMessage(f"显示 {filtered_count}/{total_count} 条经过过滤的结果", 0)
-        
-        # 使用过滤后的结果更新显示
-            self.display_search_results_slot(filtered_results)
+        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
+        # 避免递归调用
+        self.display_search_results_slot(filtered_results)
 
     # --- Link Handling Slot ---
     @Slot(QUrl)
@@ -2277,9 +2295,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.collapse_states[toggle_key] = new_state
                 print(f"  New collapse state for key '{toggle_key}': {self.collapse_states[toggle_key]}")
                 
-                # Re-render the results view - Uses the ORIGINAL results filtered by the checkboxes
-                print("  Triggering re-render via _filter_results_by_type_slot...")  # DEBUG
-                self._filter_results_by_type_slot()  # Re-apply filters based on original data
+                # 修改：直接渲染当前结果，而不是重新筛选
+                print("  直接渲染当前结果...")
+                # 创建搜索结果的副本，以避免引用问题
+                results_copy = self.search_results.copy()
+                # 直接调用display_search_results_slot更新视图
+                self.display_search_results_slot(results_copy)
+                
             except IndexError:
                 print("Error: Could not extract key from toggle link:", raw_url_str)
             except Exception as e:
@@ -2502,11 +2524,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         
                         # 修改样式表中的图片URL路径为绝对路径
                         # 这解决了在打包环境中图片路径引用的问题
-                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/")')
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
                     else:
                         # 在开发环境中
@@ -2568,11 +2590,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         
                         # 修改样式表中的图片URL路径为绝对路径
                         # 这解决了在打包环境中图片路径引用的问题
-                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/")')
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_green.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_green.png)")
                     else:
                         # 在开发环境中
@@ -2632,11 +2654,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         
                         # 修改样式表中的图片URL路径为绝对路径
                         # 这解决了在打包环境中图片路径引用的问题
-                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                        stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/")')
                         stylesheet = stylesheet.replace('.png)', '.png")')
                         
                         # 同时保持原有的替换逻辑
-                    stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
+                        stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_purple.png)")
                         stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_purple.png)")
                     else:
                         # 在开发环境中
@@ -2699,7 +2721,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                     # 修改样式表中的图片URL路径为绝对路径
                     # 这解决了在打包环境中图片路径引用的问题
-                    stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/')
+                    stylesheet = stylesheet.replace('image: url(', f'image: url("{base_path}/")')
                     stylesheet = stylesheet.replace('.png)', '.png")')
                     
                     # 同时保持原有的替换逻辑
@@ -3047,9 +3069,26 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def show_license_dialog_slot(self):
         """显示许可证管理对话框"""
-        dialog = LicenseDialog(self)
+        # 创建对话框实例，MainWindow (self) 作为其父对象
+        # LicenseDialog 内部会自行获取 license_manager
+        dialog = LicenseDialog(self) 
+        
+        # 将对话框的许可证状态更新信号连接到主窗口的UI更新方法
+        # 确保 LicenseDialog 中有名为 license_status_updated_signal 的信号
+        # 这个信号的定义需要添加到 LicenseDialog 类中
+        if hasattr(dialog, 'license_status_updated_signal'):
+            try:
+                # 先尝试断开之前的连接，防止重复连接，如果之前未连接会引发TypeError
+                dialog.license_status_updated_signal.disconnect(self._update_feature_availability)
+            except TypeError:
+                pass # 信号之前未连接，忽略错误
+            dialog.license_status_updated_signal.connect(self._update_feature_availability)
+        else:
+            print("DEBUG: LicenseDialog does not have license_status_updated_signal")
+
         dialog.exec()
-        # 许可证状态可能已更改，需要更新 UI
+        # 保留这一行作为后备，以确保在对话框关闭时UI肯定会更新，
+        # 即使信号机制由于某种原因没有按预期工作。
         self._update_feature_availability()
 
     # 添加初始化许可证管理器和更新功能可用性的方法

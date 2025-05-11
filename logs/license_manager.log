@@ -1,0 +1,4 @@
+2025-05-11 18:49:31,191 - license_manager - WARNING - 加载的许可证信息缺少字段: device_id
+2025-05-11 18:49:31,192 - license_manager - WARNING - 加载的许可证信息缺少字段: last_online_check
+2025-05-11 18:49:31,193 - license_manager - WARNING - 许可证信息校验和不匹配，可能已被篡改
+2025-05-11 18:49:31,195 - license_manager - INFO - 已从设置中加载设备ID: b04bef81...

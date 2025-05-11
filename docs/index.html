@@ -221,6 +221,45 @@
             border-radius: 8px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
+        .promo-banner {
+            background-color: #e67e22; /* Orange background for urgency */
+            color: white;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1.5rem auto;
+            max-width: 700px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        .promo-banner .promo-price {
+            font-weight: bold;
+            font-size: 1.3rem;
+        }
+        .features-highlight {
+            display: flex;
+            justify-content: space-around;
+            gap: 20px; /* Spacing between items */
+            margin-top: 2.5rem;
+            flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+        }
+        .feature-item {
+            background-color: #ecf0f1;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            width: calc(33.333% - 20px); /* Adjust width for gap, assuming 3 items */
+            min-width: 250px; /* Minimum width for responsiveness */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .feature-item img {
+            max-width: 100px; /* Adjust as needed */
+            height: auto;
+            margin-bottom: 1rem;
+        }
+        .feature-item h4 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -241,9 +280,12 @@
 
     <section class="hero">
         <div class="container">
-            <h1>为中文优化的本地文件内容搜索引擎</h1>
-            <p>快速、精准地搜索本地文档内容，支持多种文件格式，保护隐私，不联网，无需上传文件。</p>
-            <div class="hero-buttons">
+            <h1>文智搜 - 为效率而生的本地文件搜索引擎</h1>
+            <p class="subtitle">快速、精准、跨格式内容检索，助您秒速找到所需信息</p>
+            <div class="promo-banner">
+                <p><strong>限时特惠！</strong> 专业版仅需 <span class="promo-price">¥9.9</span> (原价 ¥49.9)，活动持续15天！永久授权，解锁全部高级功能！</p>
+            </div>
+            <div class="cta-buttons">
                 <a href="download.html" class="btn btn-primary">免费下载</a>
                 <a href="purchase.html" class="btn btn-secondary">了解专业版</a>
             </div>
@@ -356,6 +398,16 @@
                     </tr>
                     <tr>
                         <td>通配符搜索 (*, ?)</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>文件夹树结果导航</td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="check">✓</span></td>
+                    </tr>
+                    <tr>
+                        <td>多种界面主题 (蓝、绿、紫)</td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="check">✓</span></td>
                     </tr>

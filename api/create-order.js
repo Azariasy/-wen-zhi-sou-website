@@ -6,6 +6,7 @@ const crypto = require('crypto');
 
 // 从环境变量读取配置 (这些需要在ECS服务器上设置)
 const MONGODB_URI = process.env.MONGODB_URI;
+const DB_NAME = process.env.DB_NAME || 'wenzisou'; // 新增：与回调逻辑统一数据库名
 const YIPAY_PID = process.env.PAYMENT_YIPAY_PID;
 const YIPAY_KEY = process.env.PAYMENT_YIPAY_MD5_KEY;
 const YIPAY_API_URL = process.env.YIPAY_API_URL;
@@ -89,15 +90,19 @@ module.exports = async (req, res) => {
             console.log("易支付请求参数 (带签名):", yipayParams);
 
             const yipayQueryString = new URLSearchParams(yipayParams).toString();
-            const payUrl = `${YIPAY_API_URL}?${yipayQueryString}`;
+            const payUrl = `${YIPAY_API_URL}/submit.php?${yipayQueryString}`;
             console.log("生成的易支付URL:", payUrl);
             
             let client;
             try {
+                if (!MONGODB_URI) { // 增加对 MONGODB_URI 的检查
+                    console.error('[FATAL_DB_ERROR] MONGODB_URI is not set in create-order. Cannot connect to database.');
+                    return res.status(500).json({ code: 1, msg: '服务器数据库配置错误' });
+                }
                 client = new MongoClient(MONGODB_URI);
                 await client.connect();
                 console.log("成功连接到MongoDB");
-                const db = client.db();
+                const db = client.db(DB_NAME); // 使用从环境变量读取或默认的DB_NAME
                 const ordersCollection = db.collection('orders');
 
                 const orderDocument = {
@@ -114,7 +119,7 @@ module.exports = async (req, res) => {
                     licenseKey: null,
                 };
                 await ordersCollection.insertOne(orderDocument);
-                console.log('订单已存入数据库:', orderNo);
+                console.log(`订单已存入数据库 ${DB_NAME}.orders:`, orderNo);
 
             } catch (dbError) {
                 console.error('数据库操作失败:', dbError);

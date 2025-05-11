@@ -1,0 +1,6 @@
+    {
+      "version": "1.1.0", 
+      "release_date": "2025-05-10",
+      "notes": "- 新增: 支持对视频、音频、图片文件名的搜索。<br>- 修复: 解决了文件类型筛选器无效的问题。<br>- 优化: 改进了索引性能。",
+      "download_url": "https://github.com/Azariasy/wen-zhi-sou/releases/latest" 
+    }

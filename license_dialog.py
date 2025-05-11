@@ -4,14 +4,17 @@
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QMessageBox, QFormLayout, QGroupBox
+    QPushButton, QMessageBox, QFormLayout, QGroupBox, QApplication
 )
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, Signal
 from PySide6.QtGui import QFont
 
 from license_manager import get_license_manager, LicenseStatus, Features
+from license_activation import activate_license
+import datetime
 
 class LicenseDialog(QDialog):
+    license_status_updated_signal = Signal()
     """许可证激活对话框"""
     
     def __init__(self, parent=None):
@@ -107,7 +110,7 @@ class LicenseDialog(QDialog):
         
         # 许可证密钥输入
         self.key_entry = QLineEdit()
-        self.key_entry.setPlaceholderText("格式：XXXX-XXXX-XXXX-XXXX")
+        self.key_entry.setPlaceholderText("格式：WZS-PRODUCT-XXXX-XXXX-XXXX-XXXX")
         activation_layout.addRow("许可证密钥:", self.key_entry)
         
         # 用户名输入（可选）
@@ -194,27 +197,86 @@ class LicenseDialog(QDialog):
     
     def _activate_license(self):
         """激活许可证"""
-        license_key = self.key_entry.text().strip()
-        user_name = self.user_name_entry.text().strip()
-        user_email = self.user_email_entry.text().strip()
+        license_key_input = self.key_entry.text().strip().upper()
         
-        if not license_key:
+        if not license_key_input:
             QMessageBox.warning(self, "输入错误", "请输入许可证密钥。")
             return
         
-        success, message = self.license_manager.activate_license(
-            license_key, user_name, user_email
-        )
-        
-        if success:
-            QMessageBox.information(self, "激活成功", message)
-            self._update_license_info_display()
-            # 清空输入字段
+        progress_msg = QMessageBox(self)
+        progress_msg.setWindowTitle("请稍候")
+        progress_msg.setText("正在连接激活服务器并验证激活码...")
+        progress_msg.setStandardButtons(QMessageBox.NoButton) 
+        progress_msg.setWindowModality(Qt.WindowModal)
+        progress_msg.show()
+        QApplication.processEvents() 
+
+        api_result = None 
+        try:
+            api_result = activate_license(license_key_input) 
+        except Exception as e:
+            if progress_msg.isVisible():
+                progress_msg.done(0) # 使用 done(0) 来关闭
+            QApplication.processEvents() # 在关闭后处理一下事件
+            QMessageBox.critical(self, "激活错误", f"激活过程中发生本地错误: {str(e)}")
+            self.activateWindow()
+            self.raise_()
+            self.key_entry.setFocus()
+            return 
+
+        # ---- 确保 progress_msg 在这里被关闭 ----
+        if progress_msg.isVisible():
+            progress_msg.done(0) # 使用 done(0) 来关闭
+        QApplication.processEvents() # 再次处理事件，确保 progress_msg 的关闭被渲染
+        # -----------------------------------------
+
+        if api_result and api_result.get("success"):
+            current_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            purchase_date_from_api = api_result.get("purchaseDate", current_time_str.split(' ')[0])
+            if isinstance(purchase_date_from_api, str) and 'T' in purchase_date_from_api: 
+                try:
+                    purchase_date_from_api = datetime.datetime.fromisoformat(purchase_date_from_api.replace('Z', '+00:00')).strftime("%Y-%m-%d")
+                except ValueError:
+                    purchase_date_from_api = current_time_str.split(' ')[0] 
+            elif isinstance(purchase_date_from_api, datetime.datetime):
+                    purchase_date_from_api = purchase_date_from_api.strftime("%Y-%m-%d")
+            
+            activation_date_to_store = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if api_result.get("alreadyActivated") and api_result.get("activationDate"):
+                activation_date_from_api = api_result.get("activationDate")
+                if isinstance(activation_date_from_api, str) and 'T' in activation_date_from_api:
+                    try:
+                        activation_date_to_store = datetime.datetime.fromisoformat(activation_date_from_api.replace('Z', '+00:00')).strftime("%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass 
+                elif isinstance(activation_date_from_api, datetime.datetime):
+                    activation_date_to_store = activation_date_from_api.strftime("%Y-%m-%d %H:%M:%S")
+
+            license_details = {
+                "key": license_key_input,
+                "user_email": api_result.get("userEmail"),
+                "product_id": api_result.get("productId"),
+                "activation_date": activation_date_to_store, 
+                "purchase_date": purchase_date_from_api, 
+                "status": LicenseStatus.ACTIVE,
+            }
+            self.license_manager.update_and_save_license_details(license_details)
+            # -----
+            QMessageBox.information(self, "激活成功", api_result.get("message", "许可证已成功激活！"))
+            self._update_license_info_display() 
+            self.license_status_updated_signal.emit() 
             self.key_entry.clear()
-            self.user_name_entry.clear()
-            self.user_email_entry.clear()
-        else:
-            QMessageBox.warning(self, "激活失败", message)
+
+        elif api_result: 
+            QMessageBox.warning(self, "激活失败", 
+                                api_result.get("message", "激活失败，请检查您的激活码或网络连接。"))
+        else: 
+            QMessageBox.critical(self, "激活错误", "激活服务未返回有效结果或发生未知错误。")
+        
+        # 尝试激活父窗口并设置焦点
+        self.activateWindow()
+        self.raise_()
+        self.key_entry.setFocus()
     
     def _deactivate_license(self):
         """停用许可证"""
