@@ -27,7 +27,7 @@ function log(type, message, data = null) {
       if (!fs.existsSync(logDir)) {
         fs.mkdirSync(logDir, { recursive: true });
       }
-      const logFile = path.join(logDir, `activation-api-${new Date().toISOString().split('T')[0]}.log`);
+      const logFile = path.join(logDir, `activation-${new Date().toISOString().split('T')[0]}.log`);
       fs.appendFileSync(logFile, logMessage + (data ? `\n${JSON.stringify(data, null, 2)}` : '') + '\n');
     } catch (err) {
       console.error(`[${new Date().toISOString()}] [ERROR] Error writing to API log file: ${err.message}`);
@@ -91,60 +91,66 @@ async function validateLicenseKey(licenseKey, dbClient) {
 }
 
 /**
- * 记录设备激活信息
- * @param {string} orderId - 订单ID
- * @param {string} deviceId - 设备ID
- * @param {object} dbClient - MongoDB客户端连接
- * @returns {Promise<boolean>} - 是否成功记录
+ * 检查设备是否已激活，以及处理多设备激活逻辑
+ * @param {Array} activatedDevices 已激活的设备ID数组
+ * @param {string} deviceId 当前要激活的设备ID
+ * @param {number} maxDevices 最大允许激活的设备数
+ * @returns {Object} 包含是否可以激活与原因的对象 {canActivate, reason, alreadyActivated}
  */
-async function recordActivation(orderId, deviceId, dbClient) {
-  log('ACTIVATION_RECORD', `记录设备激活信息到orders集合`, { orderId, deviceId });
-  try {
-    const db = dbClient.db(DATABASE_NAME);
-    const ordersCollection = db.collection('orders');
-
-    const updateResult = await ordersCollection.updateOne(
-      { _id: new ObjectId(orderId) },
-      {
-        $set: {
-          licenseDeviceId: deviceId,
-          licenseActivatedAt: new Date(),
-          licenseStatus: 'active', // 根据您的状态定义
-          updatedAt: new Date()
-        }
-      }
-    );
-
-    if (updateResult.modifiedCount === 1) {
-      log('ACTIVATION_RECORD_SUCCESS', '设备激活信息已成功更新到orders记录', { orderId });
-      return true;
-    } else {
-      log('ACTIVATION_RECORD_FAILED', '更新orders记录失败，可能orderId不存在或未找到匹配项', { orderId, matchedCount: updateResult.matchedCount });
-      return false;
-    }
-  } catch (error) {
-    log('ERROR', `记录设备激活时出错: ${error.message}`, { stack: error.stack });
-    return false;
+function isDeviceAlreadyActivated(activatedDevices = [], deviceId, maxDevices = 1) {
+  // 检查设备ID是否已经在激活列表中
+  const alreadyActivated = activatedDevices.includes(deviceId);
+  
+  // 如果设备已经激活，直接允许激活
+  if (alreadyActivated) {
+    return {
+      canActivate: true,
+      reason: '此设备已经激活过，重新激活成功。',
+      alreadyActivated: true
+    };
   }
+  
+  // 如果尚未达到最大设备数，允许激活
+  if (activatedDevices.length < maxDevices) {
+    return {
+      canActivate: true,
+      reason: '新设备激活成功。',
+      alreadyActivated: false
+    };
+  }
+  
+  // 如果已达到最大设备数，拒绝激活
+  return {
+    canActivate: false,
+    reason: `已达到最大激活设备数 (${maxDevices})，无法在新设备上激活。请先在其他设备上注销后再尝试。`,
+    alreadyActivated: false
+  };
 }
 
 /**
- * 检查设备是否已激活过此激活码
- * @param {object} licenseDetails - 激活码详情
- * @param {string} deviceId - 设备ID
- * @returns {Promise<boolean>} - 设备是否已激活过
+ * 记录激活信息到数据库
+ * @param {Object} db 数据库连接
+ * @param {string} licenseKey 许可证密钥
+ * @param {string} deviceId 设备ID
+ * @returns {Promise<Object>} 更新结果
  */
-async function isDeviceAlreadyActivated(licenseDetails, deviceId /*, dbClient */) {
-  // licenseDetails 是从 validateLicenseKey 返回的 orderWithLicense 对象
-  if (licenseDetails.licenseDeviceId && licenseDetails.licenseDeviceId === deviceId) {
-    log('DEVICE_ALREADY_ACTIVATED', '此设备已使用该激活码激活过', { licenseKey: licenseDetails.licenseKey, deviceId });
-    return true;
-  }
-  if (licenseDetails.licenseDeviceId && licenseDetails.licenseDeviceId !== deviceId) {
-    log('LICENSE_USED_OTHER_DEVICE', '该激活码已在其他设备上激活', { licenseKey: licenseDetails.licenseKey, existingDeviceId: licenseDetails.licenseDeviceId, requestedDeviceId: deviceId });
-    return 'other_device'; // 返回特殊值表示被其他设备占用
-  }
-  return false; // 未激活或未绑定设备
+async function recordActivation(db, licenseKey, deviceId) {
+  const now = new Date();
+  
+  // 使用 $addToSet 来添加不重复的设备ID
+  const updateResult = await db.collection('orders').updateOne(
+    { licenseKey },
+    { 
+      $set: { 
+        // 如果是首次激活，设置激活信息
+        licenseActivatedAt: { $exists: true } ? undefined : now,
+        updatedAt: now
+      },
+      $addToSet: { activated_devices: deviceId }
+    }
+  );
+  
+  return updateResult;
 }
 
 /**
@@ -153,96 +159,140 @@ async function isDeviceAlreadyActivated(licenseDetails, deviceId /*, dbClient */
  * @param {object} res - Express响应对象
  */
 module.exports = async (req, res) => {
-  log('REQUEST', '收到激活请求', { body: req.body, ip: req.ip });
-
-  if (!MONGODB_CONNECTION_URI) {
-    log('ERROR', '由于MONGODB_URI未配置，无法处理激活请求。');
-    return res.status(500).json({
+  // 处理OPTIONS预检请求
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).end();
+  }
+  
+  // 只允许POST请求
+  if (req.method !== 'POST') {
+    return res.status(405).json({
       success: false,
-      message: '服务器配置错误，激活服务暂时不可用，请联系管理员。'
+      message: '不支持的HTTP方法。请使用POST请求。'
     });
   }
-
-  if (!req.body || !req.body.licenseKey || !req.body.deviceId) {
-    log('VALIDATION_ERROR', '请求参数不完整', { body: req.body });
-    return res.status(400).json({ success: false, message: '请求参数不完整，需要提供licenseKey和deviceId。' });
-  }
-
+  
+  // 处理CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  
+  // 获取请求体
   const { licenseKey, deviceId } = req.body;
-
+  
+  // 验证必要参数
+  if (!licenseKey || !deviceId) {
+    log('ERROR', '请求参数不完整', { licenseKey: !!licenseKey, deviceId: !!deviceId });
+    return res.status(400).json({
+      success: false,
+      message: '请求参数不完整，需要提供licenseKey和deviceId。'
+    });
+  }
+  
   let client;
   try {
-    log('DB_CONNECT', '正在连接数据库 (MongoDB Atlas)...', { uri_type: typeof MONGODB_CONNECTION_URI });
     client = new MongoClient(MONGODB_CONNECTION_URI);
     await client.connect();
-    log('DB_CONNECT_SUCCESS', '数据库连接成功');
-
-    const validationResult = await validateLicenseKey(licenseKey, client);
-
-    if (!validationResult.valid) {
-      log('ACTIVATION_FAILED', '激活失败 - 激活码验证未通过', { licenseKey, deviceId, message: validationResult.message });
-      return res.status(400).json({ success: false, message: validationResult.message });
-    }
-
-    const { licenseDetails } = validationResult; // 这是 orders 集合中的文档
-
-    const activationStatus = await isDeviceAlreadyActivated(licenseDetails, deviceId);
-
-    if (activationStatus === true) { // 已在本设备激活
-      log('ACTIVATION_INFO', '设备已经激活过此激活码', { licenseKey, deviceId, orderId: licenseDetails._id });
-      return res.status(200).json({
-        success: true,
-        message: '此设备已成功激活，无需重复操作。',
-        userEmail: licenseDetails.userEmail,
-        productId: licenseDetails.productId,
-        purchaseDate: licenseDetails.paidAt || licenseDetails.createdAt, // 使用 paidAt
-        activationDate: licenseDetails.licenseActivatedAt,
-        alreadyActivated: true
+    
+    const db = client.db(DATABASE_NAME);
+    
+    // 查找许可证
+    const order = await db.collection('orders').findOne({ licenseKey });
+    
+    // 如果找不到许可证
+    if (!order) {
+      log('ACTIVATION_FAILED', '激活码无效', { licenseKey, deviceId });
+      return res.status(404).json({
+        success: false,
+        message: '激活码无效。请检查输入是否正确或联系客服。'
       });
-    } else if (activationStatus === 'other_device') { // 已在其他设备激活
-       log('ACTIVATION_FAILED', '激活码已在其他设备使用', { licenseKey, deviceId, orderId: licenseDetails._id });
-       return res.status(409).json({ // 409 Conflict
-         success: false,
-         message: '激活失败：此激活码已在其他设备上使用。如需更换设备，请联系客服。'
-       });
     }
-
-    // 如果 activationStatus 为 false，表示可以进行新的激活
-    const recordResult = await recordActivation(licenseDetails._id, deviceId, client);
-
-    if (!recordResult) {
-      log('ACTIVATION_ERROR', '记录激活信息失败', { licenseKey, deviceId });
-      return res.status(500).json({ success: false, message: '激活过程中发生错误，请稍后重试。' });
+    
+    // 检查是否已支付
+    if (!order.isPaid) {
+      log('ACTIVATION_FAILED', '激活码未支付', { licenseKey, deviceId, orderId: order._id });
+      return res.status(400).json({
+        success: false,
+        message: '此激活码尚未完成支付，无法激活。'
+      });
     }
-
-    log('ACTIVATION_SUCCESS', '激活成功', {
-      licenseKey, deviceId, orderId: licenseDetails._id, userEmail: licenseDetails.userEmail
-    });
-
+    
+    // 获取订单支持的最大设备数
+    const maxDevices = order.max_devices || 1; // 默认为1
+    
+    // 检查已激活设备列表
+    const activatedDevices = order.activated_devices || [];
+    
+    // 检查设备是否已经激活或可以激活
+    const deviceActivationCheck = isDeviceAlreadyActivated(activatedDevices, deviceId, maxDevices);
+    
+    if (!deviceActivationCheck.canActivate) {
+      log('ACTIVATION_FAILED', '设备数量超限', { 
+        licenseKey, 
+        deviceId, 
+        currentDeviceCount: activatedDevices.length,
+        maxDevices, 
+        reason: deviceActivationCheck.reason 
+      });
+      
+      return res.status(400).json({
+        success: false,
+        message: deviceActivationCheck.reason,
+        currentDevices: activatedDevices.length,
+        maxDevices
+      });
+    }
+    
+    // 记录激活信息
+    if (!deviceActivationCheck.alreadyActivated) {
+      await recordActivation(db, licenseKey, deviceId);
+      log('ACTIVATION_SUCCESS', '新设备已成功激活', { 
+        licenseKey, 
+        deviceId, 
+        orderId: order._id, 
+        newDeviceCount: activatedDevices.length + 1,
+        maxDevices
+      });
+    } else {
+      log('ACTIVATION_SUCCESS', '已激活设备重新激活', { 
+        licenseKey, 
+        deviceId, 
+        orderId: order._id, 
+        deviceCount: activatedDevices.length,
+        maxDevices
+      });
+    }
+    
+    // 获取更新后的订单信息
+    const updatedOrder = await db.collection('orders').findOne({ licenseKey });
+    const updatedDevices = updatedOrder.activated_devices || [];
+    
+    // 返回成功响应
     return res.status(200).json({
       success: true,
-      message: '激活成功！感谢您购买文智搜专业版。',
-      userEmail: licenseDetails.userEmail,
-      productId: licenseDetails.productId,
-      purchaseDate: licenseDetails.paidAt || licenseDetails.createdAt,
-      activationDate: new Date() // 当前激活时间
+      message: deviceActivationCheck.alreadyActivated
+        ? '设备已重新激活成功。'
+        : '设备成功激活。',
+      userEmail: order.userEmail,
+      productId: order.productId,
+      activationDate: order.licenseActivatedAt || order.updatedAt,
+      purchaseDate: order.paidAt || order.createdAt,
+      maxDevices,
+      activatedDevices: updatedDevices,
+      currentDevices: updatedDevices.length,
+      alreadyActivated: deviceActivationCheck.alreadyActivated
     });
-
+    
   } catch (error) {
-    log('ERROR', `处理激活请求时发生意外错误: ${error.message}`, { stack: error.stack });
-    // 检查是否是数据库连接相关的错误
-    if (error.message && (error.message.toLowerCase().includes('econnrefused') || error.message.toLowerCase().includes('timeout')) && error.message.toLowerCase().includes('mongodb')) {
-        return res.status(503).json({ success: false, message: '无法连接到激活数据库，请稍后重试或联系管理员。'});
-    }
-    return res.status(500).json({ success: false, message: '处理激活请求时发生服务器内部错误，请稍后重试。' });
+    log('ERROR', `激活过程中出错: ${error.message}`, { stack: error.stack });
+    return res.status(500).json({
+      success: false,
+      message: '激活过程中发生服务器内部错误，请稍后重试。'
+    });
   } finally {
     if (client) {
-      try {
-        await client.close();
-        log('DB_DISCONNECT', '数据库连接已关闭');
-      } catch (err) {
-        log('ERROR', `关闭数据库连接时出错: ${err.message}`);
-      }
+      await client.close();
     }
   }
 }; 

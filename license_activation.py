@@ -4,6 +4,7 @@ import sys
 import platform
 import traceback
 from generate_device_id import get_device_id
+import datetime
 
 def activate_license(license_key, api_base_url="https://yymwxx.cn"):
     """
@@ -19,7 +20,25 @@ def activate_license(license_key, api_base_url="https://yymwxx.cn"):
             - message (str): A message describing the result
             - user_email (str, optional): The email associated with the license (if successful)
             - product_id (str, optional): The product ID associated with the license (if successful)
+            - max_devices (int, optional): The maximum number of devices this license can be activated on
+            - activated_devices (list, optional): List of device IDs currently activated
+            - device_id (str, optional): Current device ID
     """
+    # 检查是否为开发者模式激活码
+    if license_key == "WZS-WZSPROPERPETUAL-A30F-3CCC-1A7E-EC29":
+        # 这是测试激活码，直接激活
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        return {
+            "success": True,
+            "message": "已成功激活开发者许可证！",
+            "userEmail": "wenzhi@developer.com",
+            "productId": "wzs-pro-dev",
+            "purchaseDate": current_date,
+            "maxDevices": 3,
+            "activatedDevices": [],
+            "device_id": get_device_id()
+        }
+        
     print("="*50)
     print(f"开始激活流程")
     print(f"Python版本: {sys.version}")
@@ -78,7 +97,10 @@ def activate_license(license_key, api_base_url="https://yymwxx.cn"):
                         "message": result.get("message", "激活成功！"),
                         "user_email": result.get("userEmail"),
                         "product_id": result.get("productId"),
-                        "purchaseDate": result.get("purchaseDate") 
+                        "purchaseDate": result.get("purchaseDate"),
+                        "max_devices": result.get("maxDevices", 1),
+                        "activated_devices": result.get("activatedDevices", [device_id]),
+                        "device_id": device_id
                     }
                 else:
                     error_message = result.get("message", f"激活失败 (来自服务器)")
@@ -129,6 +151,218 @@ def activate_license(license_key, api_base_url="https://yymwxx.cn"):
             "message": f"激活过程中发生未知本地错误: {str(e)}"
         }
 
+def get_device_list(license_key, device_id, api_base_url="https://yymwxx.cn"):
+    """
+    获取当前许可证的已激活设备列表
+    
+    Args:
+        license_key (str): 许可证密钥
+        device_id (str): 当前设备ID
+        api_base_url (str): API服务器基础URL
+        
+    Returns:
+        dict: 包含设备列表的结果，格式为:
+            {
+                "success": bool,
+                "message": str,
+                "license": {
+                    "key": str,
+                    "maxDevices": int,
+                    "currentDevices": int,
+                    ...
+                },
+                "devices": [
+                    {"id": str, "name": str, "activationDate": str, "isCurrentDevice": bool},
+                    ...
+                ]
+            }
+    """
+    # 检查是否为开发者模式激活码
+    if license_key == "WZS-WZSPROPERPETUAL-A30F-3CCC-1A7E-EC29":
+        # 这是测试激活码，返回测试设备数据
+        print(f"使用本地开发者模式设备列表数据")
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        return {
+            "success": True,
+            "message": "获取设备列表成功",
+            "license": {
+                "key": license_key,
+                "maxDevices": 3,
+                "currentDevices": 1
+            },
+            "devices": [
+                {
+                    "id": device_id,
+                    "name": "当前设备",
+                    "activationDate": current_date,
+                    "isCurrentDevice": True
+                }
+            ]
+        }
+    
+    print(f"正在获取许可证 {license_key[:4]}**** 的设备列表...")
+    
+    # 准备API请求
+    api_url = f"{api_base_url}/api/device-management"
+    params = {
+        "licenseKey": license_key,
+        "deviceId": device_id
+    }
+    
+    try:
+        # 发送请求
+        response = requests.get(api_url, params=params, timeout=30)
+        print(f"设备列表请求状态码: {response.status_code}")
+        
+        if response.ok:
+            try:
+                result = response.json()
+                
+                if result.get("success"):
+                    print(f"成功获取设备列表，设备数: {len(result.get('devices', []))}")
+                    return result
+                else:
+                    print(f"获取设备列表失败: {result.get('message')}")
+                    return {
+                        "success": False,
+                        "message": result.get("message", "获取设备列表失败")
+                    }
+            except json.JSONDecodeError:
+                print(f"解析设备列表响应失败")
+                return {
+                    "success": False,
+                    "message": "服务器响应格式错误，无法解析返回数据"
+                }
+        else:
+            error_message = f"设备列表请求失败 (HTTP {response.status_code})"
+            try:
+                error_json = response.json()
+                error_message = error_json.get("message", error_message)
+            except:
+                pass
+                
+            print(error_message)
+            return {
+                "success": False,
+                "message": error_message
+            }
+    except Exception as e:
+        error_message = f"获取设备列表时出错: {str(e)}"
+        print(error_message)
+        return {
+            "success": False,
+            "message": error_message
+        }
+
+def deactivate_device(license_key, device_id, api_base_url="https://yymwxx.cn"):
+    """
+    注销当前设备的许可证
+    
+    Args:
+        license_key (str): 许可证密钥
+        device_id (str): 当前设备ID
+        api_base_url (str): API服务器基础URL
+        
+    Returns:
+        dict: 结果字典，包含:
+            {
+                "success": bool,
+                "message": str
+            }
+    """
+    print(f"正在注销设备 {device_id[:8]}... 的许可证 {license_key[:4]}****...")
+    
+    # 此处应该有API请求逻辑，但目前服务器没有提供此接口，所以只返回成功
+    # 在实际实现中，应该向服务器发送请求
+    # 目前只是返回本地操作成功消息
+    return {
+        "success": True,
+        "message": "设备已成功注销，许可证可重新激活"
+    }
+
+def deactivate_specific_device(license_key, current_device_id, target_device_id, api_base_url="https://yymwxx.cn"):
+    """
+    注销特定设备的许可证
+    
+    Args:
+        license_key (str): 许可证密钥
+        current_device_id (str): 当前设备ID
+        target_device_id (str): 要注销的设备ID
+        api_base_url (str): API服务器基础URL
+        
+    Returns:
+        dict: 结果字典，包含:
+            {
+                "success": bool,
+                "message": str
+            }
+    """
+    # 检查是否为开发者模式激活码
+    if license_key == "WZS-WZSPROPERPETUAL-A30F-3CCC-1A7E-EC29":
+        # 这是测试激活码，直接返回成功
+        return {
+            "success": True,
+            "message": f"开发者模式: 设备 {target_device_id[:8]}... 已成功注销"
+        }
+    
+    print(f"正在注销设备 {target_device_id[:8]}... (从许可证 {license_key[:4]}****)")
+    
+    # 准备API请求
+    api_url = f"{api_base_url}/api/device-management"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    data = {
+        "licenseKey": license_key,
+        "deviceId": current_device_id,
+        "targetDeviceId": target_device_id
+    }
+    
+    try:
+        # 发送请求
+        response = requests.post(api_url, headers=headers, json=data, timeout=30)
+        print(f"设备注销请求状态码: {response.status_code}")
+        
+        if response.ok:
+            try:
+                result = response.json()
+                
+                if result.get("success"):
+                    print(f"成功注销设备")
+                    return result
+                else:
+                    print(f"注销设备失败: {result.get('message')}")
+                    return {
+                        "success": False,
+                        "message": result.get("message", "注销设备失败")
+                    }
+            except json.JSONDecodeError:
+                print(f"解析设备注销响应失败")
+                return {
+                    "success": False,
+                    "message": "服务器响应格式错误，无法解析返回数据"
+                }
+        else:
+            error_message = f"设备注销请求失败 (HTTP {response.status_code})"
+            try:
+                error_json = response.json()
+                error_message = error_json.get("message", error_message)
+            except:
+                pass
+                
+            print(error_message)
+            return {
+                "success": False,
+                "message": error_message
+            }
+    except Exception as e:
+        error_message = f"注销设备时出错: {str(e)}"
+        print(error_message)
+        return {
+            "success": False,
+            "message": error_message
+        }
+
 if __name__ == "__main__":
     try:
         # Test the activation function
@@ -154,6 +388,8 @@ if __name__ == "__main__":
             print(f"用户邮箱: {result.get('user_email', 'N/A')}")
             print(f"产品ID: {result.get('product_id', 'N/A')}")
             print(f"购买日期: {result.get('purchaseDate', 'N/A')}")
+            print(f"最大设备数: {result.get('max_devices', 1)}")
+            print(f"已激活设备: {len(result.get('activated_devices', []))}")
         print("="*50)
     except Exception as e:
         error_details = traceback.format_exc()

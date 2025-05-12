@@ -12,6 +12,13 @@ const YIPAY_KEY = process.env.PAYMENT_YIPAY_MD5_KEY;
 const YIPAY_API_URL = process.env.YIPAY_API_URL;
 const FRONTEND_SUCCESS_URL = process.env.FRONTEND_SUCCESS_URL || 'https://azariasy.github.io/-wen-zhi-sou-website/purchase-success.html'; // 前端支付成功跳转页
 
+// 文智搜产品定价变体
+const PRODUCT_VARIANTS = {
+  "wenzhisou-pro-1device": { description: "文智搜专业版 (1台设备授权)", max_devices: 1, amount: 9.9 },
+  "wenzhisou-pro-3device": { description: "文智搜专业版 (3台设备授权)", max_devices: 3, amount: 19.9 },
+  "wenzhisou-pro-6device": { description: "文智搜专业版 (6台设备授权)", max_devices: 6, amount: 49.9 }
+};
+
 // 辅助函数：生成MD5签名
 function generateSign(params, apiKey) {
     const sortedKeys = Object.keys(params).sort();
@@ -46,14 +53,14 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
         console.log('Request body:', req.body);
         try {
-            const { email, productId, amount, description, paymentType = 'alipay' } = req.body;
+            const { email, productId = "wenzhisou-pro-1device" } = req.body;
 
             if (!MONGODB_URI || !YIPAY_PID || !YIPAY_KEY || !YIPAY_API_URL) {
                 console.error('关键环境变量未配置!');
                 return res.status(500).json({ code: 1, msg: '服务器配置错误，请联系管理员' });
             }
             
-            if (!email || !productId || !amount || !description) {
+            if (!email || !productId) {
                 return res.status(400).json({ code: 1, msg: '缺少必要的参数' });
             }
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,13 +77,19 @@ module.exports = async (req, res) => {
                 return res.status(400).json({ code: 1, msg: '金额无效' });
             }
 
+            // 获取产品变体信息
+            const variant = PRODUCT_VARIANTS[productId] || PRODUCT_VARIANTS["wenzhisou-pro-1device"];
+            const amount = variant.amount;
+            const description = variant.description;
+            const max_devices = variant.max_devices;
+
             const orderNo = `WZS${Date.now()}${Math.floor(Math.random() * 10000)}`;
             const notifyUrl = `https://yymwxx.cn/api/payment-callback`;
             const returnUrl = FRONTEND_SUCCESS_URL;
 
             const yipayParams = {
                 pid: YIPAY_PID,
-                type: paymentType,
+                type: 'alipay',
                 out_trade_no: orderNo,
                 notify_url: notifyUrl,
                 return_url: returnUrl,
@@ -105,12 +118,14 @@ module.exports = async (req, res) => {
                 const db = client.db(DB_NAME); // 使用从环境变量读取或默认的DB_NAME
                 const ordersCollection = db.collection('orders');
 
-                const orderDocument = {
+                const orderData = {
                     orderNo,
                     userEmail: email,
                     productId,
-                    amount: parseFloat(amount),
+                    amount,
                     description,
+                    max_devices,           // 新增: 最大设备数
+                    activated_devices: [], // 新增: 已激活设备列表
                     status: "pending",
                     paymentGateway: "yipay",
                     gatewayParamsChecksum: crypto.createHash('md5').update(JSON.stringify(yipayParams)).digest('hex'),
@@ -118,7 +133,7 @@ module.exports = async (req, res) => {
                     updatedAt: new Date(),
                     licenseKey: null,
                 };
-                await ordersCollection.insertOne(orderDocument);
+                await ordersCollection.insertOne(orderData);
                 console.log(`订单已存入数据库 ${DB_NAME}.orders:`, orderNo);
 
             } catch (dbError) {

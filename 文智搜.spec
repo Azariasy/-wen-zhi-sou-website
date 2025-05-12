@@ -38,6 +38,8 @@ a = Analysis(
         ('requirements.txt', '.'),
         ('license_activation.py', '.'),
         ('generate_device_id.py', '.'),
+        ('device_manager_dialog.py', '.'),
+        ('license_manager.py', '.'),
     ],
     hiddenimports=[
         # 中文分词

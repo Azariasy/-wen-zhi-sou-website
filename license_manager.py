@@ -75,7 +75,10 @@ class LicenseManager:
             "activation_date": "",
             "expiration_date": "",
             "user_name": "",
-            "user_email": ""
+            "user_email": "",
+            "max_devices": 1,              # 默认最大设备数
+            "current_device_id": "",       # 当前设备ID
+            "activated_devices": []        # 已激活设备列表
         }
         
         # 记录设置文件路径（调试信息）
@@ -89,82 +92,54 @@ class LicenseManager:
             logger.warning("设置中不存在许可证信息，使用默认值")
             print("DEBUG: 未找到许可证信息，使用默认值（未激活状态）")
             return default_info
-            
+        
+        # 从加密存储中解码
         try:
-            # 解码和解析保存的许可证信息
-            decoded_base64 = base64.b64decode(encoded_info).decode('utf-8')
-            # 解混淆：恢复替换的字符并反转字符串
-            deobfuscated = decoded_base64.replace('*', '"').replace('#', ':')[::-1]
-            license_info = json.loads(deobfuscated)
+            decoded_json = self._decrypt_license_data(encoded_info)
+            license_info = json.loads(decoded_json)
             
-            # 打印基本调试信息
-            status = license_info.get("status", "未知")
-            key = license_info.get("key", "")
-            key_truncated = key[:8] + '...' if key else 'None'
-            logger.info(f"成功加载许可证信息，状态: {status}, 密钥: {key_truncated}")
-            print(f"DEBUG: 成功加载许可证信息，状态: {status}, 密钥: {key_truncated}")
-            
-            # 验证加载的信息中包含所有必需的字段
+            # 确保所有必要的字段都存在
             for key in default_info:
                 if key not in license_info:
-                    logger.warning(f"加载的许可证信息缺少字段: {key}")
                     license_info[key] = default_info[key]
             
-            # 验证数据完整性
-            if "_checksum" in license_info:
-                stored_checksum = license_info.pop("_checksum")
-                calculated_checksum = self._generate_checksum(license_info)
-                if stored_checksum != calculated_checksum:
-                    logger.warning("许可证信息校验和不匹配，可能已被篡改")
-                    print("DEBUG: 许可证信息校验失败，使用默认值（未激活状态）")
-                    return default_info
+            # 检查许可证状态和有效期
+            if license_info["status"] == LicenseStatus.ACTIVE:
+                # 检查是否过期
+                if license_info["expiration_date"]:
+                    try:
+                        # 尝试将过期日期解析为datetime对象
+                        expiration_date = datetime.fromisoformat(license_info["expiration_date"])
+                        now = datetime.now()
+                        
+                        # 如果过期，更新状态为过期
+                        if now > expiration_date:
+                            license_info["status"] = LicenseStatus.EXPIRED
+                            logger.info("许可证已过期")
+                            print(f"DEBUG: 许可证已过期。过期日期: {expiration_date.strftime('%Y-%m-%d')}")
+                        else:
+                            # 计算剩余天数
+                            days_left = (expiration_date - now).days
+                            license_info["days_left"] = days_left
+                            logger.info(f"许可证有效，剩余 {days_left} 天")
+                            print(f"DEBUG: 许可证有效。还剩余: {days_left} 天")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"解析过期日期时出错: {e}")
+                        print(f"DEBUG: 解析过期日期时出错: {e}")
+                        # 如果无法解析日期，假设许可证仍然有效
+                        license_info["days_left"] = "未知"
                 else:
-                    logger.debug("许可证校验和验证通过")
-            else:
-                logger.warning("许可证信息中缺少校验和字段")
-            
-            # 移除额外的内部字段
-            if "_last_saved" in license_info:
-                last_saved = license_info.pop("_last_saved")
-                logger.debug(f"许可证上次保存时间: {last_saved}")
-            
-            # 检查许可证是否已过期
-            if license_info["status"] == LicenseStatus.ACTIVE and license_info["expiration_date"]:
-                try:
-                    expiration_date = datetime.fromisoformat(license_info["expiration_date"])
-                    now = datetime.now()
-                    days_left = (expiration_date - now).days
-                    
-                    if expiration_date < now:
-                        logger.info(f"许可证已过期，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
-                        print(f"DEBUG: 许可证已过期，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
-                        license_info["status"] = LicenseStatus.EXPIRED
-                    else:
-                        logger.info(f"许可证有效，剩余天数: {days_left}，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
-                        print(f"DEBUG: 许可证有效，剩余天数: {days_left}，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
-                except ValueError as ve:
-                    logger.error(f"无效的过期日期格式: {license_info['expiration_date']} - {ve}")
-            # 处理永久许可证（无过期日期）
-            elif license_info["status"] == LicenseStatus.ACTIVE and not license_info["expiration_date"]:
-                logger.info("许可证有效，永久版无过期日期")
-                print("DEBUG: 许可证有效，永久版无过期日期")
-                
-                # 检查密钥是否以WZS-WZSP开头，如果是，确保被识别为永久版
-                key = license_info.get("key", "")
-                if key and key.upper().startswith("WZS-WZSP"):
-                    logger.info(f"根据密钥前缀确认为永久版: {key[:8]}...")
-                    print(f"DEBUG: 确认永久许可证: {key[:8]}...")
+                    # 如果没有过期日期，表示永久许可证
+                    license_info["days_left"] = "永久"
+                    logger.info("永久许可证")
+                    print("DEBUG: 许可证是永久有效的")
             
             return license_info
-        except json.JSONDecodeError as je:
-            logger.error(f"解析许可证JSON数据时出错: {je}")
-            print(f"ERROR: 无法解析许可证数据，格式错误: {je}")
-            return default_info
+            
         except Exception as e:
-            logger.error(f"加载许可证信息时出错: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            print(f"ERROR: 加载许可证信息失败: {e}")
+            logger.error(f"解码许可证信息时出错: {e}")
+            print(f"DEBUG: 解码许可证信息出错: {e}")
+            # 出错时返回默认许可证信息
             return default_info
     
     def _save_license_info(self):
@@ -226,6 +201,29 @@ class LicenseManager:
             print(f"ERROR: 保存许可证信息失败: {e}")
             return False
     
+    def _decrypt_license_data(self, encoded_info):
+        """
+        解密存储的许可证信息
+        
+        Args:
+            encoded_info: 编码后的许可证信息
+            
+        Returns:
+            str: 解码后的JSON字符串
+        """
+        try:
+            # 解码base64
+            decoded_bytes = base64.b64decode(encoded_info)
+            # 解码为字符串
+            obfuscated = decoded_bytes.decode('utf-8')
+            # 反向混淆：还原字符替换并倒序回来
+            serialized = obfuscated.replace('*', '"').replace('#', ':')[::-1]
+            
+            return serialized
+        except Exception as e:
+            logger.error(f"解码许可证数据时出错: {e}")
+            raise
+    
     def activate_license(self, license_key, user_name="", user_email=""):
         """
         激活许可证
@@ -245,30 +243,25 @@ class LicenseManager:
         if not self._validate_key_format(license_key):
             return False, "无效的许可证密钥格式，请确保格式为：XXXX-XXXX-XXXX-XXXX"
         
-        # 模拟简单的密钥检查
-        # 在实际产品中，这里应该有更真实和安全的验证逻辑
-        # 例如，检查密钥是否已被使用、是否在有效密钥列表中等
+        # 验证是否为演示密钥
+        demo_prefix = "DEMO-"
+        is_demo = license_key.startswith(demo_prefix)
+        if is_demo:
+            logger.info(f"检测到演示版密钥: {license_key}")
+            license_key = license_key[len(demo_prefix):]  # 去掉演示前缀
         
-        # 检查是否为演示密钥（仅用于测试，限制某些功能或有效期）
-        is_demo = license_key.startswith("DEMO")
-        
-        # 设置激活日期为当前日期
+        # 获取当前日期作为激活日期
         activation_date = datetime.now()
         
-        # 根据是否为演示密钥设置不同的过期日期
-        if is_demo:
-            # 演示密钥有效期为30天
-            expiration_date = activation_date + timedelta(days=30)
-        else:
-            # 正常密钥有效期为一年
-            expiration_date = activation_date + timedelta(days=365)
+        # 所有许可证都设为永久有效
+        expiration_date = None
         
         # 更新许可证信息
         self._license_info.update({
             "status": LicenseStatus.ACTIVE,
             "key": license_key,
             "activation_date": activation_date.isoformat(),
-            "expiration_date": expiration_date.isoformat(),
+            "expiration_date": "",
             "user_name": user_name,
             "user_email": user_email
         })
@@ -277,14 +270,14 @@ class LicenseManager:
         self._save_license_info()
         
         # 调试信息：记录激活成功
-        logger.info(f"许可证已成功激活。密钥: {license_key}, 状态: {self._license_info['status']}, 到期日期: {self._license_info['expiration_date']}")
-        print(f"DEBUG: 许可证成功激活。状态: {self._license_info['status']}, 到期日期: {expiration_date.strftime('%Y-%m-%d')}")
+        logger.info(f"许可证已成功激活。密钥: {license_key}, 状态: {self._license_info['status']}, 永久有效")
+        print(f"DEBUG: 许可证成功激活。状态: {self._license_info['status']}, 永久有效")
         
         # 返回成功消息，根据是否为演示版显示不同的信息
         if is_demo:
-            return True, f"演示版许可证已成功激活，有效期为30天，到期日期: {expiration_date.strftime('%Y-%m-%d')}"
+            return True, f"演示版许可证已成功激活，永久有效"
         else:
-            return True, f"许可证已成功激活，有效期至 {expiration_date.strftime('%Y-%m-%d')}"
+            return True, f"许可证已成功激活，永久有效"
     
     def update_and_save_license_details(self, details_dict):
         """
@@ -346,21 +339,34 @@ class LicenseManager:
                 logger.info("许可证配置为永久有效，无过期日期。")
                 print("DEBUG: 永久许可证成功激活，无过期日期限制。")
             else:
-                # 对于非永久版，尝试从激活日期计算一年有效期
-                # 注意：更可靠的做法是服务器API应该直接返回过期日期
-                try:
-                    # 从存储的ISO格式激活日期创建datetime对象
-                    # self._license_info["activation_date"] 现在应该是ISO格式字符串
-                    activation_dt_for_expiry = datetime.fromisoformat(self._license_info["activation_date"])
-                    expiration_dt = activation_dt_for_expiry + timedelta(days=365) # 假设一年有效期
-                    self._license_info["expiration_date"] = expiration_dt.isoformat()
-                    logger.info(f"产品 {product_id or '未知'} (非永久) 激活，计算有效期至: {self._license_info['expiration_date']}")
-                except ValueError as ve:
-                    logger.error(f"计算过期日期时，激活日期 '{self._license_info['activation_date']}' 格式无效: {ve}。过期日期未设置。")
-                    self._license_info["expiration_date"] = ""
+                # 所有许可证都设置为永久有效
+                self._license_info["expiration_date"] = "" # 永久版无过期
+                logger.info("所有许可证均为永久有效，无过期日期。")
+                print("DEBUG: 许可证成功激活，永久有效，无过期日期限制。")
 
             self._license_info["user_name"] = details_dict.get("user_name", "") 
             self._license_info["user_email"] = details_dict.get("user_email", "")
+            
+            # 添加多设备支持
+            self._license_info["max_devices"] = details_dict.get("max_devices", 1)
+            
+            # 更新当前设备ID
+            from generate_device_id import get_device_id
+            current_device_id = details_dict.get("device_id", "")
+            if not current_device_id:
+                try:
+                    current_device_id = get_device_id()
+                except Exception as e:
+                    logger.error(f"获取设备ID时出错: {e}")
+                    current_device_id = ""
+            self._license_info["current_device_id"] = current_device_id
+            
+            # 更新已激活设备列表
+            activated_devices = details_dict.get("activated_devices", [])
+            if activated_devices:
+                self._license_info["activated_devices"] = activated_devices
+            elif current_device_id and current_device_id not in self._license_info["activated_devices"]:
+                self._license_info["activated_devices"].append(current_device_id)
             
             self._save_license_info()
             logger.info("已成功使用API返回的详细信息更新并保存许可证。")
@@ -381,6 +387,23 @@ class LicenseManager:
         if self._license_info["status"] == LicenseStatus.INACTIVE:
             return False, "没有激活的许可证可供停用"
         
+        # 尝试通知服务器停用此设备
+        if self._license_info["key"] and self._license_info["current_device_id"]:
+            try:
+                from license_activation import deactivate_device
+                # 调用API注销当前设备
+                result = deactivate_device(
+                    self._license_info["key"], 
+                    self._license_info["current_device_id"]
+                )
+                
+                if result.get("success"):
+                    logger.info(f"成功通知服务器停用设备: {self._license_info['current_device_id']}")
+                else:
+                    logger.warning(f"无法通知服务器停用设备: {result.get('message')}")
+            except Exception as e:
+                logger.error(f"尝试停用设备时出错: {e}")
+        
         # 重置许可证信息
         self._license_info = {
             "status": LicenseStatus.INACTIVE,
@@ -388,13 +411,99 @@ class LicenseManager:
             "activation_date": "",
             "expiration_date": "",
             "user_name": "",
-            "user_email": ""
+            "user_email": "",
+            "max_devices": 1,
+            "current_device_id": "",
+            "activated_devices": []
         }
         
         # 保存更新后的许可证信息
         self._save_license_info()
         
         return True, "许可证已成功停用"
+    
+    def get_device_list(self):
+        """
+        获取当前许可证的设备列表
+        
+        Returns:
+            dict: 包含设备信息的字典，如{"max_devices": 3, "current_devices": 2, "device_list": [{"id": "...", "name": "当前设备"}]}
+        """
+        if self._license_info["status"] != LicenseStatus.ACTIVE:
+            return {"max_devices": 0, "current_devices": 0, "device_list": []}
+        
+        # 尝试从服务器获取最新设备列表
+        try:
+            from license_activation import get_device_list
+            current_device_id = self._license_info["current_device_id"]
+            if not current_device_id:
+                from generate_device_id import get_device_id
+                current_device_id = get_device_id()
+                self._license_info["current_device_id"] = current_device_id
+                self._save_license_info()
+            
+            result = get_device_list(self._license_info["key"], current_device_id)
+            
+            if result.get("success"):
+                # 更新本地存储的信息
+                self._license_info["max_devices"] = result.get("license", {}).get("maxDevices", self._license_info["max_devices"])
+                self._license_info["activated_devices"] = [device["id"] for device in result.get("devices", [])]
+                self._save_license_info()
+                return {
+                    "max_devices": self._license_info["max_devices"],
+                    "current_devices": len(self._license_info["activated_devices"]),
+                    "device_list": result.get("devices", [])
+                }
+            else:
+                logger.warning(f"获取设备列表失败: {result.get('message')}")
+        except Exception as e:
+            logger.error(f"获取设备列表时出错: {e}")
+        
+        # 如果无法从服务器获取，则返回本地存储的信息
+        return {
+            "max_devices": self._license_info["max_devices"],
+            "current_devices": len(self._license_info["activated_devices"]),
+            "device_list": [
+                {"id": self._license_info["current_device_id"], "name": "当前设备", "isCurrentDevice": True}
+            ]
+        }
+    
+    def deactivate_specific_device(self, device_id):
+        """
+        停用特定设备
+        
+        Args:
+            device_id: 要停用的设备ID
+            
+        Returns:
+            tuple: (成功状态, 消息)
+        """
+        if self._license_info["status"] != LicenseStatus.ACTIVE:
+            return False, "没有激活的许可证"
+        
+        if device_id == self._license_info["current_device_id"]:
+            return False, "无法停用当前设备，请使用注销功能"
+        
+        try:
+            from license_activation import deactivate_specific_device
+            result = deactivate_specific_device(
+                self._license_info["key"],
+                self._license_info["current_device_id"],
+                device_id
+            )
+            
+            if result.get("success"):
+                # 更新本地存储的信息
+                if device_id in self._license_info["activated_devices"]:
+                    self._license_info["activated_devices"].remove(device_id)
+                    self._save_license_info()
+                
+                return True, f"设备已成功停用。当前已激活 {result.get('currentDevices', len(self._license_info['activated_devices']))} 个设备，最多可激活 {result.get('maxDevices', self._license_info['max_devices'])} 个设备"
+            else:
+                return False, result.get("message", "停用设备失败")
+        except Exception as e:
+            logger.error(f"尝试停用设备时出错: {e}")
+            return False, f"停用设备时发生错误: {str(e)}"
     
     def get_license_status(self):
         """
