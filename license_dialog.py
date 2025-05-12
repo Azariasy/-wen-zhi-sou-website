@@ -165,11 +165,22 @@ class LicenseDialog(QDialog):
         self.activation_date_label.setText(license_info.get("activation_date_display", "无"))
         
         if status == LicenseStatus.ACTIVE:
-            self.expiration_date_label.setText(license_info.get("expiration_date_display", "无"))
-            self.days_left_label.setText(f"{license_info.get('days_left', 0)} 天")
+            # 检查是否为永久许可证
+            is_perpetual = not license_info.get("expiration_date") or license_info.get("is_perpetual", False)
+            
+            if is_perpetual:
+                self.expiration_date_label.setText("永久有效")
+                self.days_left_label.setText("无限制")
+                self.days_left_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.expiration_date_label.setText(license_info.get("expiration_date_display", "无"))
+                days_left = license_info.get('days_left', 0)
+                self.days_left_label.setText(f"{days_left} 天")
+                self.days_left_label.setStyleSheet("color: green;")
         else:
             self.expiration_date_label.setText("无" if status == LicenseStatus.INACTIVE else license_info.get("expiration_date_display", "无"))
             self.days_left_label.setText("0 天" if status == LicenseStatus.EXPIRED else "无")
+            self.days_left_label.setStyleSheet("")
         
         self.user_name_label.setText(license_info["user_name"] or "无")
         self.user_email_label.setText(license_info["user_email"] or "无")

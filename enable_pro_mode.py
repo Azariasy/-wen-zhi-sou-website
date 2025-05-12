@@ -54,7 +54,8 @@ def check_features():
         (Features.ARCHIVE_SUPPORT, "压缩包内容支持"),
         (Features.WILDCARDS, "通配符搜索"),
         (Features.UNLIMITED_DIRS, "无限制源目录"),
-        (Features.ADVANCED_THEMES, "高级主题支持")
+        (Features.ADVANCED_THEMES, "高级主题支持"),
+        (Features.FOLDER_TREE, "文件夹树视图")
     ]
     
     for feature_id, feature_name in features:

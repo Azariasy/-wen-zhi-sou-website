@@ -35,6 +35,7 @@ class Features:
     WILDCARDS = "wildcards"               # 通配符搜索支持
     UNLIMITED_DIRS = "unlimited_dirs"     # 无限制源目录
     ADVANCED_THEMES = "advanced_themes"   # 高级主题支持
+    FOLDER_TREE = "folder_tree"           # 搜索结果文件夹树视图
     
     # 工具方法
     @staticmethod
@@ -47,7 +48,8 @@ class Features:
             Features.ARCHIVE_SUPPORT,
             Features.WILDCARDS,
             Features.UNLIMITED_DIRS,
-            Features.ADVANCED_THEMES
+            Features.ADVANCED_THEMES,
+            Features.FOLDER_TREE
         ]
 
 class LicenseStatus:
@@ -76,9 +78,16 @@ class LicenseManager:
             "user_email": ""
         }
         
+        # 记录设置文件路径（调试信息）
+        path = self.settings.fileName()
+        logger.debug(f"正在从设置文件加载许可证信息: {path}")
+        print(f"DEBUG: 正在从设置文件加载许可证: {path}")
+        
         # 从设置加载
         encoded_info = self.settings.value("license/info", "")
         if not encoded_info:
+            logger.warning("设置中不存在许可证信息，使用默认值")
+            print("DEBUG: 未找到许可证信息，使用默认值（未激活状态）")
             return default_info
             
         try:
@@ -87,6 +96,13 @@ class LicenseManager:
             # 解混淆：恢复替换的字符并反转字符串
             deobfuscated = decoded_base64.replace('*', '"').replace('#', ':')[::-1]
             license_info = json.loads(deobfuscated)
+            
+            # 打印基本调试信息
+            status = license_info.get("status", "未知")
+            key = license_info.get("key", "")
+            key_truncated = key[:8] + '...' if key else 'None'
+            logger.info(f"成功加载许可证信息，状态: {status}, 密钥: {key_truncated}")
+            print(f"DEBUG: 成功加载许可证信息，状态: {status}, 密钥: {key_truncated}")
             
             # 验证加载的信息中包含所有必需的字段
             for key in default_info:
@@ -100,25 +116,55 @@ class LicenseManager:
                 calculated_checksum = self._generate_checksum(license_info)
                 if stored_checksum != calculated_checksum:
                     logger.warning("许可证信息校验和不匹配，可能已被篡改")
+                    print("DEBUG: 许可证信息校验失败，使用默认值（未激活状态）")
                     return default_info
+                else:
+                    logger.debug("许可证校验和验证通过")
+            else:
+                logger.warning("许可证信息中缺少校验和字段")
             
             # 移除额外的内部字段
             if "_last_saved" in license_info:
-                license_info.pop("_last_saved")
+                last_saved = license_info.pop("_last_saved")
+                logger.debug(f"许可证上次保存时间: {last_saved}")
             
             # 检查许可证是否已过期
             if license_info["status"] == LicenseStatus.ACTIVE and license_info["expiration_date"]:
                 try:
                     expiration_date = datetime.fromisoformat(license_info["expiration_date"])
-                    if expiration_date < datetime.now():
-                        logger.info("许可证已过期")
+                    now = datetime.now()
+                    days_left = (expiration_date - now).days
+                    
+                    if expiration_date < now:
+                        logger.info(f"许可证已过期，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
+                        print(f"DEBUG: 许可证已过期，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
                         license_info["status"] = LicenseStatus.EXPIRED
-                except ValueError:
-                    logger.error(f"无效的过期日期格式: {license_info['expiration_date']}")
+                    else:
+                        logger.info(f"许可证有效，剩余天数: {days_left}，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
+                        print(f"DEBUG: 许可证有效，剩余天数: {days_left}，过期日期: {expiration_date.strftime('%Y-%m-%d')}")
+                except ValueError as ve:
+                    logger.error(f"无效的过期日期格式: {license_info['expiration_date']} - {ve}")
+            # 处理永久许可证（无过期日期）
+            elif license_info["status"] == LicenseStatus.ACTIVE and not license_info["expiration_date"]:
+                logger.info("许可证有效，永久版无过期日期")
+                print("DEBUG: 许可证有效，永久版无过期日期")
+                
+                # 检查密钥是否以WZS-WZSP开头，如果是，确保被识别为永久版
+                key = license_info.get("key", "")
+                if key and key.upper().startswith("WZS-WZSP"):
+                    logger.info(f"根据密钥前缀确认为永久版: {key[:8]}...")
+                    print(f"DEBUG: 确认永久许可证: {key[:8]}...")
             
             return license_info
+        except json.JSONDecodeError as je:
+            logger.error(f"解析许可证JSON数据时出错: {je}")
+            print(f"ERROR: 无法解析许可证数据，格式错误: {je}")
+            return default_info
         except Exception as e:
             logger.error(f"加载许可证信息时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            print(f"ERROR: 加载许可证信息失败: {e}")
             return default_info
     
     def _save_license_info(self):
@@ -140,11 +186,45 @@ class LicenseManager:
             obfuscated = serialized[::-1].replace('"', '*').replace(':', '#')
             encoded = base64.b64encode(obfuscated.encode('utf-8')).decode('utf-8')
             
+            # 保存前记录状态和密钥信息（用于调试）
+            key_info = self._license_info.get('key', '')
+            key_truncated = key_info[:8] + '...' if key_info else 'None'
+            logger.info(f"正在保存许可证信息，当前状态: {self._license_info['status']}, 密钥: {key_truncated}")
+            
             # 保存到设置
             self.settings.setValue("license/info", encoded)
-            logger.info("许可证信息已保存")
+            
+            # 确保立即写入磁盘
+            sync_result = self.settings.sync()
+            logger.info(f"许可证信息已保存并同步到磁盘，sync()返回: {sync_result}")
+            
+            # 验证保存是否成功
+            saved_value = self.settings.value("license/info", "")
+            if saved_value == encoded:
+                logger.info("许可证信息验证成功，已正确保存到设置中")
+            else:
+                logger.warning("许可证信息验证失败，保存的值与原始值不匹配")
+                
+            # 打印当前保存的内容用于调试
+            status = self._license_info['status']
+            logger.debug(f"保存的许可证状态: {status}")
+            if status == LicenseStatus.ACTIVE:
+                exp_date = self._license_info.get('expiration_date', '未设置')
+                logger.debug(f"保存的许可证有效期: {exp_date}")
+                
+            # 打印设置文件路径（仅用于调试）
+            path = self.settings.fileName()
+            logger.debug(f"设置文件路径: {path}")
+            print(f"DEBUG: 许可证信息已保存到: {path}")
+            
+            return True
+            
         except Exception as e:
             logger.error(f"保存许可证信息时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            print(f"ERROR: 保存许可证信息失败: {e}")
+            return False
     
     def activate_license(self, license_key, user_name="", user_email=""):
         """
@@ -196,6 +276,10 @@ class LicenseManager:
         # 保存更新后的许可证信息
         self._save_license_info()
         
+        # 调试信息：记录激活成功
+        logger.info(f"许可证已成功激活。密钥: {license_key}, 状态: {self._license_info['status']}, 到期日期: {self._license_info['expiration_date']}")
+        print(f"DEBUG: 许可证成功激活。状态: {self._license_info['status']}, 到期日期: {expiration_date.strftime('%Y-%m-%d')}")
+        
         # 返回成功消息，根据是否为演示版显示不同的信息
         if is_demo:
             return True, f"演示版许可证已成功激活，有效期为30天，到期日期: {expiration_date.strftime('%Y-%m-%d')}"
@@ -241,10 +325,26 @@ class LicenseManager:
             # 根据product_id等信息确定过期日期
             product_id = details_dict.get("product_id", "")
             self._license_info["product_id"] = product_id # Store product_id
-
-            if "PERPETUAL" in product_id.upper():
+            
+            # 获取许可证密钥
+            license_key = details_dict.get("key", "")
+            
+            # 检查是否是永久许可证
+            # 1. 根据product_id判断
+            # 2. 如果许可证密钥以WZS-WZSP开头，视为永久版本
+            is_perpetual = False
+            
+            if product_id and "PERPETUAL" in product_id.upper():
+                is_perpetual = True
+                logger.info(f"基于product_id识别为永久版: {product_id}")
+            elif license_key and license_key.upper().startswith("WZS-WZSP"):
+                is_perpetual = True
+                logger.info(f"基于密钥前缀识别为永久版: {license_key[:8]}...")
+            
+            if is_perpetual:
                 self._license_info["expiration_date"] = "" # 永久版无过期
-                logger.info(f"产品 {product_id} 是永久版，无过期日期。")
+                logger.info("许可证配置为永久有效，无过期日期。")
+                print("DEBUG: 永久许可证成功激活，无过期日期限制。")
             else:
                 # 对于非永久版，尝试从激活日期计算一年有效期
                 # 注意：更可靠的做法是服务器API应该直接返回过期日期
@@ -254,11 +354,10 @@ class LicenseManager:
                     activation_dt_for_expiry = datetime.fromisoformat(self._license_info["activation_date"])
                     expiration_dt = activation_dt_for_expiry + timedelta(days=365) # 假设一年有效期
                     self._license_info["expiration_date"] = expiration_dt.isoformat()
-                    logger.info(f"产品 {product_id} (非永久) 激活，计算有效期至: {self._license_info['expiration_date']}")
+                    logger.info(f"产品 {product_id or '未知'} (非永久) 激活，计算有效期至: {self._license_info['expiration_date']}")
                 except ValueError as ve:
                     logger.error(f"计算过期日期时，激活日期 '{self._license_info['activation_date']}' 格式无效: {ve}。过期日期未设置。")
                     self._license_info["expiration_date"] = ""
-
 
             self._license_info["user_name"] = details_dict.get("user_name", "") 
             self._license_info["user_email"] = details_dict.get("user_email", "")
@@ -322,16 +421,23 @@ class LicenseManager:
             except ValueError:
                 info["activation_date_display"] = "未知"
                 
-        if info["expiration_date"]:
+        # 检查是否为永久版（无过期日期）
+        if not info["expiration_date"]:
+            info["expiration_date_display"] = "永久有效"
+            info["days_left"] = "∞" # 无限符号表示永久
+            info["is_perpetual"] = True
+        elif info["expiration_date"]:
             try:
                 expiration_date = datetime.fromisoformat(info["expiration_date"])
                 info["expiration_date_display"] = expiration_date.strftime("%Y-%m-%d")
                 # 计算剩余天数
                 days_left = (expiration_date - datetime.now()).days
                 info["days_left"] = max(0, days_left)
+                info["is_perpetual"] = False
             except ValueError:
                 info["expiration_date_display"] = "未知"
                 info["days_left"] = 0
+                info["is_perpetual"] = False
         
         return info
     
@@ -412,15 +518,79 @@ class LicenseManager:
 
 # 单例实例
 _license_manager_instance = None
+_license_manager_lock = None
+
+try:
+    import threading
+    _license_manager_lock = threading.Lock()
+except ImportError:
+    # 如果不可用，我们将没有锁机制，这在单线程环境中是可接受的
+    pass
 
 def get_license_manager():
     """
-    获取LicenseManager的单例实例
+    获取LicenseManager的单例实例。
+    确保整个应用程序使用同一个LicenseManager实例。
     
     Returns:
-        LicenseManager: 许可证管理器实例
+        LicenseManager: LicenseManager的单例实例
     """
+    # 使用全局变量来保存实例
     global _license_manager_instance
-    if _license_manager_instance is None:
-        _license_manager_instance = LicenseManager()
-    return _license_manager_instance 
+    global _license_manager_lock
+    
+    # 简单的同步机制，如果可用
+    if _license_manager_lock:
+        _license_manager_lock.acquire()
+        have_lock = True
+    else:
+        have_lock = False
+        
+    try:
+        # 如果实例不存在，创建一个新实例
+        if not '_license_manager_instance' in globals() or _license_manager_instance is None:
+            try:
+                _license_manager_instance = LicenseManager()
+                logger.info("创建了新的LicenseManager实例")
+                print("DEBUG: 已创建新的LicenseManager实例")
+                
+                # 加载并打印当前许可状态（用于调试）
+                status = _license_manager_instance.get_license_status()
+                license_info = _license_manager_instance.get_license_info()
+                
+                print(f"DEBUG: 许可状态: {status}")
+                if status == LicenseStatus.ACTIVE:
+                    exp_date = license_info.get('expiration_date', '未设置')
+                    days_left = license_info.get('days_left', 'N/A')
+                    print(f"DEBUG: 许可证有效期至: {exp_date} (剩余: {days_left}天)")
+                
+                # 确保设置同步到磁盘
+                _license_manager_instance.settings.sync()
+                print("DEBUG: 已同步许可证设置到磁盘")
+                
+            except Exception as e:
+                logger.error(f"创建LicenseManager实例时出错: {e}")
+                print(f"ERROR: 创建LicenseManager实例时出错: {e}")
+                # 如果发生错误，最好也记录堆栈跟踪
+                import traceback
+                logger.error(traceback.format_exc())
+                print(traceback.format_exc())
+                
+                # 出错时也要确保返回一个可用的实例
+                _license_manager_instance = LicenseManager()
+        else:
+            logger.debug("使用已存在的LicenseManager实例")
+    finally:
+        # 释放锁，如果我们获取了它
+        if have_lock and _license_manager_lock:
+            _license_manager_lock.release()
+    
+    return _license_manager_instance
+
+# 在模块加载时预先创建实例
+try:
+    _license_manager_instance = LicenseManager()
+    logger.debug("在模块加载时预先创建了LicenseManager实例")
+except Exception as e:
+    logger.error(f"在模块加载时预创建LicenseManager实例失败: {e}")
+    _license_manager_instance = None  # 重置为None，让get_license_manager尝试创建 

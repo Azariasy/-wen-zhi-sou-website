@@ -1,4 +1,13 @@
 import sys
+import io # 新增导入
+
+# 确保 stdout 和 stderr 在非控制台模式下是可写的
+# 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
+if sys.stdout is None:
+    sys.stdout = io.StringIO()  # 重定向到一个内存字符串缓冲区
+if sys.stderr is None:
+    sys.stderr = io.StringIO()  # 同样重定向到内存缓冲区，避免与您后续的文件重定向冲突
+
 # Import necessary classes from PySide6
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -994,10 +1003,23 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- ADDED: Initialize license manager AFTER UI elements but BEFORE applying settings ---
         self._init_license_manager()
+        
+        # --- 检查文件夹树功能是否可用 ---
+        folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
+        if not folder_tree_available:
+            # 如果不可用，隐藏文件夹树视图
+            self.folder_tree.setVisible(False)
+            # 调整分隔器的大小，使结果视图占据全部宽度
+            self.main_splitter.setSizes([0, 800])
         # ---------------------------------------
         
         # --- Apply Initial Settings (AFTER UI Elements Created) ---
         self.apply_theme(self.settings.value("ui/theme", "系统默认"))
+        
+        # 确保下拉箭头图标正确显示
+        theme_name = self.settings.value("ui/theme", "系统默认")
+        self._update_theme_icons(theme_name)
+            
         self._load_and_apply_default_sort()
         self._apply_result_font_size()
         self._load_search_history() # NOW safe to call
@@ -1014,6 +1036,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         splitter_state = self.settings.value("ui/splitterState")
         if splitter_state:
             self.main_splitter.restoreState(splitter_state)
+            
+        # --- 检查首次启动 ---
+        # 使用QTimer确保界面完全加载后再显示引导对话框
+        QTimer.singleShot(500, self._check_first_launch)
 
     def _create_search_bar(self):
         layout = QHBoxLayout()
@@ -1297,8 +1323,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # Apply any type filters
         self._filter_results_by_type_slot()
         
-        # 根据搜索结果构建文件夹树
-        self.folder_tree.build_folder_tree_from_results(backend_results)
+        # 根据许可证状态决定是否构建文件夹树
+        if self.license_manager.is_feature_available(Features.FOLDER_TREE):
+            # 只有在功能可用时才构建文件夹树
+            self.folder_tree.build_folder_tree_from_results(backend_results)
+        else:
+            # 确保文件夹树视图隐藏
+            self.folder_tree.setVisible(False)
+            # 重置过滤状态，因为树视图不可用
+            self.filtered_by_folder = False
+            self.current_filter_folder = None
     
     @Slot(str)
     def _filter_results_by_folder_slot(self, folder_path):
@@ -1307,6 +1341,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         Args:
             folder_path: 要过滤的文件夹路径
         """
+        # 检查文件夹树功能是否可用
+        if not self.license_manager.is_feature_available(Features.FOLDER_TREE):
+            # 功能不可用，显示提示消息
+            self.statusBar().showMessage("文件夹树视图是专业版功能", 3000)
+            return
+            
         if not self.original_search_results:
             return  # 没有结果可过滤
             
@@ -2087,8 +2127,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.filtered_by_folder = False
         self.current_filter_folder = None
         
-        # 根据搜索结果构建文件夹树
-        self.folder_tree.build_folder_tree_from_results(backend_results)
+        # 检查文件夹树功能是否可用
+        folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
+        if folder_tree_available:
+            # 仅当文件夹树功能可用时构建文件夹树
+            self.folder_tree.build_folder_tree_from_results(backend_results)
+        else:
+            # 如果功能不可用，确保文件夹树是空的
+            self.folder_tree.clear()
         
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
@@ -2481,6 +2527,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # --- Theme Handling ---
     def apply_theme(self, theme_name):
         """应用程序主题设置"""
+        from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
         
         # 检查非蓝色主题是否可用（是否有专业版许可证）
@@ -2561,6 +2608,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             # 将图标应用于应用程序范围的图标设置
                             app.setProperty("down_arrow_icon", down_arrow_icon)
                             print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                            
+                            # 直接应用箭头图标到所有下拉框
+                            self._apply_direct_arrow_icons(arrow_icon_path)
                     except Exception as e:
                         print(f"通过代码设置图标时发生错误: {e}")
                 else:
@@ -2625,6 +2675,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             # 将图标应用于应用程序范围的图标设置
                             app.setProperty("down_arrow_icon", down_arrow_icon)
                             print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                            
+                            # 直接应用到所有组合框，确保在打包环境中也可见
+                            from PySide6.QtWidgets import QComboBox, QApplication
+                            for widget in QApplication.allWidgets():
+                                if isinstance(widget, QComboBox):
+                                    widget.setStyleSheet(f"""
+                                        QComboBox::down-arrow {{
+                                            image: url({arrow_icon_path.replace('\\', '/')});
+                                            width: 14px;
+                                            height: 14px;
+                                        }}
+                                    """)
                     except Exception as e:
                         print(f"通过代码设置图标时发生错误: {e}")
                 else:
@@ -2689,6 +2751,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             # 将图标应用于应用程序范围的图标设置
                             app.setProperty("down_arrow_icon", down_arrow_icon)
                             print(f"已通过代码设置下拉箭头图标: {arrow_icon_path}")
+                            
+                            # 直接应用到所有组合框，确保在打包环境中也可见
+                            from PySide6.QtWidgets import QComboBox, QApplication
+                            for widget in QApplication.allWidgets():
+                                if isinstance(widget, QComboBox):
+                                    widget.setStyleSheet(f"""
+                                        QComboBox::down-arrow {{
+                                            image: url({arrow_icon_path.replace('\\', '/')});
+                                            width: 14px;
+                                            height: 14px;
+                                        }}
+                                    """)
                     except Exception as e:
                         print(f"通过代码设置图标时发生错误: {e}")
                 else:
@@ -2701,9 +2775,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         else:
             # 对于任何未知主题，使用现代蓝
             self._apply_fallback_blue_theme()
+            
+        # 确保所有主题图标正确显示
+        self._update_theme_icons(theme_name)
 
     def _apply_fallback_blue_theme(self):
         """在其他主题不可用时应用默认蓝色主题"""
+        from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
         try:
             # 使用资源路径解析器加载蓝色样式表
@@ -2803,6 +2881,33 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         current_font.setPointSize(font_size)     # Set the desired point size
         self.results_text.setFont(current_font)  # Apply the modified font
 
+    # --- 添加首次启动检查方法 ---
+    def _check_first_launch(self):
+        """检查是否是首次启动，如果是则引导用户设置索引"""
+        # 检查是否已运行过该软件
+        first_launch = self.settings.value("app/firstLaunch", True, type=bool)
+        
+        # 检查是否已配置源目录
+        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
+        
+        if first_launch or not source_dirs:
+            # 显示欢迎信息
+            welcome_msg = "欢迎使用文智搜!\n\n" \
+                          "为了帮助您开始使用，请先设置需要索引的文件夹。\n" \
+                          "点击确定将打开设置页面，您可以在其中添加要搜索的文件夹。\n\n" \
+                          "添加文件夹后，请点击\"创建索引\"按钮来开始索引过程。"
+            
+            QMessageBox.information(self, "首次启动设置", welcome_msg)
+            
+            # 自动打开索引设置对话框
+            self.show_index_settings_dialog_slot()
+            
+            # 添加主界面提示
+            self.statusBar().showMessage("请设置要索引的文件夹，然后点击\"创建索引\"按钮", 10000)
+            
+            # 记录已不是首次启动
+            self.settings.setValue("app/firstLaunch", False)
+
     # --- ADDED: Slots for handling update check results ---
     @Slot()
     def check_for_updates_slot(self):
@@ -2880,6 +2985,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 保存分隔器状态 ---
         self.settings.setValue("ui/splitterState", self.main_splitter.saveState())
         # -----------------------
+        
+        # --- 确保所有设置被写入磁盘 ---
+        self.settings.sync()
+        
+        # --- 确保许可证信息被保存 ---
+        if hasattr(self, 'license_manager'):
+            # 这将触发LicenseManager的_save_license_info方法
+            license_status = self.license_manager.get_license_status()
+            print(f"正在保存许可证状态: {license_status}")
+        # ---------------------------------
 
         # --- Stop Worker Thread --- 
         if self.worker_thread and self.worker_thread.isRunning():
@@ -3143,7 +3258,26 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.settings.setValue("ui/theme", "现代蓝")
             self.apply_theme("现代蓝")
         
-        # 5. 显示许可证状态在状态栏
+        # 5. 文件夹树功能检查
+        folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
+        # 更新文件夹树视图的可见性
+        if hasattr(self, 'folder_tree') and hasattr(self, 'main_splitter'):
+            if folder_tree_available:
+                # 如果功能可用且当前不可见，则显示文件夹树
+                if not self.folder_tree.isVisible():
+                    self.folder_tree.setVisible(True)
+                    # 恢复默认分隔比例 (文件夹树:搜索结果 = 1:3)
+                    self.main_splitter.setSizes([200, 600])
+                    print("文件夹树功能已启用，显示文件夹树视图")
+            else:
+                # 如果功能不可用且当前可见，则隐藏文件夹树
+                if self.folder_tree.isVisible():
+                    self.folder_tree.setVisible(False)
+                    # 调整分隔器的大小，使结果视图占据全部宽度
+                    self.main_splitter.setSizes([0, 800])
+                    print("文件夹树功能不可用，隐藏文件夹树视图")
+        
+        # 6. 显示许可证状态在状态栏
         if license_status == LicenseStatus.ACTIVE:
             status_msg = "专业版已激活"
             license_info = self.license_manager.get_license_info()
@@ -3229,6 +3363,72 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 "打开错误", 
                 f"打开{'文件' if is_file else '文件夹'}时发生错误: {abs_path}\n\n错误: {e}"
             )
+
+    def _apply_direct_arrow_icons(self, icon_path):
+        """
+        直接为所有下拉框设置箭头图标，解决打包环境下图标不显示的问题
+        
+        Args:
+            icon_path (str): 箭头图标的路径
+        """
+        if not os.path.exists(icon_path):
+            print(f"警告: 箭头图标文件不存在: {icon_path}")
+            return
+            
+        try:
+            # 获取应用程序实例
+            from PySide6.QtWidgets import QApplication, QComboBox
+            app = QApplication.instance()
+            
+            # 创建全局属性，存储图标路径
+            app.setProperty("arrow_icon_path", icon_path)
+            
+            # 确保路径中的反斜杠被替换为正斜杠（CSS路径要求）
+            safe_path = icon_path.replace('\\', '/')
+            
+            # 直接更新所有下拉框的样式
+            for widget in QApplication.allWidgets():
+                if isinstance(widget, QComboBox):
+                    current_style = widget.styleSheet()
+                    # 避免重复设置
+                    if "QComboBox::down-arrow" not in current_style:
+                        widget.setStyleSheet(current_style + f"""
+                            QComboBox::down-arrow {{
+                                image: url({safe_path});
+                                width: 14px;
+                                height: 14px;
+                            }}
+                        """)
+                        
+            print(f"已直接应用箭头图标到所有下拉框: {icon_path}")
+        except Exception as e:
+            print(f"应用箭头图标时发生错误: {e}")
+            import traceback
+            print(traceback.format_exc())
+
+    def _update_theme_icons(self, theme_name):
+        """根据当前主题更新所有图标，确保在打包环境中正确显示"""
+        try:
+            if theme_name == "现代蓝" or theme_name == "系统默认":
+                arrow_icon_path = get_resource_path("down_arrow_blue.png")
+            elif theme_name == "现代绿":
+                arrow_icon_path = get_resource_path("down_arrow_green.png")
+            elif theme_name == "现代紫":
+                arrow_icon_path = get_resource_path("down_arrow_purple.png")
+            else:
+                # 默认使用蓝色
+                arrow_icon_path = get_resource_path("down_arrow_blue.png")
+                
+            # 应用箭头图标到所有下拉框
+            if os.path.exists(arrow_icon_path):
+                self._apply_direct_arrow_icons(arrow_icon_path)
+                print(f"已更新主题图标: {theme_name}, 图标路径: {arrow_icon_path}")
+            else:
+                print(f"警告: 未找到主题图标: {arrow_icon_path}")
+        except Exception as e:
+            print(f"更新主题图标时出错: {e}")
+            import traceback
+            print(traceback.format_exc())
 
 # --- Skipped Files Dialog Class --- (NEW)
 class SkippedFilesDialog(QDialog):
