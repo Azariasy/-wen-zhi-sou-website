@@ -73,15 +73,17 @@ module.exports = async (req, res) => {
                 console.error(`邮箱格式校验失败: "${trimmedEmail}" 未通过正则 ${emailRegex.toString()}`);
                 return res.status(400).json({ code: 1, msg: '邮箱格式不正确' });
             }
-            if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-                return res.status(400).json({ code: 1, msg: '金额无效' });
-            }
 
             // 获取产品变体信息
             const variant = PRODUCT_VARIANTS[productId] || PRODUCT_VARIANTS["wenzhisou-pro-1device"];
             const amount = variant.amount;
             const description = variant.description;
             const max_devices = variant.max_devices;
+
+            if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+                console.error(`金额校验失败: productId="${productId}" 对应的 amount="${amount}" 无效`);
+                return res.status(400).json({ code: 1, msg: '产品金额配置无效' });
+            }
 
             const orderNo = `WZS${Date.now()}${Math.floor(Math.random() * 10000)}`;
             const notifyUrl = `https://yymwxx.cn/api/payment-callback`;

@@ -409,8 +409,19 @@
             // 获取选择的设备数量
             const deviceSelect = document.getElementById('device-option');
             const deviceCount = deviceSelect.value;
-            const deviceOption = deviceSelect.options[deviceSelect.selectedIndex].text;
-            
+            let productId;
+            if (deviceCount === '1') {
+                productId = 'wenzhisou-pro-1device';
+            } else if (deviceCount === '3') {
+                productId = 'wenzhisou-pro-3device';
+            } else if (deviceCount === '6') {
+                productId = 'wenzhisou-pro-6device';
+            } else {
+                console.error("无效的设备数量选择:", deviceCount);
+                alert('请选择有效的设备数量');
+                return;
+            }
+
             // 显示处理状态
             const purchaseBtn = document.getElementById('purchase-btn');
             const originalText = purchaseBtn.innerText;
@@ -422,13 +433,11 @@
                 // 请求参数
                 const orderData = {
                     email: userEmail,
-                    deviceCount: deviceCount,
-                    product: 'wzs-pro',
-                    productName: '文智搜专业版' + (deviceCount > 1 ? ` (${deviceCount}台设备)` : '')
+                    productId: productId
                 };
                 
                 // 调用创建订单API
-                const response = await fetch('/api/create-order', {
+                const response = await fetch('https://yymwxx.cn/api/create-order', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -438,12 +447,12 @@
                 
                 const data = await response.json();
                 
-                if (data.success && data.payUrl) {
+                if (data.code === 0 && data.payUrl) {
                     // 跳转到支付链接
                     window.location.href = data.payUrl;
                 } else {
                     // 显示错误
-                    alert('创建订单失败: ' + (data.message || '服务器错误，请稍后重试'));
+                    alert('创建订单失败: ' + (data.msg || '服务器错误，请稍后重试'));
                     // 恢复按钮状态
                     purchaseBtn.innerText = originalText;
                     purchaseBtn.style.backgroundColor = '';
