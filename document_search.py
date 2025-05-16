@@ -38,6 +38,65 @@ try:
 except ImportError:
     _license_manager_available = False
 
+# --- 添加标准化路径函数 ---
+def normalize_path_for_index(path_str):
+    """
+    标准化路径以确保在不同操作系统之间比较时的一致性。
+    
+    Args:
+        path_str (str): 要标准化的路径字符串
+        
+    Returns:
+        str: 标准化后的路径字符串
+    """
+    # 处理None或空字符串
+    if not path_str:
+        return ""
+        
+    try:
+        # 对于压缩包内的文件特殊处理
+        if "::" in path_str:
+            archive_path, internal_path = path_str.split("::", 1)
+            # 分别标准化压缩包路径和内部路径
+            norm_archive = normalize_path_for_index(archive_path)
+            # 内部路径只需要统一分隔符
+            norm_internal = internal_path.replace('\\', '/')
+            return f"{norm_archive}::{norm_internal}"
+            
+        # 普通文件路径处理
+        try:
+            # 尝试使用Path对象处理
+            path_obj = Path(path_str)
+            if path_obj.exists():
+                # 如果路径存在，使用resolve()获取绝对路径
+                norm_path = str(path_obj.resolve()).replace('\\', '/')
+            else:
+                # 如果路径不存在，则只进行基本的分隔符转换
+                norm_path = str(path_obj).replace('\\', '/')
+        except:
+            # 路径无法通过Path对象处理，直接进行字符串处理
+            norm_path = path_str.replace('\\', '/')
+        
+        # 移除驱动器字母大小写差异（Windows）
+        if ':/' in norm_path:
+            drive, rest = norm_path.split(':', 1)
+            norm_path = drive.lower() + ':' + rest
+            
+        # 移除可能的尾部斜杠，确保一致性
+        if norm_path.endswith('/') and len(norm_path) > 1:
+            norm_path = norm_path.rstrip('/')
+            
+        return norm_path
+    except Exception as e:
+        print(f"路径标准化错误 ({path_str}): {e}")
+        # 失败时返回原始路径，但尝试进行最基本的分隔符转换
+        try:
+            return path_str.replace('\\', '/')
+        except:
+            return path_str
+
+# -------------------------------
+
 # 辅助函数，用于检查功能是否可用
 def is_feature_available(feature_name):
     """
@@ -910,72 +969,57 @@ def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
         return "", []
 
 def index_documents(writer, content_dict: dict[Path, tuple[str, list[dict]]]):
-    """为给定的文本内容构建索引
+    """将提取的内容添加到索引中
     
     Args:
-        writer: 索引写入器
-        content_dict: 包含文件路径和其内容的字典
+        writer: Whoosh writer
+        content_dict: 路径到内容的映射
     """
-    print(f"开始建立索引，共有{len(content_dict)}个文档...")
-    
-    # 记录索引处理状态
-    total_indexed = 0
-    failed_files = []
-    
-    for file_path, (text, metadata_list) in content_dict.items():
+    for path, (content, structure_map) in content_dict.items():
         try:
-            # 获取文件名和目录信息
-            file_name = file_path.name
-            parent_dir = file_path.parent.name
+            # 获取文件类型
+            if isinstance(path, str):
+                file_path = path.split('::')[0] if '::' in path else path  # 处理存档路径
+                file_ext = Path(file_path.split('::')[-1] if '::' in file_path else file_path).suffix.lower()
+            else:
+                file_path = str(path)
+                file_ext = path.suffix.lower()
             
-            # 构建文件全路径文本表示
-            full_path_text = str(file_path)
+            # 获取文件大小和修改时间
+            file_size = content_dict.get(path, {}).get('file_size', 0)
+            last_modified = content_dict.get(path, {}).get('last_modified', 0)
             
-            # 以目录名+文件名作为文件名索引字段
-            # 这样可以让用户更容易通过"文件夹/文件名"的形式搜索到文件
-            file_location = f"{parent_dir}/{file_name}"
+            # 获取OCR状态
+            ocr_used = content_dict.get(path, {}).get('ocr_used', False)
             
-            # 添加文档到索引中
-            writer.add_document(
-                content=text,
-                filename=file_name,
-                filename_text=file_name.lower(),  # 用于不区分大小写的文件名搜索
-                path=str(file_path),
-                filedir=str(file_path.parent),
-                location=file_location,
-                file_size=file_path.stat().st_size if file_path.exists() else 0,  # 确保文件存在
-                modified_time=datetime.fromtimestamp(file_path.stat().st_mtime) if file_path.exists() else datetime.now(),
-                metadata_text=json.dumps(metadata_list, ensure_ascii=False) if metadata_list else ""
+            # 提取文件名（用于文件名搜索）
+            if isinstance(path, str):
+                norm_path = normalize_path_for_index(path)
+                if '::' in norm_path:
+                    # 处理存档内文件
+                    _, member_path = norm_path.split('::', 1)
+                    filename_text = Path(member_path).name
+                else:
+                    # 普通文件
+                    filename_text = Path(norm_path).name
+            else:
+                # Path对象
+                filename_text = path.name
+
+            # 更新索引
+            writer.update_document(
+                path=normalize_path_for_index(str(path)),  # 标准化路径
+                content=content,
+                filename_text=filename_text,  # 文件名作为单独的字段
+                structure_map=structure_map,
+                last_modified=last_modified,
+                file_size=file_size,
+                file_type=file_ext.lstrip('.'),  # 去掉前导点
+                indexed_with_ocr=ocr_used  # 存储OCR使用状态
             )
-            
-            total_indexed += 1
         except Exception as e:
-            print(f"索引文件失败: {file_path}, 错误: {str(e)}")
-            failed_files.append((str(file_path), str(e)))
-            # 尝试使用基本信息添加文档，确保即使元数据有问题，也能索引基本内容
-            try:
-                writer.add_document(
-                    content=text[:100000] if text else "",  # 限制内容大小，防止过大文本导致问题
-                    filename=file_path.name,
-                    filename_text=file_path.name.lower(),
-                    path=str(file_path),
-                    filedir=str(file_path.parent),
-                    location=f"{file_path.parent.name}/{file_path.name}",
-                    file_size=0,  # 使用占位符
-                    modified_time=datetime.now(),  # 使用当前时间作为占位符
-                    metadata_text=""  # 不包含元数据
-                )
-                print(f"已使用基本信息添加文档: {file_path}")
-            except Exception as inner_e:
-                print(f"添加基本文档也失败: {file_path}, 错误: {str(inner_e)}")
-    
-    print(f"索引创建完成，共索引了{total_indexed}个文档，失败{len(failed_files)}个")
-    if failed_files:
-        print("失败的文件:")
-        for fail_file, error in failed_files[:10]:  # 只显示前10个
-            print(f"  - {fail_file}: {error}")
-        if len(failed_files) > 10:
-            print(f"  ... 以及其他 {len(failed_files) - 10} 个文件")
+            print(f"Warning: Error indexing document {path}: {e}")
+            continue  # 继续索引其他文档
 
 def get_positive_terms(q: Query) -> set[str]:
     """Recursively extract positive terms (not under a NOT) from a query tree."""
@@ -2242,7 +2286,15 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                                     path_key = path_str
                                 else:
                                     path_key = path_str # Assume stored path is already absolute or unique
+                                
+                                # 存储原始键
                                 indexed_files[path_key] = {'mtime': last_mod, 'was_ocr': was_indexed_with_ocr}
+                                
+                                # 同时存储标准化路径键，确保跨系统兼容性
+                                norm_path_key = normalize_path_for_index(path_key)
+                                if norm_path_key != path_key:
+                                    indexed_files[norm_path_key] = {'mtime': last_mod, 'was_ocr': was_indexed_with_ocr}
+                                    print(f"  同时用标准化路径键存储: {path_key} -> {norm_path_key}")
                     yield {'type': 'status', 'message': f'现有索引包含 {len(indexed_files)} 个条目。'}
                 except Exception as e:
                     yield {'type': 'warning', 'message': f'读取现有索引时出错: {e}。将尝试作为新索引处理。'}
@@ -2312,7 +2364,8 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
 
                         try:
                             if file_ext in doc_extensions:
-                                path_key = str(file_path.resolve())
+                                # 使用标准化路径作为索引键
+                                path_key = normalize_path_for_index(str(file_path))
                                 stats = file_path.stat() # Corrected indentation
                                 mtime = stats.st_mtime # Corrected indentation
                                 fsize = stats.st_size
@@ -2464,40 +2517,47 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                         yield {'type': 'status', 'message': f'对比: {Path(path_key).name if "::" not in path_key else path_key.split("::")[1]}'} # Corrected indentation
                         processed_count += 1 # Increment total processed count
 
-                        if path_key in indexed_files:
+                        # 更详细的调试信息
+                        norm_path_key = normalize_path_for_index(path_key)
+                        if norm_path_key in indexed_files or path_key in indexed_files:
+                            # 尝试两种形式的路径键
+                            actual_key = norm_path_key if norm_path_key in indexed_files else path_key
                             # Existing file, check if updated
-                            print(f"  Found in existing index. Removing from to_delete.") # DEBUG
-                            to_delete.discard(path_key) # File exists, don't delete it
-                            stored_info = indexed_files[path_key] # Corrected indentation
-                            stored_mtime = stored_info['mtime'] # Corrected indentation
-                            stored_was_ocr = stored_info.get('was_ocr', False) # Corrected indentation
+                            print(f"  找到现有索引项。从to_delete中移除。")
+                            # 同时移除原始路径和标准化路径，确保不会被误删
+                            to_delete.discard(actual_key) # 文件存在，不删除
+                            to_delete.discard(path_key)   # 移除原始路径
+                            to_delete.discard(norm_path_key) # 移除标准化路径
+                            stored_info = indexed_files[actual_key]
+                            stored_mtime = stored_info['mtime']
+                            stored_was_ocr = stored_info.get('was_ocr', False)
 
                             needs_update = False
-                            # 1. Check mtime (Primary trigger)
-                            if mtime > stored_mtime:
+                            # 增加更详细的调试输出
+                            print(f"    文件: {Path(path_key).name}")
+                            print(f"    存储的mtime: {stored_mtime}, 当前mtime: {mtime}")
+                            print(f"    mtime差异: {abs(mtime - stored_mtime)}")
+                            
+                            # 1. 检查mtime（主要触发器），增加容错
+                            # 允许0.1秒的误差，避免因文件系统精度差异导致不必要的重新索引
+                            if abs(mtime - stored_mtime) > 0.1:
                                 needs_update = True
-                                print(f"    Update needed (mtime changed)") # DEBUG
+                                print(f"    需要更新（mtime已更改）")
                             else:
-                                # 2. Check if OCR setting changed from False to True for PDF
+                                # 2. 检查PDF文件的OCR设置是否从False变为True
                                 current_file_ext = Path(path_key.split('::')[0]).suffix.lower() if '::' not in path_key else Path(path_key.split('::')[1]).suffix.lower()
                                 if current_file_ext == '.pdf':
                                     if enable_ocr and not stored_was_ocr:
                                         needs_update = True
-                                        print(f"    Update needed (OCR newly enabled for this PDF)") # DEBUG
+                                        print(f"    需要更新（对此PDF启用了OCR）")
                                 
-                                # --- ADDED: 检查是否是因许可证限制而跳过的文件 ---
-                                if path_key in license_skipped_files:
+                                # 检查是否是因许可证限制而跳过的文件
+                                if path_key in license_skipped_files or norm_path_key in license_skipped_files:
                                     needs_update = True
-                                    print(f"    Update needed (previously skipped due to license limitation)")
+                                    print(f"    需要更新（之前因许可证限制而跳过）")
                                     # 从跳过文件记录中移除，因为将要重新处理
                                     license_skipped_files.pop(path_key, None)
-                                # -------------------------------------------------
-                                
-                                # --- REMOVED的不必要的超时检查 ---
-                                # elif extraction_timeout == 0: 
-                                #     needs_update = True
-                                #     print(f"    Update needed (Timeout is now 0, ensuring full PDF processing)") 
-                                # --------------------------------
+                                    license_skipped_files.pop(norm_path_key, None)
 
                             if needs_update:
                                 to_index_list.append(item_data) # Add to list for extraction
@@ -2674,7 +2734,12 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                     with tqdm(total=deleted_count, desc="Deleting Entries", unit="entry") as pbar_delete:
                         for path_key in to_delete: # Corrected indentation
                             print(f"  Deleting: {path_key}") # DEBUG
-                            writer.delete_by_term('path', path_key) # Corrected indentation
+                            # 先用标准化路径尝试删除
+                            norm_path_key = normalize_path_for_index(path_key)
+                            writer.delete_by_term('path', norm_path_key)
+                            # 如果标准化路径与原始路径不同，再用原始路径尝试删除以确保兼容性
+                            if norm_path_key != path_key:
+                                writer.delete_by_term('path', path_key)
                             written_count += 1 # Corrected indentation
                             pbar_delete.update(1) # Corrected indentation
                             yield {'type': 'progress', 'current': written_count, 'total': deleted_count + len(extraction_results), 'phase': '写入索引 (删除)', 'detail': f'删除中: {Path(path_key).name if "::" not in path_key else path_key.split("::")[1]}'}
@@ -2702,8 +2767,10 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                             print(f"  Writing: {display_name} {'(metadata only)' if extraction_error else ''}") # DEBUG log clarification
 
                             # --- Always call update_document --- 
+                            # 标准化路径进行索引
+                            norm_path_key = normalize_path_for_index(path_key)
                             writer.update_document( # Corrected indentation
-                                path=path_key,
+                                path=norm_path_key,  # 使用标准化路径
                                 # text_content should already be "" if error occurred in _extract_worker
                                 content=extracted_data.get('text_content', ''),
                                 filename_text=extracted_data.get('filename', ''),

@@ -1120,14 +1120,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         super().__init__()
         self.setWindowTitle("文智搜 (PySide6)")
         self.setMinimumSize(600, 450) # ADDED: Set a minimum window size
-        
-        # --- 设置窗口图标 ---
-        try:
-            icon_path = get_resource_path("app_icon.ico")
-            self.setWindowIcon(QIcon(icon_path))
-        except Exception as e:
-            print(f"设置窗口图标时发生错误: {e}")
-        # -------------------
 
         # --- Initialize Config (using QSettings) --- 
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
@@ -2664,9 +2656,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print("Hiding progress bar and phase label explicitly...") # DEBUG
         self.progress_bar.setVisible(False)
         self.phase_label.setVisible(False)
-        # --- 修复: 也隐藏detail_label ---
-        self.detail_label.setVisible(False)
-        # -------------------------------
         print("Calling set_busy_state(False)...") # DEBUG
         self.set_busy_state(False)
         print("--- indexing_finished_slot finished ---") # DEBUG
@@ -2682,10 +2671,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.statusBar().showMessage(f"操作出错: {error_message[:100]}...", 0)  # Show truncated error persistently
         # Ensure progress bar is hidden on error
         self.progress_bar.setVisible(False)
-        # --- 修复: 同时隐藏phase_label和detail_label ---
-        self.phase_label.setVisible(False)
-        self.detail_label.setVisible(False)
-        # -------------------------------------------
         # Reset busy state
         self.set_busy_state(False)
 
@@ -3991,8 +3976,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.skipped_files_dialog.activateWindow()  # 激活窗口
                 return
                 
-            # 创建对话框实例（不需要导入外部模块，直接使用）
-            from search_gui_pyside_py1 import SkippedFilesDialog
+            # 创建对话框实例（不需要导入外部模块，直接使用同文件中定义的类）
             self.skipped_files_dialog = SkippedFilesDialog(self)
             self.skipped_files_dialog.show()
         except Exception as e:

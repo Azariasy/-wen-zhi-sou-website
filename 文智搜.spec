@@ -9,27 +9,34 @@ a = Analysis(
     datas=[
         # QSS 主题样式文件
         ('blue_style.qss', '.'),
-        ('green_style.qss', '.'),
+        ('red_style.qss', '.'),        # 替换绿色主题为红色主题
         ('purple_style.qss', '.'),
+        ('orange_style.qss', '.'),
         
         # 图标文件 - 通用图标
         ('checkmark.png', '.'),
         ('down_arrow.png', '.'),
+        ('app_icon.ico', '.'),         # 添加应用图标
 
         # 蓝色主题图标
         ('checkmark_blue.png', '.'),
         ('down_arrow_blue.png', '.'),
         ('radio_checked_blue.png', '.'),
         
-        # 绿色主题图标
-        ('checkmark_green.png', '.'),
-        ('down_arrow_green.png', '.'), 
-        ('radio_checked_green.png', '.'),
+        # 红色主题图标 - 替换绿色主题
+        ('checkmark_red.png', '.'),
+        ('down_arrow_red.png', '.'), 
+        ('radio_checked_red.png', '.'),
         
         # 紫色主题图标
         ('checkmark_purple.png', '.'),
         ('down_arrow_purple.png', '.'),
         ('radio_checked_purple.png', '.'),
+        
+        # 橙色主题图标
+        ('checkmark_orange.png', '.'),
+        ('down_arrow_orange.png', '.'),
+        ('radio_checked_orange.png', '.'),
         
         # 更新检查相关文件
         ('docs/latest_version.json', 'docs'),
@@ -121,8 +128,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # 应用程序图标，如果有的话可以取消注释此行
-    # icon='app_icon.ico',
+    # 应用程序图标
+    icon='app_icon.ico',
     version='file_version_info.txt',
 )
 
