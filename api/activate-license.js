@@ -210,7 +210,7 @@ module.exports = async (req, res) => {
     }
     
     // 检查是否已支付
-    if (!order.isPaid) {
+    if (order.status !== 'paid') {
       log('ACTIVATION_FAILED', '激活码未支付', { licenseKey, deviceId, orderId: order._id });
       return res.status(400).json({
         success: false,

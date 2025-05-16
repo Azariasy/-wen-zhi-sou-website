@@ -116,7 +116,7 @@ class LicenseDialog(QDialog):
             "<li>压缩包内容支持 (ZIP, RAR)</li>"
             "<li>通配符搜索 (*, ?)</li>"
             "<li>文件夹树结果导航</li>"
-            "<li>多种界面主题 (蓝、绿、紫)</li>"
+            "<li>多种界面主题 (现代蓝、现代紫、现代红、现代橙)</li>"
             "<li>无限制源目录数量</li>"
             "<li>优先技术支持</li>"
             "<li>多设备激活</li>"
@@ -254,11 +254,15 @@ class LicenseDialog(QDialog):
                 activation_date_to_store = today
                 purchase_date_from_api = today
             
+            # 获取用户邮箱，确保正确处理
+            user_email = api_result.get("user_email") or api_result.get("userEmail") or ""
+            print(f"从API获取用户邮箱: {user_email}, 原始数据: {api_result}")
+            
             # 构建许可证详细信息并保存
             license_details = {
                 "key": license_key_input,
-                "user_email": api_result.get("userEmail"),
-                "product_id": api_result.get("productId"),
+                "user_email": user_email,
+                "product_id": api_result.get("product_id") or api_result.get("productId") or "",
                 "activation_date": activation_date_to_store, 
                 "purchase_date": purchase_date_from_api, 
                 "status": LicenseStatus.ACTIVE,

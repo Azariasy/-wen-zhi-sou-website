@@ -1,0 +1,15 @@
+主题文件结构说明
+===========================
+1. main.py - 程序入口点，加载MainWindow并应用主题适配器
+2. run.py - 启动脚本，提供友好的错误处理
+3. theme_adapter.py - 主题适配器，替换MainWindow中的apply_theme方法
+4. theme_manager.py - 主题管理器，集中处理所有主题的应用逻辑
+5. modern_green_theme.py - 绿色主题实现
+6. modern_purple_theme.py - 紫色主题实现
+===========================
+主题应用流程:
+1. 用户启动应用 -> run.py -> main.py
+2. main.py创建MainWindow并应用主题适配器
+3. 当应用需要切换主题时，调用MainWindow.apply_theme
+4. 适配器将调用转发到theme_manager.apply_theme
+5. theme_manager根据主题名称调用相应的主题实现

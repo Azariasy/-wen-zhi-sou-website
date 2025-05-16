@@ -1,19 +1,28 @@
-import re
+#!/usr/bin/env python
+# Fix indentation in search_gui_pyside.py
 
-# 读取文件内容
-with open('search_gui_pyside.py', 'r', encoding='utf-8') as file:
-    content = file.read()
+def fix_file():
+    with open('search_gui_pyside.py', 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    # 检查第1465行的缩进问题
+    if len(lines) >= 1465 and lines[1464].strip() == '# 基础版功能' and not lines[1464].startswith('                    '):
+        # 修复第1464行和第1465行的缩进
+        lines[1464] = '                    # 基础版功能\n'
+        lines[1465] = '                    type_filter_layout.addWidget(checkbox)\n'
+        print("修复了第1464-1465行的缩进")
+    
+    # 检查第1513行的缩进问题
+    if len(lines) >= 1513 and '# 显示提示对话框' in lines[1512] and not lines[1512].startswith('        '):
+        # 修复第1513行的缩进
+        lines[1512] = '        # 显示提示对话框\n'
+        print("修复了第1513行的缩进")
+    
+    # Write back the fixed content
+    with open('search_gui_pyside.py', 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+    
+    print("文件修复完成，请检查是否还有其他缩进错误")
 
-# 修复 _create_sort_bar 方法的缩进问题
-# 在注释行和方法定义之间寻找不正确的缩进
-fixed_content = re.sub(
-    r'(\s+# \(Add other _create_\* helper methods if they were inline before\)\s+)(\s+)(def _create_sort_bar)',
-    r'\1def _create_sort_bar',
-    content
-)
-
-# 写入修复后的内容到临时文件
-with open('search_gui_pyside_fixed.py', 'w', encoding='utf-8') as file:
-    file.write(fixed_content)
-
-print("修复完成，结果保存在 search_gui_pyside_fixed.py") 
+if __name__ == "__main__":
+    fix_file()

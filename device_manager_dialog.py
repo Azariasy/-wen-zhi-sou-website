@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QFont, QColor
+import datetime
 
 from license_manager import get_license_manager
 
@@ -100,6 +101,12 @@ class DeviceManagerDialog(QDialog):
             QMessageBox.warning(self, "错误", "无法获取设备列表信息")
             return
         
+        # 获取许可证详细信息，用于补充可能缺失的数据
+        license_info = self.license_manager.get_license_info()
+        activation_date_display = license_info.get("activation_date_display", "")
+        if not activation_date_display:
+            activation_date_display = datetime.datetime.now().strftime("%Y-%m-%d")
+            
         # 更新许可证信息标签
         max_devices = device_info.get("max_devices", 0)
         current_devices = device_info.get("current_devices", 0)
@@ -115,6 +122,28 @@ class DeviceManagerDialog(QDialog):
         
         # 填充设备数据
         device_list = device_info.get("device_list", [])
+        
+        # 如果设备列表为空但已激活设备数大于0，尝试从license_info中获取设备信息
+        if not device_list and current_devices > 0:
+            activated_devices = license_info.get("activated_devices", [])
+            current_device_id = license_info.get("current_device_id", "")
+            
+            # 为每个设备ID创建一个设备信息项
+            for device_id in activated_devices:
+                # 检查是否为当前设备
+                is_current = device_id == current_device_id
+                device_list.append({
+                    "id": device_id,
+                    "name": "当前设备" if is_current else f"设备 {len(device_list) + 1}",
+                    "activationDate": activation_date_display,
+                    "isCurrentDevice": is_current
+                })
+        
+        # 确保每个设备项都有激活日期
+        for device in device_list:
+            if not device.get("activationDate"):
+                device["activationDate"] = activation_date_display
+                
         self.devices_table.setRowCount(len(device_list))
         
         for row, device in enumerate(device_list):

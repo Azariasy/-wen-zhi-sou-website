@@ -29,6 +29,7 @@ import chardet
 import extract_msg
 import csv
 from datetime import datetime
+import functools
 
 # --- ADDED: 许可证管理器支持 ---
 try:
@@ -909,25 +910,72 @@ def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
         return "", []
 
 def index_documents(writer, content_dict: dict[Path, tuple[str, list[dict]]]):
-    print(f"Adding {len(content_dict)} documents to the index...")
-    indexed_count = 0
-    for path_obj, (text_content, structure) in content_dict.items():
-        if not text_content:
-            print(f"Skipping indexing for {path_obj.name} due to empty content.")
-            continue
+    """为给定的文本内容构建索引
+    
+    Args:
+        writer: 索引写入器
+        content_dict: 包含文件路径和其内容的字典
+    """
+    print(f"开始建立索引，共有{len(content_dict)}个文档...")
+    
+    # 记录索引处理状态
+    total_indexed = 0
+    failed_files = []
+    
+    for file_path, (text, metadata_list) in content_dict.items():
         try:
-            try:
-                relative_path_str = str(path_obj.relative_to(Path.cwd()))
-            except ValueError:
-                relative_path_str = str(path_obj.resolve())
-            structure_json = json.dumps(structure, ensure_ascii=False)
-            writer.add_document(path=relative_path_str,
-                                content=text_content,
-                                structure_map=structure_json)
-            indexed_count += 1
+            # 获取文件名和目录信息
+            file_name = file_path.name
+            parent_dir = file_path.parent.name
+            
+            # 构建文件全路径文本表示
+            full_path_text = str(file_path)
+            
+            # 以目录名+文件名作为文件名索引字段
+            # 这样可以让用户更容易通过"文件夹/文件名"的形式搜索到文件
+            file_location = f"{parent_dir}/{file_name}"
+            
+            # 添加文档到索引中
+            writer.add_document(
+                content=text,
+                filename=file_name,
+                filename_text=file_name.lower(),  # 用于不区分大小写的文件名搜索
+                path=str(file_path),
+                filedir=str(file_path.parent),
+                location=file_location,
+                file_size=file_path.stat().st_size if file_path.exists() else 0,  # 确保文件存在
+                modified_time=datetime.fromtimestamp(file_path.stat().st_mtime) if file_path.exists() else datetime.now(),
+                metadata_text=json.dumps(metadata_list, ensure_ascii=False) if metadata_list else ""
+            )
+            
+            total_indexed += 1
         except Exception as e:
-            print(f"Error indexing document {path_obj}: {e}")
-    print(f"Successfully added {indexed_count} documents to writer.")
+            print(f"索引文件失败: {file_path}, 错误: {str(e)}")
+            failed_files.append((str(file_path), str(e)))
+            # 尝试使用基本信息添加文档，确保即使元数据有问题，也能索引基本内容
+            try:
+                writer.add_document(
+                    content=text[:100000] if text else "",  # 限制内容大小，防止过大文本导致问题
+                    filename=file_path.name,
+                    filename_text=file_path.name.lower(),
+                    path=str(file_path),
+                    filedir=str(file_path.parent),
+                    location=f"{file_path.parent.name}/{file_path.name}",
+                    file_size=0,  # 使用占位符
+                    modified_time=datetime.now(),  # 使用当前时间作为占位符
+                    metadata_text=""  # 不包含元数据
+                )
+                print(f"已使用基本信息添加文档: {file_path}")
+            except Exception as inner_e:
+                print(f"添加基本文档也失败: {file_path}, 错误: {str(inner_e)}")
+    
+    print(f"索引创建完成，共索引了{total_indexed}个文档，失败{len(failed_files)}个")
+    if failed_files:
+        print("失败的文件:")
+        for fail_file, error in failed_files[:10]:  # 只显示前10个
+            print(f"  - {fail_file}: {error}")
+        if len(failed_files) > 10:
+            print(f"  ... 以及其他 {len(failed_files) - 10} 个文件")
 
 def get_positive_terms(q: Query) -> set[str]:
     """Recursively extract positive terms (not under a NOT) from a query tree."""
@@ -939,6 +987,36 @@ def get_positive_terms(q: Query) -> set[str]:
             positive_terms.update(get_positive_terms(subq))
     elif isinstance(q, Phrase):
         positive_terms.update(q.words)
+    # --- ADDED: 处理Wildcard查询 ---
+    elif isinstance(q, Wildcard):
+        # 去除通配符，提取关键部分进行高亮
+        # 例如 "项目*计划" 会提取 "项目" 和 "计划" 进行高亮
+        term = q.text
+        # 分割通配符
+        parts = []
+        
+        # 如果以*开头，去掉开头的*
+        if term.startswith('*'):
+            term = term[1:]
+            
+        # 如果以*结尾，去掉结尾的*
+        if term.endswith('*'):
+            term = term[:-1]
+            
+        # 使用通配符*分割字符串
+        if '*' in term:
+            parts = [p for p in term.split('*') if p]
+        elif '?' in term:
+            # 对于?通配符，简单地去除
+            parts = [term.replace('?', '')]
+        else:
+            parts = [term]
+            
+        # 添加所有分割后的部分到高亮词集合
+        for part in parts:
+            if part:  # 确保不添加空字符串
+                positive_terms.add(part)
+    # --- END ADDED ---
     # Ignore terms under Not, Prefix, Wildcard, Every, etc. for highlighting purposes
     # You might want to refine this for Prefix/Wildcard if needed
     return positive_terms
@@ -960,6 +1038,127 @@ def convert_term_to_prefix(q: Query, fieldname: str = "content") -> Query:
         # Return other query types (like Prefix, Wildcard, Every, etc.) unchanged
         return q
 # --- END ADDED BACK --- 
+
+# --- ADDED: 验证通配符语法的函数 ---
+def validate_wildcard_syntax(query_str):
+    """
+    验证通配符语法是否合法
+    返回: (bool, str) - (是否合法, 错误信息)
+    """
+    # 检查是否有未闭合的转义符
+    if query_str.endswith('\\'):
+        return False, "通配符查询不能以转义字符\\结尾"
+    
+    # 检查是否有连续多个*号，可能导致性能问题
+    if '**' in query_str:
+        return False, "连续的**通配符可能导致搜索缓慢，请使用单个*"
+        
+    # 检查是否只有通配符
+    if query_str.strip() in ['*', '?', '*?', '?*']:
+        return False, "查询不能仅包含通配符，请添加至少一个字符"
+        
+    return True, ""
+
+# --- ADDED: 检查通配符查询性能风险 ---
+def check_wildcard_performance_risk(query_str):
+    """
+    检查通配符查询是否可能导致性能问题
+    返回: (bool, str) - (是否有风险, 风险描述)
+    """
+    # 检查是否以*开头
+    if query_str.startswith('*'):
+        return True, "以*开头的查询可能较慢，因为无法使用索引前缀优化"
+    
+    # 检查通配符数量是否过多
+    wildcard_count = query_str.count('*') + query_str.count('?')
+    if wildcard_count > 3:
+        return True, f"查询包含{wildcard_count}个通配符，可能导致搜索较慢"
+        
+    return False, ""
+
+# --- ADDED: 统一处理通配符查询 ---
+def process_wildcard_query(query_str, is_filename_search=False):
+    """
+    统一处理通配符查询
+    is_filename_search: 是否为文件名搜索
+    返回: 处理后的查询字符串
+    """
+    has_wildcard = '*' in query_str or '?' in query_str
+    
+    # 文件名搜索默认添加通配符
+    if is_filename_search and not has_wildcard:
+        return f"*{query_str}*"
+    
+    # 中文通配符搜索增强：对于中文和数字混合的情况，提高匹配灵活度
+    if has_wildcard and not is_filename_search:
+        # 确保*前后的词能够更好地分割和匹配
+        # 例如：将"十九届*全会"转换为更灵活的匹配模式
+        if '*' in query_str:
+            parts = query_str.split('*')
+            for i in range(len(parts) - 1):
+                if parts[i] and parts[i+1]:  # 确保不是开头或结尾的*
+                    # 检查是否包含中文和数字混合
+                    has_chinese = any('\u4e00' <= c <= '\u9fff' for c in parts[i]+parts[i+1])
+                    if has_chinese:
+                        # 为提高灵活性，对连接处进行特殊处理
+                        print(f"增强中文通配符搜索: '{query_str}'")
+            # 对于中文通配符搜索，暂时保持原样，主要通过Whoosh的Wildcard查询实现
+        
+    # 全文搜索保持原样
+    return query_str
+
+# 增加一个辅助函数用于扩展中文通配符搜索
+def expand_chinese_wildcard_query(query_str):
+    """
+    扩展中文通配符查询，增加更多可能的匹配模式
+    例如：十九届*全会 → 十九届*全会 OR 十九*全会
+    """
+    if '*' not in query_str and '?' not in query_str:
+        return query_str
+        
+    expanded_queries = [query_str]
+    
+    # 特殊处理：检查是否包含数字+中文的模式，如"十九届*全会"
+    parts = re.split(r'([*?])', query_str)
+    pattern = re.compile(r'[\u4e00-\u9fff]+[\d]+[\u4e00-\u9fff]+|[\d]+[\u4e00-\u9fff]+|[\u4e00-\u9fff]+[\d]+')
+    
+    for i in range(0, len(parts), 2):
+        if i < len(parts) and pattern.search(parts[i]):
+            # 包含中文和数字混合，考虑更灵活的匹配
+            if '届' in parts[i]:
+                # 特殊处理包含"届"的情况，如"十九届"
+                if i+2 < len(parts):
+                    new_query = parts[i].replace('届', '') + parts[i+1] + parts[i+2]
+                    expanded_queries.append(new_query)
+                    print(f"扩展通配符查询: 添加 '{new_query}'")
+    
+    # 添加更多的中文通配符特殊处理规则
+    # 处理常见的中文词组分词问题
+    if '*' in query_str:
+        parts = query_str.split('*')
+        # 特殊处理中文词组间的通配符
+        for i in range(len(parts) - 1):
+            if parts[i] and parts[i+1] and all('\u4e00' <= c <= '\u9fff' for c in parts[i][-1] + parts[i+1][0]):
+                # 尝试不同的词组切分方式
+                if len(parts[i]) > 1:
+                    # 拆分前一个词的最后一个字符
+                    new_query = parts[i][:-1] + '*' + parts[i][-1] + parts[i+1]
+                    if new_query != query_str and new_query not in expanded_queries:
+                        expanded_queries.append(new_query)
+                        print(f"中文分词优化: 添加 '{new_query}'")
+                
+                if len(parts[i+1]) > 1:
+                    # 拆分后一个词的第一个字符
+                    new_query = parts[i] + parts[i+1][0] + '*' + parts[i+1][1:]
+                    if new_query != query_str and new_query not in expanded_queries:
+                        expanded_queries.append(new_query)
+                        print(f"中文分词优化: 添加 '{new_query}'")
+    
+    if len(expanded_queries) > 1:
+        # 使用OR组合查询
+        print(f"扩展后的查询选项: {expanded_queries}")
+    
+    return expanded_queries  # 返回所有扩展查询，上层调用处需要处理
 
 def search_index(query_str: str,
                  index_dir_path: str, # Added parameter
@@ -984,6 +1183,26 @@ def search_index(query_str: str,
     if not Path(index_dir_path).exists() or not exists_in(index_dir_path):
         print(f"Error: Index directory '{index_dir_path}' not found.")
         return processed_results # <--- Return the empty processed list
+
+    # --- 检查通配符搜索是否允许 (位置1：在最开始检查) ---
+    if '*' in query_str or '?' in query_str:
+        # 检查是否为专业版功能
+        if not is_feature_available(Features.WILDCARDS):
+            print(f"通配符搜索功能不可用 (未获得许可)")
+            return [{'error': True, 'error_message': "通配符搜索是专业版功能，请升级以使用", 'license_required': True}]
+        
+        # 验证通配符语法
+        is_valid, error_message = validate_wildcard_syntax(query_str)
+        if not is_valid:
+            print(f"无效的通配符语法: {error_message}")
+            return [{'error': True, 'error_message': f"通配符语法错误: {error_message}"}]
+        
+        # 检查性能风险
+        has_risk, risk_message = check_wildcard_performance_risk(query_str)
+        if has_risk:
+            print(f"通配符性能风险: {risk_message}")
+            # 仅记录风险，不阻止搜索，可选择添加到结果中作为警告
+            processed_results.append({'warning': True, 'warning_message': risk_message, 'performance_warning': True})
 
     # --- Determine target field based on scope --- ADDED
     target_field = "filename_text" if search_scope == 'filename' else "content"
@@ -1014,43 +1233,148 @@ def search_index(query_str: str,
     text_query = None
     parsed_query_obj = None # Store the parsed query object
     if query_str:
-        # --- MODIFIED: Handle filename search directly first --- 
+        # --- 处理中文通配符特殊情况 ---
+        has_wildcard = '*' in query_str or '?' in query_str
+        chinese_wildcard_expansion = False
+        expanded_queries = []
+        
+        if has_wildcard:
+            # 检测是否是需要扩展的中文通配符特殊情况
+            if any('\u4e00' <= c <= '\u9fff' for c in query_str):  # 包含中文字符
+                # 特别处理类似"十九届*全会"这样的查询
+                if '届*' in query_str or '次*' in query_str or '*全会' in query_str:
+                    chinese_wildcard_expansion = True
+                    expanded_queries = []
+                    
+                    # 原始查询
+                    expanded_queries.append(query_str)
+                    
+                    # 扩展查询1：处理"届"
+                    if '届*' in query_str:
+                        expanded_queries.append(query_str.replace('届*', '*'))
+                        # 处理类似"十九届*全会"与"十九届历次全会"的匹配
+                        if '全会' in query_str:
+                            expanded_queries.append(query_str.replace('届*', '届历次'))
+                            expanded_queries.append(query_str.replace('*全会', '历次全会'))
+                    
+                    # 扩展查询2：增加更多可能的匹配
+                    if '*全会' in query_str:
+                        prefix_part = query_str.split('*')[0]
+                        expanded_queries.append(f"{prefix_part}*会议")
+                        
+                        # 特别处理包含"届"的前缀
+                        if '届' in prefix_part:
+                            base_prefix = prefix_part.split('届')[0] + '届'
+                            expanded_queries.append(f"{base_prefix}历次*")
+                            expanded_queries.append(f"{base_prefix}历次全会")
+                        
+                        # 特别处理"十九届"
+                        if '十九届' in prefix_part:
+                            expanded_queries.append(prefix_part.replace('十九届', '十九*'))
+                            expanded_queries.append('十九*全会')
+                            expanded_queries.append('十九届历次全会')
+
+                # 通用中文通配符优化扩展
+                if not expanded_queries:
+                    # 如果没有通过特定规则扩展，使用通用扩展
+                    general_expanded = expand_chinese_wildcard_query(query_str)
+                    if isinstance(general_expanded, list) and len(general_expanded) > 1:
+                        chinese_wildcard_expansion = True
+                        expanded_queries = general_expanded
+                    
+                print(f"中文通配符搜索扩展: 原始查询 '{query_str}' 扩展为 {expanded_queries}")
+        
+        # --- MODIFIED: 使用统一的通配符处理函数 --- 
         if search_scope == 'filename':
             target_field = "filename_text"
             analyzer = ix.schema[target_field].analyzer if target_field in ix.schema else analysis.StandardAnalyzer() # Ensure standard analyzer for filename
-            # Always use Wildcard for filename search, ignore search_mode
-            text_query = Wildcard(target_field, f"*{query_str}*")
+            
+            # 使用统一处理函数处理文件名搜索的通配符
+            processed_query = process_wildcard_query(query_str, is_filename_search=True)
+            text_query = Wildcard(target_field, processed_query)
             print(f"Constructed Wildcard query for filename: {text_query}")
         else: # Handle fulltext search based on search_mode
             target_field = "content"
             analyzer = ix.schema[target_field].analyzer if target_field in ix.schema else ChineseAnalyzer()
-            # --- Original logic for fulltext based on mode --- 
+            # --- 修改全文模糊搜索中的通配符处理逻辑 --- 
             if search_mode == 'phrase':
-                terms = [token.text for token in analyzer(query_str)]
-                if terms:
-                    text_query = Phrase(target_field, terms)
-                    print(f"Constructed Phrase query on '{target_field}': {text_query}")
-                    if text_query:
-                        parsed_query_obj = text_query # Store phrase query object
-                else:
-                    print(f"Phrase query for '{target_field}' is empty after analysis.")
-            elif search_mode == 'fuzzy':
-                parser = QueryParser(target_field, schema=ix.schema)
-                # --- Check for Wildcards --- 
-                if '*' in query_str or '?' in query_str:
-                    print(f"Wildcard detected in query for '{target_field}': '{query_str}'")
-                    try:
-                        text_query = parser.parse(query_str)
-                        print(f"Parsed Wildcard query on '{target_field}': {text_query}")
+                # 检查是否包含逻辑操作符
+                logical_operators = ['AND', 'OR', 'NOT']
+                has_logical_operators = any(f" {op} " in f" {query_str} " for op in logical_operators)
+                
+                # --- ADDED: 检测通配符，在精确模式下也支持 --- 
+                has_wildcard = '*' in query_str or '?' in query_str
+                
+                if has_wildcard:
+                    # --- 处理中文通配符特殊扩展查询 ---
+                    if chinese_wildcard_expansion and expanded_queries:
+                        # 使用OR组合多个查询
+                        sub_queries = []
+                        for exp_query in expanded_queries:
+                            sub_queries.append(Wildcard(target_field, exp_query))
+                            print(f"Added wildcard expansion: {exp_query}")
+                            
+                        if len(sub_queries) == 1:
+                            text_query = sub_queries[0]
+                        else:
+                            text_query = Or(sub_queries)
+                            print(f"Created combined OR query with {len(sub_queries)} expansions")
+                    else:
+                        # 在精确模式下也支持通配符
+                        print(f"Wildcard detected in phrase mode for '{target_field}': '{query_str}'. Using wildcard query.")
+                        processed_query = process_wildcard_query(query_str, is_filename_search=False)
+                        text_query = Wildcard(target_field, processed_query)
+                        parsed_query_obj = text_query
+                        print(f"Constructed Wildcard query in phrase mode on '{target_field}': {text_query}")
+                elif has_logical_operators:
+                    # 在精确搜索模式下不处理逻辑操作符，直接使用短语搜索
+                    print(f"WARNING: Logical operators detected in phrase mode for query: '{query_str}'. These operators are only supported in fuzzy mode.")
+                    terms = [token.text for token in analyzer(query_str)]
+                    if terms:
+                        text_query = Phrase(target_field, terms)
+                        print(f"Constructed Phrase query on '{target_field}': {text_query}")
                         if text_query:
-                            parsed_query_obj = text_query # Store wildcard query object
-                    except Exception as e:
-                        print(f"Error parsing wildcard query on '{target_field}': {e}")
-                        text_query = None
-                        parsed_query_obj = None
-                else: # Not a wildcard query
-                    # --- Fuzzy/Prefix Logic for fulltext --- 
-                    try: # <<< Corrected indentation
+                            parsed_query_obj = text_query # Store phrase query object
+                    else:
+                        print(f"Phrase query for '{target_field}' is empty after analysis.")
+                else:
+                    # 没有逻辑操作符，使用普通短语搜索
+                    terms = [token.text for token in analyzer(query_str)]
+                    if terms:
+                        text_query = Phrase(target_field, terms)
+                        print(f"Constructed Phrase query on '{target_field}': {text_query}")
+                        if text_query:
+                            parsed_query_obj = text_query # Store phrase query object
+                    else:
+                        print(f"Phrase query for '{target_field}' is empty after analysis.")
+            elif search_mode == 'fuzzy':
+                # --- 使用统一函数处理全文搜索的通配符 --- 
+                if '*' in query_str or '?' in query_str:
+                    # --- 处理中文通配符特殊扩展查询 ---
+                    if chinese_wildcard_expansion and expanded_queries:
+                        # 创建复合查询 (OR组合多个通配符查询)
+                        sub_queries = []
+                        for exp_query in expanded_queries:
+                            sub_queries.append(Wildcard(target_field, exp_query))
+                            print(f"添加通配符子查询: {exp_query}")
+                        
+                        if sub_queries:
+                            # 使用OR组合所有子查询
+                            if len(sub_queries) == 1:
+                                text_query = sub_queries[0]
+                            else:
+                                text_query = Or(sub_queries)
+                            parsed_query_obj = text_query
+                            print(f"构建复合通配符查询: {text_query}")
+                    else:
+                        print(f"Wildcard detected in fuzzy mode for '{target_field}': '{query_str}'. Constructing direct Wildcard query.")
+                        processed_query = process_wildcard_query(query_str, is_filename_search=False)
+                        text_query = Wildcard(target_field, processed_query)
+                        parsed_query_obj = text_query
+                        print(f"Constructed direct Wildcard query on '{target_field}': {text_query}")
+                else: # Not a wildcard query in fuzzy mode, use QueryParser as before for keywords, etc.
+                    parser = QueryParser(target_field, schema=ix.schema)
+                    try:
                         parsed_q = parser.parse(query_str)
                         parsed_query_obj = parsed_q # Store parsed object before conversion
                         print(f"Parsed Keyword query on '{target_field}': {parsed_q}")
@@ -1340,137 +1664,423 @@ def search_index(query_str: str,
 # def _extract_worker(item_data: tuple) -> dict:
 def _extract_worker(worker_args: dict) -> dict:
 # -----------------------------------
-    """Worker function for multiprocessing pool to extract text from files.
-    
-    Args:
-        worker_args: Dictionary containing parameters. Now using direct parameters instead of item_data tuple.
-    
-    Returns:
-        Dictionary with extraction results including content, metadata, and error info if any.
-    """
-    result = {}
-    # --- NEW logic to fix KeyError ---
-    try:
-        path_key = worker_args['path_key']
-        file_type = worker_args['file_type']  
-        # 获取用于内容提取的原始文件路径
-        archive_path_abs = worker_args.get('archive_path_abs')
-        member_name = worker_args.get('member_name')
-        enable_ocr = worker_args.get('enable_ocr', False)
-        original_mtime = worker_args.get('original_mtime')
-        original_fsize = worker_args.get('original_fsize')
-        display_name = worker_args.get('display_name') or path_key
-        extraction_timeout = worker_args.get('extraction_timeout')
-        content_limit_bytes = worker_args.get('content_limit_bytes', 0)
-        index_dir_path = worker_args.get('index_dir_path', '')  # Added for license checking
-        # 获取原始文件路径（如果存在）
-        orig_file_path = worker_args.get('orig_file_path', '')
-        
-        # 添加到结果字典的基本信息
-        result = {
-            'path_key': path_key,  # 这是索引键，可能是标准化的
-            'display_name': display_name,  # 用于显示的名称
-            'original_mtime': original_mtime,
-            'original_fsize': original_fsize,
-            'file_type': file_type,
-        }
-        
-        # 如果有原始文件路径，添加到结果
-        if orig_file_path:
-            result['orig_file_path'] = orig_file_path
+    # --- Unpack arguments --- 
+    # --- This is the OLD logic causing the KeyError ---
+    # item_data = worker_args['item_data'] # <<< The line causing KeyError
+    # enable_ocr = worker_args['enable_ocr'] # This key might also change based on how we passed it
+    # path_key = item_data[0]
+    # mtime = item_data[1]
+    # fsize = item_data[2]
+    # file_type = item_data[3]
+    # archive_path = Path(item_data[4]) if len(item_data) > 4 and item_data[4] else None
+    # member_name = item_data[5] if len(item_data) > 5 and item_data[5] else None
+    # --- End of OLD logic ---
 
-        # --- For archive files, extract using member_name and archive_path_abs ---
-        if file_type == 'archive' and archive_path_abs and member_name:
-            try:
-                # 确保archive_path_abs是Path对象
-                if not isinstance(archive_path_abs, Path):
-                    archive_path_abs = Path(archive_path_abs)
-                    
-                content = ""
-                metadata = []
-                
-                # 处理不同类型的压缩文件
-                archive_ext = archive_path_abs.suffix.lower()
-                member_ext = Path(member_name).suffix.lower()
-                
-                # 提取内容
-                if archive_ext == '.zip':
-                    with zipfile.ZipFile(archive_path_abs, 'r') as zf:
-                        with zf.open(member_name) as f:
-                            # 根据成员文件类型提取内容
-                            if member_ext == '.pdf':
-                                # --- Pass member_name for better identification ---
-                                temp_pdf = io.BytesIO(f.read())
-                                # --- ADDED: 传递timeout和OCR设置给PDF提取函数 ---
-                                content, metadata = extract_text_from_pdf(
-                                    temp_pdf, 
-                                    enable_ocr=enable_ocr,
-                                    timeout=extraction_timeout
-                                )
-                                # 记录OCR使用情况
-                                result['ocr_enabled_for_file'] = enable_ocr
-                            # ... 其他文件类型处理 ...
-                
-                # 将提取的内容添加到结果
-                if content is not None:
-                    result['content'] = content
-                    result['metadata'] = metadata
-                else:
-                    result['error'] = "内容提取失败 (返回None)"
-                    
-            except Exception as e:
-                # 捕获提取过程中的任何错误
-                result['error'] = f"提取错误: {str(e)}"
-                print(f"Error extracting from archive {path_key}: {e}")
-                
-        # --- For regular files, extract using file_path ---
-        else:  # file_type == 'file'
-            try:
-                # 从path_key获取文件路径
-                file_path = Path(orig_file_path if orig_file_path else path_key)
-                
-                # 确保文件存在
-                if not file_path.exists():
-                    result['error'] = f"文件不存在: {file_path}"
-                    return result
-                
-                content = ""
-                metadata = []
-                file_ext = file_path.suffix.lower()
-                
-                # 根据文件类型提取内容
-                if file_ext == '.pdf':
-                    # --- ADDED: 传递timeout和OCR设置给PDF提取函数 ---
-                    content, metadata = extract_text_from_pdf(
-                        file_path, 
-                        enable_ocr=enable_ocr,
-                        timeout=extraction_timeout
-                    )
-                    # 记录OCR使用情况
-                    result['ocr_enabled_for_file'] = enable_ocr
-                # ... 其他文件类型处理 ...
-                
-                # 将提取的内容添加到结果
-                if content is not None:
-                    result['content'] = content
-                    result['metadata'] = metadata
-                else:
-                    result['error'] = "内容提取失败 (返回None)"
-                    
-            except Exception as e:
-                # 捕获提取过程中的任何错误
-                result['error'] = f"提取错误: {str(e)}"
-                print(f"Error extracting from file {path_key}: {e}")
-    
-    except Exception as e:
-        # 捕获顶层异常，确保工作线程不会崩溃
-        result = {
-            'path_key': worker_args.get('path_key', 'unknown'),
-            'display_name': worker_args.get('display_name', 'unknown'),
-            'error': f"工作线程异常: {str(e)}"
-        }
-        print(f"Worker exception: {e}")
+    # --- NEW logic to fix KeyError ---
+    path_key = worker_args['path_key']
+    file_type = worker_args['file_type']
+    archive_path_abs_str = worker_args.get('archive_path_abs') # Use .get for optional keys
+    member_name = worker_args.get('member_name')
+    enable_ocr_for_file = worker_args['enable_ocr'] # Get per-file OCR setting
+    # --- Get timeout value --- 
+    extraction_timeout = worker_args.get('extraction_timeout') # Can be None
+    # -----------------------
+    # --- ADDED: Unpack content limit --- 
+    content_limit_bytes = worker_args.get('content_limit_bytes', 0) # Default to 0 (no limit)
+    # -----------------------------------
+    # --- ADDED: Get index_dir_path for recording skipped files ---
+    index_dir_path = worker_args.get('index_dir_path', '')
+    # -----------------------------------------------------------
+    original_mtime = worker_args['original_mtime']
+    original_fsize = worker_args['original_fsize']
+    display_name = worker_args.get('display_name', Path(path_key).name if "::" not in path_key else path_key.split("::")[1]) # Use provided or generate
+    filename_for_index = Path(path_key).name if not member_name else Path(member_name).name
+
+    # --- Variable Initialization --- 
+    text_content = None
+    structure = [] # Initialize for non-PDF types
+    error_message = None
+    content_truncated = False # --- ADDED: Flag for truncation
+
+    try:
+        start_time = time.time()
+        # --- Select extraction function based on file type --- 
+        if file_type == 'file':
+            file_path = Path(path_key)
+            file_ext = file_path.suffix.lower()
+            # Select function based on extension (Corrected indentation)
+            if file_ext == '.docx':
+                try:
+                    text_content, structure = extract_text_from_docx(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.txt':
+                # --- MODIFIED: Apply content limit to TXT --- 
+                try:
+                    text_content_tuple = extract_text_from_txt(file_path) # Corrected indentation
+                    if isinstance(text_content_tuple, tuple) and len(text_content_tuple) == 2:
+                        text_content = text_content_tuple[0]
+                        structure = text_content_tuple[1]
+                        if text_content is None:
+                            error_message = "TXT extraction failed."
+                        elif content_limit_bytes and content_limit_bytes > 0: # Check if limit applies
+                            # Encode to check byte length and truncate if needed
+                            try:
+                                encoded_content = text_content.encode('utf-8', errors='ignore')
+                                if len(encoded_content) > content_limit_bytes:
+                                    truncated_bytes = encoded_content[:content_limit_bytes]
+                                    # Decode back, ignoring errors for partial characters
+                                    text_content = truncated_bytes.decode('utf-8', errors='ignore')
+                                    content_truncated = True # Set the flag
+                                    # print(f"Info: Content truncated for {display_name} to {content_limit_bytes} bytes.") # COMMENTED OUT
+                            except Exception as enc_err:
+                                # print(f"Warning: Error during content truncation check for {display_name}: {enc_err}") # COMMENTED OUT
+                                pass # Ignore truncation check errors silently for now
+                    else:
+                        error_message = "TXT extraction returned unexpected result."
+                        text_content = None
+                        structure = []
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.pdf':
+                # --- MODIFIED: Add explicit timeout parameter ---
+                try:
+                    text_content_tuple = extract_text_from_pdf(file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout)
+                    if isinstance(text_content_tuple, tuple) and len(text_content_tuple) >= 2:
+                        text_content = text_content_tuple[0]
+                        structure = text_content_tuple[1] if text_content_tuple[1] is not None else []
+                    else:
+                        error_message = "PDF extraction returned unexpected result."
+                        text_content = None
+                        structure = []
+                except Exception as e:
+                    error_message = str(e)
+                    text_content = None
+                    structure = []
+                    # --- ADDED: Record timeout errors for PDF extraction --- 
+                    if "timeout" in error_message.lower() or "timed out" in error_message.lower():
+                        if index_dir_path:
+                            record_skipped_file(index_dir_path, str(file_path), f"PDF处理超时 ({extraction_timeout}秒)")
+                    # --- ADDED: Record license errors for PDF extraction --- 
+                    elif isinstance(e, PermissionError) or "许可证" in error_message or "license" in error_message.lower():
+                        if index_dir_path:
+                            record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - PDF支持功能需要专业版许可证")
+            elif file_ext == '.pptx':
+                try:
+                    text_content, structure = extract_text_from_pptx(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.xlsx':
+                try:
+                    text_content, structure = extract_text_from_xlsx(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.md':
+                try:
+                    text_content, structure = extract_text_from_md(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    text_content = None
+                    structure = []
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - Markdown支持功能需要专业版许可证")
+                except Exception as e:
+                    error_message = str(e)
+                    text_content = None
+                    structure = []
+            elif file_ext in ('.html', '.htm'): # Corrected structure/indentation
+                try:
+                    text_content, structure = extract_text_from_html(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.rtf': # Corrected structure/indentation
+                try:
+                    text_content, structure = extract_text_from_rtf(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
+            elif file_ext == '.eml': # Corrected structure/indentation
+                try:
+                    text_content, structure = extract_text_from_eml(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    text_content = None
+                    structure = []
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - 邮件支持功能需要专业版许可证")
+                except Exception as e:
+                    error_message = str(e)
+                    text_content = None
+            elif file_ext == '.msg': # Corrected structure/indentation
+                try:
+                    text_content, structure = extract_text_from_msg(file_path)
+                except PermissionError as perm_err:
+                    # 记录因许可证限制跳过的文件
+                    error_message = str(perm_err)
+                    text_content = None
+                    structure = []
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - 邮件支持功能需要专业版许可证")
+                except Exception as e:
+                    error_message = str(e)
+                    text_content = None
+                    structure = []
+            else: # Corrected structure/indentation
+                error_message = f"Unsupported file extension: {file_ext}"
         
+        elif file_type == 'archive':
+            if not archive_path_abs_str or not member_name:
+                error_message = "Archive path or member name missing for archive extraction"
+                text_content = ""
+                structure = []
+            else:
+                archive_path = Path(archive_path_abs_str)
+                member_ext = Path(member_name).suffix.lower()
+                archive_type = archive_path.suffix.lower()
+                # --- Extract member to temp file and process --- 
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_file_path = Path(temp_dir) / Path(member_name).name # Use just filename in temp dir
+                    try: # Added try
+                        # ... (Archive extraction logic remains the same) ...
+                        if archive_type == '.zip': # Corrected indentation
+                            try: # Try opening the zip file
+                                with zipfile.ZipFile(archive_path, 'r') as zf:
+                                    # --- ADDED: Try block specifically for member extraction ---
+                                    try:
+                                        zf.extract(member_name, path=temp_dir)
+                                        # Rename logic after successful extraction
+                                        extracted_member_path = Path(temp_dir) / member_name
+                                        if extracted_member_path.exists() and extracted_member_path != temp_file_path:
+                                            extracted_member_path.rename(temp_file_path)
+                                    except RuntimeError as e_extract_member:
+                                        if 'password required' in str(e_extract_member).lower() or 'encrypted file' in str(e_extract_member).lower():
+                                            error_message = f"受密码保护的ZIP成员: {member_name}"
+                                            archive_member_path = f"{archive_path_abs_str}::{member_name}"
+                                            record_skipped_file(
+                                                index_dir_path,
+                                                archive_member_path,
+                                                format_skip_reason("password_zip", f"成员 '{member_name}' 需要密码")
+                                            )
+                                        else:
+                                             error_message = f"提取ZIP成员时发生运行时错误 '{member_name}': {e_extract_member}"
+                                             record_skipped_file(
+                                                 index_dir_path,
+                                                 f"{archive_path_abs_str}::{member_name}",
+                                                 format_skip_reason("extraction_error", f"成员运行时错误: {e_extract_member}")
+                                             )
+                                        temp_file_path = None # Indicate extraction failed
+                                    except zipfile.BadZipFile as e_bad_member:
+                                         error_message = f"ZIP成员损坏或格式错误: {member_name}"
+                                         record_skipped_file(
+                                             index_dir_path,
+                                             f"{archive_path_abs_str}::{member_name}",
+                                             format_skip_reason("corrupted_zip", f"成员损坏: {e_bad_member}")
+                                         )
+                                         temp_file_path = None # Indicate extraction failed
+                                    except KeyError as e_key_extract:
+                                        error_message = f"ZIP成员未找到或无法提取: {member_name}"
+                                        record_skipped_file(
+                                            index_dir_path,
+                                            f"{archive_path_abs_str}::{member_name}",
+                                            format_skip_reason("extraction_error", f"成员 '{member_name}' 未找到: {e_key_extract}")
+                                        )
+                                        temp_file_path = None # Indicate extraction failed
+                                    except Exception as e_generic_extract:
+                                         error_message = f"提取ZIP成员时发生未知错误 '{member_name}': {e_generic_extract}"
+                                         record_skipped_file(
+                                             index_dir_path,
+                                             f"{archive_path_abs_str}::{member_name}",
+                                             format_skip_reason("extraction_error", f"成员提取未知错误: {e_generic_extract}")
+                                         )
+                                         temp_file_path = None # Indicate extraction failed
+                                    # --- END ADDED Try block ---
+
+                            # --- Existing handling for errors opening the main ZIP ---
+                            except (zipfile.BadZipFile, RuntimeError) as e_open_zip:
+                                reason_key = "password_zip" if 'password required' in str(e_open_zip).lower() else "corrupted_zip"
+                                error_message = f"{format_skip_reason(reason_key)}: {archive_path.name}"
+                                record_skipped_file(
+                                    index_dir_path,
+                                    str(archive_path), # Record the archive path itself
+                                    format_skip_reason(reason_key, str(e_open_zip))
+                                )
+                                temp_file_path = None # Indicate extraction failed
+                            # --- End Existing Handling ---
+
+                        elif archive_type == '.rar': # Corrected indentation
+                            with rarfile.RarFile(archive_path, 'r') as rf:
+                                rf.extract(member_name, path=temp_dir)
+                                extracted_member_path = Path(temp_dir) / member_name
+                                if extracted_member_path.exists() and extracted_member_path != temp_file_path:
+                                    extracted_member_path.rename(temp_file_path)
+                        else: # Corrected indentation
+                            error_message = f"Unsupported archive type: {archive_type}"
+                        
+                        if not error_message and temp_file_path and temp_file_path.exists():
+                            # --- Now extract text from the temporary file --- 
+                            if member_ext == '.docx': # Corrected indentation
+                                text_content, structure = extract_text_from_docx(temp_file_path)
+                            elif member_ext == '.txt':
+                                # --- MODIFIED: Apply content limit to TXT member --- 
+                                text_content_tuple = extract_text_from_txt(temp_file_path)
+                                if isinstance(text_content_tuple, tuple) and len(text_content_tuple) == 2:
+                                    text_content = text_content_tuple[0]
+                                    structure = text_content_tuple[1]
+                                    if text_content is None:
+                                        error_message = "TXT member extraction failed."
+                                    elif content_limit_bytes and content_limit_bytes > 0: # Check if limit applies
+                                        # Encode to check byte length and truncate if needed
+                                        try:
+                                            encoded_content = text_content.encode('utf-8', errors='ignore')
+                                            if len(encoded_content) > content_limit_bytes:
+                                                truncated_bytes = encoded_content[:content_limit_bytes]
+                                                # Decode back, ignoring errors for partial characters
+                                                text_content = truncated_bytes.decode('utf-8', errors='ignore')
+                                                content_truncated = True # Set the flag
+                                                # print(f"Info: Content truncated for archive member {display_name} to {content_limit_bytes} bytes.") # COMMENTED OUT
+                                        except Exception as enc_err:
+                                            # print(f"Warning: Error during content truncation check for archive member {display_name}: {enc_err}") # COMMENTED OUT
+                                            pass # Ignore truncation check errors silently for now
+                                    else:
+                                        error_message = "TXT member extraction returned unexpected result."
+                                        text_content = None
+                                        structure = []
+                                # --- END MODIFIED --- 
+                            elif member_ext == '.pdf':
+                                # --- MODIFIED PDF Call for Archive Member --- 
+                                pdf_result_member = extract_text_from_pdf(temp_file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout)
+                                text_content = pdf_result_member[0]
+                                structure = pdf_result_member[1]
+                                if text_content is None:
+                                    error_message = "PDF member extraction failed or timed out"
+                                    # --- NEW: Record skipped file for PDF timeout ---
+                                    if index_dir_path:
+                                        archive_member_path = f"{archive_path_abs_str}::{member_name}"
+                                        record_skipped_file(
+                                            index_dir_path,
+                                            archive_member_path,
+                                            format_skip_reason("pdf_timeout", "PDF处理超时或转换错误")
+                                        )
+                                    # -------------------------------------------------
+                                elif content_limit_bytes and content_limit_bytes > 0:
+                                    # Apply content limit to PDF text if needed
+                                    try:
+                                        encoded_content = text_content.encode('utf-8', errors='ignore')
+                                        if len(encoded_content) > content_limit_bytes:
+                                            truncated_bytes = encoded_content[:content_limit_bytes]
+                                            # Decode back, ignoring errors for partial characters
+                                            text_content = truncated_bytes.decode('utf-8', errors='ignore')
+                                            content_truncated = True # Set the flag
+                                            # print(f"Info: PDF content truncated for archive member {display_name} to {content_limit_bytes} bytes.") # COMMENTED OUT
+                                            # --- NEW: Record skipped file for content limit ---
+                                            if index_dir_path:
+                                                archive_member_path = f"{archive_path_abs_str}::{member_name}"
+                                                record_skipped_file(
+                                                    index_dir_path,
+                                                    archive_member_path,
+                                                    format_skip_reason("content_limit", f"内容大小({len(encoded_content) // 1024}KB)超过限制({content_limit_bytes // 1024}KB)")
+                                                )
+                                            # -------------------------------------------------
+                                    except Exception as enc_err:
+                                        # print(f"Warning: Error during PDF content truncation check for {display_name}: {enc_err}") # COMMENTED OUT
+                                        pass # Ignore truncation check errors silently for now
+                                # -------------------------------------------
+                            elif member_ext == '.pptx':
+                                text_content, structure = extract_text_from_pptx(temp_file_path)
+                            elif member_ext == '.xlsx':
+                                text_content, structure = extract_text_from_xlsx(temp_file_path)
+                            elif member_ext == '.md':
+                                text_content, structure = extract_text_from_md(temp_file_path)
+                            elif member_ext in ('.html', '.htm'): # Corrected structure/indentation
+                                text_content, structure = extract_text_from_html(temp_file_path)
+                            elif member_ext == '.rtf':
+                                text_content, structure = extract_text_from_rtf(temp_file_path)
+                            elif member_ext == '.eml':
+                                text_content, structure = extract_text_from_eml(temp_file_path)
+                            elif member_ext == '.msg':
+                                text_content, structure = extract_text_from_msg(temp_file_path)
+                            else: # Corrected indentation
+                                error_message = f"Unsupported file extension in archive: {member_ext}"
+                                text_content = ""
+                                structure = []
+                        elif not error_message:
+                            error_message = "Failed to extract member from archive"
+                            text_content = "" # Ensure defined
+                            structure = []    # Ensure defined
+                    # Moved exception handling outside the if/elif chain for member types
+                    except FileNotFoundError:
+                        error_message = f"Member not found in archive: {member_name}"
+                        text_content = ""
+                        structure = []
+                    except zipfile.BadZipFile:
+                        error_message = f"Bad ZIP file containing member: {member_name}"
+                        text_content = ""
+                        structure = []
+                    except rarfile.BadRarFile:
+                        error_message = f"Bad RAR file containing member: {member_name}"
+                        text_content = ""
+                        structure = []
+                    except NotImplementedError as nie:
+                         error_message = f"Feature not implemented for member '{member_name}': {nie}"
+                         text_content = ""
+                         structure = []
+                    except Exception as e_extract:
+                        error_message = f"Error extracting member '{member_name}': {e_extract}"
+                        # print(traceback.format_exc(), file=sys.stderr) # Already commented? Ensure commented.
+                        text_content = ""
+                        structure = []
+        else:
+            error_message = f"Unknown file type for extraction: {file_type}"
+            text_content = ""
+            structure = []
+        
+        end_time = time.time()
+        # print(f"Extraction time for {display_name}: {end_time - start_time:.2f}s")
+    
+    except Exception as e_outer:
+        error_message = f"Unexpected error during extraction setup for {display_name}: {e_outer}"
+        # traceback.print_exc() # COMMENTED OUT
+        text_content = None
+        structure = []
+
+    # --- Ensure content is string, even if empty ---
+    final_content = text_content if text_content is not None else ""
+    # If there was an error OR text is None, ensure structure is empty.
+    final_structure = structure if error_message is None and text_content is not None else []
+
+    # --- Construct result dictionary ---
+    result = {
+        'path_key': path_key,
+        'display_name': display_name,
+        'text_content': final_content,
+        'structure': final_structure,
+        'error': error_message,
+        'mtime': original_mtime,
+        'fsize': original_fsize,
+        'file_type': Path(path_key.split('::')[0]).suffix.lower() if "::" not in path_key else Path(path_key.split('::')[1]).suffix.lower(),
+        'filename': filename_for_index,
+        'ocr_enabled_for_file': enable_ocr_for_file,
+        'content_truncated': content_truncated
+    }
     return result
 
 # --- ADDED: Function to read license-skipped files ---
@@ -1628,8 +2238,10 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                             last_mod = fields.get('last_modified')
                             was_indexed_with_ocr = fields.get('indexed_with_ocr', False)
                             if path_str and last_mod is not None:
-                                # --- MODIFIED: 直接使用存储的路径作为键，无需再次标准化 ---
-                                path_key = path_str
+                                if "::" in path_str:
+                                    path_key = path_str
+                                else:
+                                    path_key = path_str # Assume stored path is already absolute or unique
                                 indexed_files[path_key] = {'mtime': last_mod, 'was_ocr': was_indexed_with_ocr}
                     yield {'type': 'status', 'message': f'现有索引包含 {len(indexed_files)} 个条目。'}
                 except Exception as e:
@@ -1700,21 +2312,17 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
 
                         try:
                             if file_ext in doc_extensions:
-                                # --- MODIFIED: 使用标准化路径作为键 ---
-                                file_abs_path = str(file_path.resolve())
-                                path_key = normalize_path_for_index(file_abs_path, source_directories)
+                                path_key = str(file_path.resolve())
                                 stats = file_path.stat() # Corrected indentation
                                 mtime = stats.st_mtime # Corrected indentation
                                 fsize = stats.st_size
-                                item_data = (path_key, mtime, fsize, 'file', file_abs_path)  # 保存原始绝对路径用于内容提取
+                                item_data = (path_key, mtime, fsize, 'file')
                                 current_level_files.append(item_data)
                             elif file_ext in archive_extensions: # Corrected indentation
                                 if file_ext == '.rar' and not can_process_rar: # Corrected indentation
                                     skipped_count += 1
                                     continue
-                                # --- MODIFIED: 使用标准化路径作为键的基础 ---
-                                archive_path_abs = str(file_path.resolve()) # Corrected indentation
-                                archive_path_str = normalize_path_for_index(archive_path_abs, source_directories)
+                                archive_path_str = str(file_path.resolve()) # Corrected indentation
                                 yield {'type': 'status', 'message': f'处理压缩文件: {file_path.name}'}
                                 archive_members = []
                                 if file_ext == '.zip':
@@ -1805,7 +2413,6 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                                         elif file_ext == '.rar':
                                             member_mtime = member.mtime if hasattr(member, 'mtime') else file_path.stat().st_mtime
                                             member_fsize = member.file_size if hasattr(member, 'file_size') else 0
-                                        # --- MODIFIED: 保存原始绝对路径用于内容提取 ---
                                         item_data_archive = (virtual_path, member_mtime, member_fsize, 'archive', file_path.resolve(), member.filename)
                                         current_level_files.append(item_data_archive)
                         except (FileNotFoundError, zipfile.BadZipFile, rarfile.BadRarFile, NotImplementedError, OSError) as e:
@@ -1939,23 +2546,12 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
             # Prepare arguments for multiprocessing pool
             worker_args_list = []
             for item_data in to_index_list:
-                path_key = item_data[0]  # 标准化路径键
-                file_type_param = item_data[3]  # 文件类型: 'file' 或 'archive'
-                
-                # 新格式: (path_key, mtime, fsize, file_type, orig_file_path, [member_name])
-                # 获取原始文件路径用于内容提取（第5个元素，如果存在）
-                orig_file_path = str(item_data[4]) if len(item_data) > 4 else path_key
-                # 压缩包内成员名称（第6个元素，如果存在）
+                path_key = item_data[0]
+                file_type_param = item_data[3] # Renamed to avoid conflict with file_type in result dict
+                archive_path_abs_str = item_data[4] if len(item_data) > 4 else None
                 member_name = item_data[5] if len(item_data) > 5 else None
-                
                 # Extract file extension correctly for OCR check AND TXT limit check
-                if member_name and '::' in path_key:
-                    # 对于压缩包中的文件，从member_name提取扩展名
-                    current_file_ext = Path(member_name).suffix.lower()
-                else:
-                    # 对于普通文件，从原始文件路径提取扩展名
-                    current_file_ext = Path(orig_file_path).suffix.lower()
-                
+                current_file_ext = Path(path_key.split('::')[0]).suffix.lower() if '::' not in path_key else Path(path_key.split('::')[1]).suffix.lower()
                 should_ocr = enable_ocr and current_file_ext == '.pdf'
 
                 # --- ADDED: Determine content limit bytes for this file --- 
@@ -1967,21 +2563,18 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
                 # --- Convert timeout 0 to None ---
                 actual_timeout_for_worker = None if extraction_timeout == 0 else extraction_timeout
                 # ---------------------------------
-                
-                # 构建worker参数字典，包含新增的orig_file_path
                 worker_args_list.append({
                     'path_key': path_key,
-                    'file_type': file_type_param,
-                    'archive_path_abs': orig_file_path if file_type_param == 'archive' else None,
+                    'file_type': file_type_param, # Use renamed variable
+                    'archive_path_abs': str(archive_path_abs_str) if archive_path_abs_str else None,
                     'member_name': member_name,
                     'enable_ocr': should_ocr,
                     'original_mtime': item_data[1],
                     'original_fsize': item_data[2],
                     'display_name': Path(path_key).name if "::" not in path_key else path_key.split("::")[1],
-                    'extraction_timeout': actual_timeout_for_worker,
-                    'content_limit_bytes': content_limit_bytes,
-                    'index_dir_path': index_dir_path,
-                    'orig_file_path': orig_file_path  # 添加原始文件路径
+                    'extraction_timeout': actual_timeout_for_worker, # Pass None if original was 0
+                    'content_limit_bytes': content_limit_bytes, # Pass the calculated limit
+                    'index_dir_path': index_dir_path, # Add index_dir_path to worker_args
                 })
 
             # Use multiprocessing pool
@@ -2195,50 +2788,6 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
         if INDEX_ACCESS_LOCK.locked():
             INDEX_ACCESS_LOCK.release()
             print("Index Update: Lock released in outer exception handler.")
-
-# --- MODIFIED: 添加路径标准化函数用于索引键生成 ---
-def normalize_path_for_index(path_str, source_dirs=None):
-    """
-    标准化路径用于索引键。
-    如果是压缩包内的文件，保留原始格式 (archive_path::member_name)。
-    对于普通文件，尽量使用与源目录的相对路径。
-    
-    Args:
-        path_str: 要标准化的路径字符串
-        source_dirs: 可选的源目录列表，用于尝试构建相对路径
-    
-    Returns:
-        标准化后的路径字符串，用作索引键
-    """
-    if "::" in path_str:  # 压缩包内文件格式已经是 archive_path::member_name
-        return path_str
-        
-    path_obj = Path(path_str)
-    abs_path = str(path_obj.resolve())
-    
-    # 如果提供了源目录，尝试创建相对路径
-    if source_dirs:
-        for src_dir in source_dirs:
-            src_dir_path = Path(src_dir).resolve()
-            try:
-                # 检查当前路径是否位于该源目录下
-                if path_obj.is_relative_to(src_dir_path):
-                    # 创建相对于源目录的路径，并添加源目录标识前缀
-                    rel_path = path_obj.relative_to(src_dir_path)
-                    return f"{src_dir_path.name}:/{rel_path}"
-            except (ValueError, AttributeError):
-                # Path.is_relative_to 在某些Python版本中可能不可用
-                # 使用字符串方式检查
-                try:
-                    abs_src = str(src_dir_path)
-                    if abs_path.startswith(abs_src):
-                        rel_part = abs_path[len(abs_src):].lstrip('\\/')
-                        return f"{src_dir_path.name}:/{rel_part}"
-                except Exception:
-                    pass
-    
-    # 如果无法创建相对路径，至少确保使用一致的分隔符格式
-    return abs_path.replace('\\', '/')
 
 def main():
     print("--- Script Started ---")
