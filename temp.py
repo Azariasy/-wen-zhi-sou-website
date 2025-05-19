@@ -1120,6 +1120,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         super().__init__()
         self.setWindowTitle("文智搜 (PySide6)")
         self.setMinimumSize(600, 450) # ADDED: Set a minimum window size
+        
+        # --- 设置窗口图标 ---
+        try:
+            icon_path = get_resource_path("app_icon.ico")
+            self.setWindowIcon(QIcon(icon_path))
+        except Exception as e:
+            print(f"设置窗口图标时发生错误: {e}")
+        # -------------------
 
         # --- Initialize Config (using QSettings) --- 
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
@@ -1462,7 +1470,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     type_filter_layout.addWidget(checkbox)
                 else:
                     # 基础版功能
-                    type_filter_layout.addWidget(checkbox)
+                        type_filter_layout.addWidget(checkbox)
             
             # 连接复选框状态改变信号
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
@@ -1523,8 +1531,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     
     def _show_pro_feature_dialog_message(self, type_name):
         """显示专业版功能对话框的实际消息"""
-        # 显示提示对话框
-        QMessageBox.information(
+            # 显示提示对话框
+            QMessageBox.information(
                 self, 
                 "专业版功能", 
                 f"搜索 {type_name} 文件是专业版功能。\n\n"
@@ -2656,6 +2664,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print("Hiding progress bar and phase label explicitly...") # DEBUG
         self.progress_bar.setVisible(False)
         self.phase_label.setVisible(False)
+        # --- 修复: 也隐藏detail_label ---
+        self.detail_label.setVisible(False)
+        # -------------------------------
         print("Calling set_busy_state(False)...") # DEBUG
         self.set_busy_state(False)
         print("--- indexing_finished_slot finished ---") # DEBUG
@@ -2671,6 +2682,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.statusBar().showMessage(f"操作出错: {error_message[:100]}...", 0)  # Show truncated error persistently
         # Ensure progress bar is hidden on error
         self.progress_bar.setVisible(False)
+        # --- 修复: 同时隐藏phase_label和detail_label ---
+        self.phase_label.setVisible(False)
+        self.detail_label.setVisible(False)
+        # -------------------------------------------
         # Reset busy state
         self.set_busy_state(False)
 
@@ -3387,7 +3402,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                 # --- 修正图像路径 ---
                 self._update_theme_icons(theme_name)
-            except Exception as e:
+                    except Exception as e:
                 print(f"Error applying modern blue style: {e}")
                 # 如果无法加载现代蓝色主题，使用默认样式
                 self.setStyleSheet("")
@@ -3407,9 +3422,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                 # --- 修正图像路径 ---
                 self._update_theme_icons(theme_name)
-            except Exception as e:
+                    except Exception as e:
                 print(f"Error applying modern purple style: {e}. Falling back to modern blue theme.")
-                self._apply_fallback_blue_theme()
+                    self._apply_fallback_blue_theme()
         elif theme_name == "现代红":
             try:
                 # 使用现代红色主题
@@ -3443,7 +3458,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     
                 # --- 修正图像路径 ---
                 self._update_theme_icons(theme_name)
-            except Exception as e:
+                    except Exception as e:
                 print(f"Error applying modern orange style: {e}. Falling back to modern blue theme.")
                 self._apply_fallback_blue_theme()
         else:
@@ -3976,9 +3991,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.skipped_files_dialog.activateWindow()  # 激活窗口
                 return
                 
-            # 创建对话框实例（不需要导入外部模块，直接使用同文件中定义的类）
-            self.skipped_files_dialog = SkippedFilesDialog(self)
-            self.skipped_files_dialog.show()
+            # 创建对话框实例（不需要导入外部模块，直接使用）
+            from search_gui_pyside_py1 import SkippedFilesDialog
+                self.skipped_files_dialog = SkippedFilesDialog(self)
+                self.skipped_files_dialog.show()
         except Exception as e:
             print(f"显示跳过文件对话框时出错: {e}")
             import traceback

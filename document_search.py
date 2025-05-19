@@ -2214,7 +2214,7 @@ def update_skipped_files_record(index_dir_path: str, processed_license_files: di
 
 # --- MODIFIED: Add enable_ocr parameter --- 
 # def create_or_update_index(directory_path_str: str, index_dir_path: str):
-def create_or_update_index(source_directories: list[str], index_dir_path: str, enable_ocr: bool = True, extraction_timeout: int | None = None, txt_content_limit_kb: int | None = None): # Add new parameter with default None
+def create_or_update_index(source_directories: list[str], index_dir_path: str, enable_ocr: bool = True, extraction_timeout: int | None = None, txt_content_limit_kb: int | None = None, file_types_to_index: list[str] | None = None): # Add file_types_to_index parameter
 # ------------------------------------------
     """Creates or updates the Whoosh index for the given list of source directories.
     Yields status messages and progress updates.
@@ -2224,6 +2224,8 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
         enable_ocr: Whether to enable OCR for PDF files during indexing.
         extraction_timeout: Timeout in seconds for single file extraction.
         txt_content_limit_kb: Maximum content size in KB to index for .txt files (0 or None means no limit).
+        file_types_to_index: List of file extensions to include in indexing (without dot, e.g. ['txt', 'pdf']).
+                             If None or empty, all supported types will be indexed.
     """
     print("Index Update: Acquiring index lock...")
     INDEX_ACCESS_LOCK.acquire()
@@ -2312,8 +2314,32 @@ def create_or_update_index(source_directories: list[str], index_dir_path: str, e
 
         # --- Initialize accumulators and counters before the loop ---
         yield {'type': 'status', 'message': '阶段: 正在扫描文件系统并对比变更...'}
-        doc_extensions = {'.docx', '.txt', '.pdf', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg'}
-        archive_extensions = {'.zip', '.rar'}
+        
+        # --- ADDED: 处理文件类型过滤 ---
+        # 如果提供了文件类型列表且不为空，则只索引指定类型
+        if file_types_to_index and len(file_types_to_index) > 0:
+            # 转换文件类型列表为小写并添加点号
+            filtered_extensions = {f".{ext.lower().lstrip('.')}" for ext in file_types_to_index}
+            
+            # 获取所有支持的文件类型
+            all_doc_extensions = {'.docx', '.txt', '.pdf', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg'}
+            all_archive_extensions = {'.zip', '.rar'}
+            
+            # 过滤文档类型
+            doc_extensions = all_doc_extensions & filtered_extensions
+            # 如果启用了压缩文件类型的提取，也需要过滤压缩文件类型
+            archive_extensions = all_archive_extensions & filtered_extensions
+            
+            # 日志记录选择的文件类型
+            filtered_types_str = ", ".join(sorted([ext[1:] for ext in (doc_extensions | archive_extensions)]))
+            yield {'type': 'status', 'message': f'过滤模式：仅索引以下类型的文件: {filtered_types_str}'}
+        else:
+            # 使用所有支持的文件类型
+            doc_extensions = {'.docx', '.txt', '.pdf', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg'}
+            archive_extensions = {'.zip', '.rar'}
+            yield {'type': 'status', 'message': f'索引所有支持的文件类型'}
+        # ------------------------------
+        
         added_count, updated_count, deleted_count, skipped_count, error_count = 0, 0, 0, 0, 0
         # --- Store data as tuples for extraction worker ---
         # to_index_list: list[tuple(path_key, mtime, fsize, type, archive_path?, member_name?)]

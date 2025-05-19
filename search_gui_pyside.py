@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QFrame,
     QInputDialog,
     QTabWidget, QScrollArea, QTabBar, QTabWidget,
+    QGridLayout,
 )
 from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex # Added QSize, QDir and QModelIndex 
 from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem # Added QStandardItemModel and QStandardItem
@@ -47,7 +48,7 @@ import math
 import codecs
 import webbrowser
 import requests.adapters  # 添加requests的适配器和重试策略导入
-import requests.packages.urllib3.util.retry
+import urllib3.util  # 替换过时的requests.packages导入
 
 # --- ADDED: 导入许可证管理器和对话框 ---
 from license_manager import get_license_manager, Features, LicenseStatus
@@ -143,8 +144,9 @@ class Worker(QObject):
         if self.stop_requested:
             raise InterruptedError("操作被用户中断")
 
+    @Slot(list, str, bool, int, int, object) # Added object for file_types_to_index
     @Slot(list, str, bool, int, int) # Added int for txt_content_limit_kb
-    def run_indexing(self, source_directories, index_dir_path, enable_ocr, extraction_timeout, txt_content_limit_kb):
+    def run_indexing(self, source_directories, index_dir_path, enable_ocr, extraction_timeout, txt_content_limit_kb, file_types_to_index=None):
         """Runs the indexing process in the background for multiple source directories."""
         try:
             # 重置停止标志位
@@ -167,7 +169,8 @@ class Worker(QObject):
                 index_dir_path,
                 enable_ocr,
                 extraction_timeout=extraction_timeout, # Pass timeout here
-                txt_content_limit_kb=txt_content_limit_kb # Pass txt limit here
+                txt_content_limit_kb=txt_content_limit_kb, # Pass txt limit here
+                file_types_to_index=file_types_to_index # Pass file types to index
             )
 
             for update in generator:
@@ -215,8 +218,7 @@ class Worker(QObject):
         except Exception as e:
             # Catch any unexpected errors during the backend call itself
             tb = traceback.format_exc()
-            print(f"WORKER EXCEPTION in run_indexing: {e}\
-{tb}", file=sys.stderr)
+            print(f"WORKER EXCEPTION in run_indexing: {e}\n{tb}", file=sys.stderr)
             self.errorOccurred.emit(f"启动或执行索引时发生意外错误: {e}")
 
     @Slot(str, str, object, object, object, object, object, str, bool, str, object)
@@ -581,6 +583,19 @@ class SettingsDialog(QDialog):
         from license_manager import get_license_manager, Features
         self.license_manager = get_license_manager()
         # ------------------------------
+        
+        # --- 初始化设置对象 ---
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
+        # -----------------
+        
+        # --- 初始化主题文件列表 ---
+        self.theme_files = ["现代蓝", "现代紫", "现代红", "现代橙", "默认"]
+        # -----------------
+        
+        # --- 初始化文件类型选择 ---
+        self.selected_file_types = []
+        print("DEBUG: 初始化 self.selected_file_types =", self.selected_file_types)
+        # -----------------
 
         # --- Main Layout ---
         layout = QVBoxLayout(self)
@@ -638,6 +653,99 @@ class SettingsDialog(QDialog):
         # ----------------------------------------
         
         index_group_layout.addSpacing(15) # Add some space
+
+        # --- ADDED: File Types to Index Selection ---
+        file_types_group = QGroupBox("要索引的文件类型")
+        file_types_group.setToolTip("选择需要创建索引的文件类型，未勾选的类型将被跳过")
+        file_types_layout = QVBoxLayout(file_types_group)
+        
+        # 创建全选复选框
+        self.select_all_types_checkbox = QCheckBox("全选")
+        self.select_all_types_checkbox.setChecked(True)
+        file_types_layout.addWidget(self.select_all_types_checkbox)
+        
+        # 定义支持的文件类型
+        supported_types = {
+            'txt': {'display': '文本文件 (.txt)', 'pro_feature': None},
+            'docx': {'display': 'Word文档 (.docx)', 'pro_feature': None},
+            'xlsx': {'display': 'Excel表格 (.xlsx)', 'pro_feature': None},
+            'pptx': {'display': 'PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
+            'pdf': {'display': 'PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
+            'html': {'display': 'HTML网页 (.html, .htm)', 'pro_feature': None},
+            'rtf': {'display': 'RTF富文本 (.rtf)', 'pro_feature': None},
+            'md': {'display': 'Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
+            'eml': {'display': '电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'msg': {'display': 'Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'zip': {'display': 'ZIP压缩包 (.zip)', 'pro_feature': None},
+            'rar': {'display': 'RAR压缩包 (.rar)', 'pro_feature': None},
+        }
+        
+        # 将文件类型分为基础版和专业版两组
+        free_types = []
+        pro_types = []
+        for type_key, type_info in supported_types.items():
+            if type_info['pro_feature'] is None:
+                free_types.append((type_key, type_info))
+            else:
+                pro_types.append((type_key, type_info))
+        
+        # 创建复选框网格布局 - 2列
+        grid_layout = QGridLayout()
+        grid_layout.setColumnStretch(0, 1)
+        grid_layout.setColumnStretch(1, 1)
+        
+        # 文件类型复选框字典
+        self.file_type_checkboxes = {}
+        
+        # 添加基础版文件类型复选框
+        row = 0
+        col = 0
+        for i, (type_key, type_info) in enumerate(free_types):
+            checkbox = QCheckBox(type_info['display'])
+            checkbox.setChecked(True)  # 默认选中所有类型
+            self.file_type_checkboxes[type_key] = checkbox
+            grid_layout.addWidget(checkbox, row, col)
+            
+            # 连接信号到更新全选状态的方法
+            checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
+            
+            # 每两个切换列
+            col = (col + 1) % 2
+            if col == 0:
+                row += 1
+        
+        # 添加专业版文件类型复选框
+        for type_key, type_info in pro_types:
+            pro_feature = type_info['pro_feature']
+            feature_available = self.license_manager.is_feature_available(pro_feature)
+            
+            checkbox = QCheckBox(type_info['display'])
+            checkbox.setChecked(feature_available)  # 仅当功能可用时默认选中
+            
+            # 如果功能不可用，禁用复选框
+            if not feature_available:
+                checkbox.setEnabled(False)
+                checkbox.setToolTip(f"此文件类型需要专业版授权才能使用")
+            
+            # 连接信号到更新全选状态的方法（只有当功能可用时连接）
+            if feature_available:
+                checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
+            
+            self.file_type_checkboxes[type_key] = checkbox
+            grid_layout.addWidget(checkbox, row, col)
+            
+            # 每两个切换列
+            col = (col + 1) % 2
+            if col == 0:
+                row += 1
+        
+        file_types_layout.addLayout(grid_layout)
+        index_group_layout.addWidget(file_types_group)
+        index_group_layout.addSpacing(15)
+        
+        # 连接全选复选框信号
+        self.select_all_types_checkbox.stateChanged.connect(self._toggle_all_file_types)
+        # ---------------------------------------------
 
         # --- ADDED: Extraction Timeout Setting ---
         timeout_layout = QHBoxLayout()
@@ -832,6 +940,38 @@ class SettingsDialog(QDialog):
         font_size_layout.addWidget(self.result_font_size_spinbox, 1)
         interface_group_layout.addLayout(font_size_layout)
 
+        # --- ADDED: Default Sort Settings ---
+        sort_group = QGroupBox("默认排序方式")
+        sort_group_layout = QVBoxLayout(sort_group)
+        
+        # 排序字段选择
+        sort_field_layout = QHBoxLayout()
+        sort_field_label = QLabel("排序字段:")
+        self.default_sort_combo = QComboBox()
+        self.default_sort_combo.addItems(["修改时间", "文件名", "文件大小", "文件类型", "所在文件夹"])
+        
+        sort_field_layout.addWidget(sort_field_label)
+        sort_field_layout.addWidget(self.default_sort_combo, 1)
+        sort_group_layout.addLayout(sort_field_layout)
+        
+        # 排序顺序选择
+        sort_order_layout = QHBoxLayout()
+        sort_order_label = QLabel("排序顺序:")
+        self.default_sort_asc_radio = QRadioButton("升序")
+        self.default_sort_desc_radio = QRadioButton("降序")
+        self.default_sort_desc_radio.setChecked(True)  # 默认降序
+        
+        sort_order_layout.addWidget(sort_order_label)
+        sort_order_layout.addWidget(self.default_sort_asc_radio)
+        sort_order_layout.addWidget(self.default_sort_desc_radio)
+        sort_order_layout.addStretch()
+        sort_group_layout.addLayout(sort_order_layout)
+        
+        # 隐藏排序设置组（仅保留控件引用以便在_load_settings和_apply_settings中使用）
+        sort_group.setVisible(False)
+        interface_group_layout.addWidget(sort_group)
+        # ----------------------------------
+
         # --- Add Containers to Main Layout ---
         layout.addWidget(self.index_settings_widget)
         layout.addWidget(self.search_settings_widget)
@@ -940,154 +1080,237 @@ class SettingsDialog(QDialog):
                 self.source_dirs_list.takeItem(row)
 
     def _load_settings(self):
-        settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
-
-        # --- Load Index Settings ---
-        # Use specific key, provide default path if setting doesn't exist
-        default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
-        index_dir = settings.value("indexing/indexDirectory", default_index_path) # Use specific key
-        self.index_dir_entry.setText(index_dir)
-
-        enable_ocr = settings.value("indexing/enableOcr", True, type=bool)
-        self.enable_ocr_checkbox.setChecked(enable_ocr)
-
-        # --- ADDED: Load Source Directories ---
-        source_dirs = settings.value("indexing/sourceDirectories", [], type=list) # Default to empty list
+        """Load all settings from QSettings"""
+        # Source Directories
+        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
         self.source_dirs_list.clear()
-        if source_dirs: # Only add if the list is not empty
-            self.source_dirs_list.addItems(source_dirs)
-        # -----------------------------------
+        for directory in source_dirs:
+            self.source_dirs_list.addItem(directory)
 
-        # --- ADDED: Load Extraction Timeout ---
-        default_timeout = 120
-        timeout = settings.value("indexing/extractionTimeout", default_timeout, type=int)
-        self.extraction_timeout_spinbox.setValue(timeout)
-        # -----------------------------------
-
-        # --- ADDED: Load TXT Content Limit ---
-        txt_limit_kb = settings.value("indexing/txtContentLimitKb", 0, type=int)
-        self.txt_content_limit_spinbox.setValue(txt_limit_kb)
-        # ------------------------------------
-
-        # --- Load Search Settings ---
-        case_sensitive = settings.value("search/caseSensitive", False, type=bool)
+        # OCR Setting
+        ocr_enabled = self.settings.value("indexing/enableOcr", True, type=bool)
+        self.enable_ocr_checkbox.setChecked(ocr_enabled)
+        
+        # --- ADDED: Load File Type Settings ---
+        # 获取已保存的文件类型设置，如果没有则默认全选
+        selected_file_types = self.settings.value("indexing/selectedFileTypes", [], type=list)
+        print("DEBUG: 从设置加载文件类型 =", selected_file_types)
+        
+        # 只有在首次运行（返回None）或格式不正确时才设置为默认全选
+        # 当设置中存储的是空列表时，保持为空列表
+        if selected_file_types is None or not isinstance(selected_file_types, list):
+            selected_file_types = list(self.file_type_checkboxes.keys())
+            print("DEBUG: 设置为默认全选 =", selected_file_types)
+        
+        # 保存选中的文件类型到成员变量
+        self.selected_file_types = selected_file_types
+        print("DEBUG: 设置 self.selected_file_types =", self.selected_file_types)
+        
+        # 暂时阻断复选框信号
+        for checkbox in self.file_type_checkboxes.values():
+            checkbox.blockSignals(True)
+        
+        # 设置复选框状态
+        enabled_checkboxes_count = 0
+        checked_enabled_count = 0
+        for type_key, checkbox in self.file_type_checkboxes.items():
+            if checkbox.isEnabled():  # 只处理可用的复选框
+                enabled_checkboxes_count += 1
+                is_checked = type_key in selected_file_types
+                checkbox.setChecked(is_checked)
+                if is_checked:
+                    checked_enabled_count += 1
+                print(f"DEBUG: 设置复选框 {type_key} = {is_checked} (可用: {checkbox.isEnabled()})")
+        
+        # 恢复复选框信号
+        for checkbox in self.file_type_checkboxes.values():
+            checkbox.blockSignals(False)
+        
+        # 检查是否全选了，并更新全选复选框状态
+        all_enabled_checked = checked_enabled_count == enabled_checkboxes_count
+        print(f"DEBUG: 所有可用均被选中: {all_enabled_checked} ({checked_enabled_count}/{enabled_checkboxes_count})")
+        
+        # 阻断全选复选框信号
+        self.select_all_types_checkbox.blockSignals(True)
+        self.select_all_types_checkbox.setChecked(all_enabled_checked)
+        self.select_all_types_checkbox.blockSignals(False)
+        # ---------------------------------
+        
+        # Index Directory
+        default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
+        index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
+        self.index_dir_entry.setText(index_dir or default_index_path)
+        
+        # --- ADDED: Extraction Timeout ---
+        extraction_timeout = self.settings.value("indexing/extractionTimeout", 120, type=int)
+        self.extraction_timeout_spinbox.setValue(extraction_timeout)
+        # ------------------------------
+        
+        # --- ADDED: TXT Content Limit ---
+        txt_content_limit = self.settings.value("indexing/txtContentLimitKb", 0, type=int)
+        self.txt_content_limit_spinbox.setValue(txt_content_limit)
+        # ------------------------------
+        
+        # Search Settings
+        case_sensitive = self.settings.value("search/caseSensitive", False, type=bool)
         self.case_sensitive_checkbox.setChecked(case_sensitive)
         
-        # --- ADDED: Load Size Filter Settings ---
-        min_size = settings.value("search/minSizeKB", "", type=str)
+        # --- ADDED: Size filter settings ---
+        min_size = self.settings.value("search/minSizeKb", "", type=str)
+        max_size = self.settings.value("search/maxSizeKb", "", type=str)
         self.min_size_entry.setText(min_size)
-        
-        max_size = settings.value("search/maxSizeKB", "", type=str)
         self.max_size_entry.setText(max_size)
-        # ------------------------------------
+        # --------------------------------
         
-        # --- ADDED: Load Date Filter Settings ---
-        # 设置默认日期范围
-        default_start_date = QDate(1900, 1, 1)
-        default_end_date = QDate.currentDate()
+        # --- ADDED: Date filter settings ---
+        start_date_str = self.settings.value("search/startDate", "", type=str)
+        end_date_str = self.settings.value("search/endDate", "", type=str)
         
-        # 从设置中读取日期
-        start_date_str = settings.value("search/startDate", "")
         if start_date_str:
-            self.start_date_edit.setDate(QDate.fromString(start_date_str, "yyyy-MM-dd"))
+            start_date = QDate.fromString(start_date_str, "yyyy-MM-dd")
+            if start_date.isValid():
+                self.start_date_edit.setDate(start_date)
         else:
-            self.start_date_edit.setDate(default_start_date)
-            
-        end_date_str = settings.value("search/endDate", "")
+            # 默认设置为远过去的日期
+            self.start_date_edit.setDate(QDate(1900, 1, 1))
+        
         if end_date_str:
-            self.end_date_edit.setDate(QDate.fromString(end_date_str, "yyyy-MM-dd"))
+            end_date = QDate.fromString(end_date_str, "yyyy-MM-dd")
+            if end_date.isValid():
+                self.end_date_edit.setDate(end_date)
         else:
-            self.end_date_edit.setDate(default_end_date)
-        # ------------------------------------
-
-        # --- Load UI Settings ---
-        theme = settings.value("ui/theme", "现代蓝") # Default to 'Modern Blue'
-        self.theme_combo.setCurrentText(theme)
-
-        # Load Result Font Size Setting
-        # default_font_size = 10 # Sensible default
-        default_font_size = QApplication.font().pointSize() # Use app default font size
-        font_size = settings.value("ui/resultFontSize", default_font_size, type=int)
-        self.result_font_size_spinbox.setValue(font_size)
-
-
-    # --- MODIFIED: Renamed to _apply_settings for clarity with Apply button ---
-    def _apply_settings(self):
-        settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
-
-        # --- Save Index Settings ---
-        settings.setValue("indexing/indexDirectory", self.index_dir_entry.text()) # Use specific key
-        settings.setValue("indexing/enableOcr", self.enable_ocr_checkbox.isChecked())
-
-        # --- ADDED: Save Source Directories ---
-        source_dirs = [self.source_dirs_list.item(i).text() for i in range(self.source_dirs_list.count())]
-        settings.setValue("indexing/sourceDirectories", source_dirs)
-        # -----------------------------------
-
-        # --- ADDED: Save Extraction Timeout ---
-        settings.setValue("indexing/extractionTimeout", self.extraction_timeout_spinbox.value())
-        # -----------------------------------
-
-        # --- ADDED: Save TXT Content Limit ---
-        settings.setValue("indexing/txtContentLimitKb", self.txt_content_limit_spinbox.value())
-        # ------------------------------------
-
-        # --- Save Search Settings ---
-        settings.setValue("search/caseSensitive", self.case_sensitive_checkbox.isChecked())
+            # 默认设置为当前日期
+            self.end_date_edit.setDate(QDate.currentDate())
+        # ---------------------------------
         
-        # --- ADDED: Save Size Filter Settings ---
-        settings.setValue("search/minSizeKB", self.min_size_entry.text())
-        settings.setValue("search/maxSizeKB", self.max_size_entry.text())
-        # ------------------------------------
+        # Populate Theme ComboBox
+        theme_name = self.settings.value("interface/theme", "默认", type=str)
+        # 设置默认主题（如果没有设置或设置无效）
+        if not theme_name in self.theme_files:
+            theme_name = "默认"
         
-        # --- ADDED: Save Date Filter Settings ---
-        # 保存日期设置
-        if self.start_date_edit.date() != QDate(1900, 1, 1):  # 如果不是默认日期，才保存
-            settings.setValue("search/startDate", self.start_date_edit.date().toString("yyyy-MM-dd"))
-        else:
-            settings.setValue("search/startDate", "")
+        # 设置主题下拉框的当前选项
+        theme_index = self.theme_combo.findText(theme_name)
+        if theme_index >= 0:
+            self.theme_combo.setCurrentIndex(theme_index)
             
-        if self.end_date_edit.date() != QDate.currentDate():  # 如果不是默认日期，才保存
-            settings.setValue("search/endDate", self.end_date_edit.date().toString("yyyy-MM-dd"))
+        # --- ADDED: Font Size Settings ---
+        font_size = self.settings.value("interface/resultFontSize", 10, type=int)
+        self.result_font_size_spinbox.setValue(font_size)
+        # --------------------------------
+        
+        # --- ADDED: Default Sort Settings ---
+        sort_field = self.settings.value("interface/defaultSortField", "修改时间", type=str)
+        sort_order = self.settings.value("interface/defaultSortOrder", "降序", type=str)
+        
+        sort_field_index = self.default_sort_combo.findText(sort_field)
+        if sort_field_index >= 0:
+            self.default_sort_combo.setCurrentIndex(sort_field_index)
+            
+        if sort_order == "升序":
+            self.default_sort_asc_radio.setChecked(True)
         else:
-            settings.setValue("search/endDate", "")
-        # ------------------------------------
-        
-        # --- Save UI Settings ---
-        # 保存当前选中的主题
-        selected_theme = self.theme_combo.currentText()
-        settings.setValue("ui/theme", selected_theme)
-        
-        # 保存结果字体大小
-        settings.setValue("ui/resultFontSize", self.result_font_size_spinbox.value())
+            self.default_sort_desc_radio.setChecked(True)
+        # -----------------------------------
 
-        print("--- Settings Applied ---") # Indicate settings were applied
-        print(f"Source Directories: {source_dirs}") # Debug
-        print(f"Index Directory: {self.index_dir_entry.text()}")
-        print(f"Enable OCR: {self.enable_ocr_checkbox.isChecked()}")
-        print(f"Extraction Timeout: {self.extraction_timeout_spinbox.value()}") # Debug print
-        print(f"Case Sensitive: {self.case_sensitive_checkbox.isChecked()}")
-        print(f"Min Size (KB): {self.min_size_entry.text()}")
-        print(f"Max Size (KB): {self.max_size_entry.text()}")
-        print(f"Start Date: {self.start_date_edit.date().toString('yyyy-MM-dd')}")
-        print(f"End Date: {self.end_date_edit.date().toString('yyyy-MM-dd')}")
-        print(f"Theme: {selected_theme}")
-        print(f"Result Font Size: {self.result_font_size_spinbox.value()}")
-        print("-----------------------")
+        # 阻断全选复选框信号
+        self.select_all_types_checkbox.blockSignals(True)
+        self.select_all_types_checkbox.setChecked(all_enabled_checked)
+        self.select_all_types_checkbox.blockSignals(False)
+        
+        # 确保选中状态与当前复选框状态一致
+        current_selected = self._save_current_file_types()
+        if set(current_selected) != set(self.selected_file_types):
+            print(f"DEBUG: 更新 self.selected_file_types 以匹配当前复选框状态")
+            self.selected_file_types = current_selected
+        # ---------------------------------
 
-        # 立即应用界面设置
-        parent_window = self.parent()
-        if parent_window:
-            # 如果是界面设置或全局设置，立即应用主题和字体大小
-            if hasattr(self, 'interface_settings_widget') and \
-               self.interface_settings_widget.isVisible():
-                print("立即应用主题设置...")
-                parent_window.apply_theme(selected_theme)
-                parent_window._apply_result_font_size()
-                
-        # 显示确认消息
-        if parent_window and hasattr(parent_window, 'statusBar'):
-            parent_window.statusBar().showMessage("设置已应用", 3000) # Show for 3 seconds
+    def _apply_settings(self):
+        """Apply all settings from the dialog to QSettings"""
+        # Source Directories
+        source_dirs = []
+        for i in range(self.source_dirs_list.count()):
+            source_dirs.append(self.source_dirs_list.item(i).text())
+        self.settings.setValue("indexing/sourceDirectories", source_dirs)
+        
+        # OCR Setting
+        ocr_enabled = self.enable_ocr_checkbox.isChecked()
+        self.settings.setValue("indexing/enableOcr", ocr_enabled)
+        
+        # --- ADDED: Save File Types Settings ---
+        selected_file_types = self._save_current_file_types()
+        print(f"DEBUG: _apply_settings 保存文件类型 = {selected_file_types}")
+        self.settings.setValue("indexing/selectedFileTypes", selected_file_types)
+        # -------------------------------------
+        
+        # Index Directory
+        index_dir = self.index_dir_entry.text().strip()
+        self.settings.setValue("indexing/indexDirectory", index_dir)
+        
+        # --- ADDED: Extraction Timeout ---
+        extraction_timeout = self.extraction_timeout_spinbox.value()
+        self.settings.setValue("indexing/extractionTimeout", extraction_timeout)
+        # -----------------------------
+        
+        # --- ADDED: TXT Content Limit ---
+        txt_content_limit = self.txt_content_limit_spinbox.value()
+        self.settings.setValue("indexing/txtContentLimitKb", txt_content_limit)
+        # -----------------------------
+        
+        # Search Settings
+        case_sensitive = self.case_sensitive_checkbox.isChecked()
+        self.settings.setValue("search/caseSensitive", case_sensitive)
+        
+        # --- ADDED: Size filter settings ---
+        min_size = self.min_size_entry.text().strip()
+        max_size = self.max_size_entry.text().strip()
+        self.settings.setValue("search/minSizeKb", min_size)
+        self.settings.setValue("search/maxSizeKb", max_size)
+        # --------------------------------
+        
+        # --- ADDED: Date filter settings ---
+        # 只有当日期不是默认值时才保存
+        if self.start_date_edit.date() != QDate(1900, 1, 1):
+            start_date_str = self.start_date_edit.date().toString("yyyy-MM-dd")
+            self.settings.setValue("search/startDate", start_date_str)
+        else:
+            self.settings.setValue("search/startDate", "")
+            
+        if self.end_date_edit.date() != QDate.currentDate():
+            end_date_str = self.end_date_edit.date().toString("yyyy-MM-dd")
+            self.settings.setValue("search/endDate", end_date_str)
+        else:
+            self.settings.setValue("search/endDate", "")
+        # ---------------------------------
+            
+        # Interface Settings - Theme
+        theme_name = self.theme_combo.currentText()
+        self.settings.setValue("interface/theme", theme_name)
+        
+        # 应用所选主题
+        if self.parent():
+            self.parent().apply_theme(theme_name)
+            
+        # --- ADDED: Font Size Settings ---
+        font_size = self.result_font_size_spinbox.value()
+        self.settings.setValue("interface/resultFontSize", font_size)
+        
+        # 应用字体大小
+        if self.parent():
+            self.parent()._apply_result_font_size()
+        # --------------------------------
+        
+        # --- ADDED: Default Sort Settings ---
+        sort_field = self.default_sort_combo.currentText()
+        sort_order = "升序" if self.default_sort_asc_radio.isChecked() else "降序"
+        
+        self.settings.setValue("interface/defaultSortField", sort_field)
+        self.settings.setValue("interface/defaultSortOrder", sort_order)
+        
+        # 应用默认排序
+        if self.parent():
+            self.parent()._load_and_apply_default_sort()
+        # -----------------------------------
 
     # Override accept() to apply settings before closing
     def accept(self):
@@ -1104,11 +1327,162 @@ class SettingsDialog(QDialog):
         self.start_date_edit.setDate(QDate(1900, 1, 1))
         self.end_date_edit.setDate(QDate.currentDate())
 
+    def _toggle_all_file_types(self, state):
+        """处理全选复选框状态变更"""
+        # 获取当前状态 - 注意：这里要使用传入的state参数，而不是直接获取复选框状态
+        # Qt.Checked = 2, Qt.Unchecked = 0, Qt.PartiallyChecked = 1
+        # 直接使用状态值进行判断，当state为2时表示选中
+        is_checked = (state == 2)  # 明确使用数值2表示选中状态
+        
+        print(f"DEBUG: 全选复选框状态变更: 设置所有复选框为 {is_checked} (状态值: {state})")
+        
+        # 防止设置复选框状态时触发信号循环
+        self.select_all_types_checkbox.blockSignals(True)
+        
+        enabled_count = 0
+        checked_count = 0
+        # 遍历所有文件类型复选框
+        for type_key, checkbox in self.file_type_checkboxes.items():
+            # 只处理启用的复选框（即可用的文件类型）
+            if checkbox.isEnabled():
+                enabled_count += 1
+                checkbox.blockSignals(True)  # 阻止复选框状态改变触发信号
+                checkbox.setChecked(is_checked)  # 使用传入的状态
+                checkbox.blockSignals(False)  # 恢复信号连接
+                if is_checked:
+                    checked_count += 1
+                print(f"DEBUG: 设置复选框 {type_key} = {is_checked}")
+        
+        print(f"DEBUG: 总共处理了 {enabled_count} 个可用复选框，设置了 {checked_count} 个为选中状态")
+        
+        # 直接更新选中的文件类型列表，不通过_save_current_file_types方法
+        if is_checked:
+            # 如果是全选，直接创建所有可用类型的列表
+            selected_types = []
+            for type_key, checkbox in self.file_type_checkboxes.items():
+                if checkbox.isEnabled():
+                    selected_types.append(type_key)
+            self.selected_file_types = selected_types
+        else:
+            # 如果是取消选中，则为空列表
+            self.selected_file_types = []
+            
+        print(f"DEBUG: 直接更新 self.selected_file_types = {self.selected_file_types}")
+        
+        # 恢复信号连接
+        self.select_all_types_checkbox.blockSignals(False)
+
+    def _save_current_file_types(self):
+        """收集当前勾选的文件类型并返回列表"""
+        selected_types = []
+        for type_key, checkbox in self.file_type_checkboxes.items():
+            if checkbox.isChecked():
+                selected_types.append(type_key)
+                print(f"DEBUG: 复选框 {type_key} 被选中")
+        
+        print(f"DEBUG: _save_current_file_types 返回 {len(selected_types)} 个选中类型")
+        return selected_types
+
+    def _update_button_states(self):
+        """更新应用按钮状态"""
+        # 应用按钮始终可用，不再检查是否有文件类型被选中
+        self.apply_button.setEnabled(True)
+    
+    def _apply_selection(self):
+        """应用当前选择的文件类型"""
+        # 保存当前勾选的文件类型
+        self.selected_file_types = self._save_current_file_types()
+        print(f"DEBUG: _apply_selection 更新 self.selected_file_types = {self.selected_file_types}")
+        
+        # 判断是否没有选择任何文件类型
+        if len(self.selected_file_types) == 0:
+            # 如果没有选择任何文件类型，恢复为默认全部可用文件类型
+            enabled_types = []
+            for type_key, checkbox in self.file_type_checkboxes.items():
+                if checkbox.isEnabled():
+                    enabled_types.append(type_key)
+            
+            self.selected_file_types = enabled_types
+            print(f"DEBUG: 未选择任何文件类型，自动恢复为全选可用类型: {len(self.selected_file_types)} 个")
+            
+            # 更新UI以反映变化，但由于对话框即将关闭，这一步可能看不到效果
+            try:
+                # 阻断全选复选框信号
+                self.select_all_types_checkbox.blockSignals(True)
+                
+                # 更新复选框状态，逐个设置为选中
+                for type_key, checkbox in self.file_type_checkboxes.items():
+                    if checkbox.isEnabled():
+                        checkbox.blockSignals(True)
+                        checkbox.setChecked(True)
+                        checkbox.blockSignals(False)
+                
+                # 更新全选复选框状态
+                self.select_all_types_checkbox.setCheckState(Qt.Checked)
+                self.select_all_types_checkbox.blockSignals(False)
+            except Exception as e:
+                print(f"DEBUG: 更新UI反映全选状态时出错: {e}")
+        
+        # 保存选中的文件类型
+        self.settings.setValue("indexing/selectedFileTypes", self.selected_file_types)
+        print(f"DEBUG: _apply_selection 保存到设置中 'indexing/selectedFileTypes' = {self.selected_file_types}")
+        
+        # 发出信号通知选择已更改
+        self.fileTypesSelectionChanged.emit(self.selected_file_types)
+        
+        # 显示确认消息
+        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
+        enabled_count = 0
+        for checkbox in self.file_type_checkboxes.values():
+            if checkbox.isEnabled():
+                enabled_count += 1
+        
+        if len(self.selected_file_types) == 0:
+            msg = "警告：未选择任何文件类型，已自动恢复为全选"
+            print(f"DEBUG: {msg}")
+        elif len(self.selected_file_types) == enabled_count:
+            msg = "已应用搜索范围：将搜索所有可用文件类型"
+            print(f"DEBUG: {msg}")
+        else:
+            msg = f"已应用搜索范围：将只搜索所选的 {len(self.selected_file_types)} 个文件类型"
+            print(f"DEBUG: {msg}")
+        
+        if self.parent():
+            self.parent().statusBar().showMessage(msg, 3000)
+        
+        self.accept()
+
+    def _update_select_all_checkbox_state(self):
+        """当文件类型复选框状态改变时更新全选复选框状态"""
+        # 暂时阻断信号，防止循环触发
+        self.select_all_types_checkbox.blockSignals(True)
+        
+        # 检查是否所有可用的复选框都被选中
+        enabled_count = 0
+        checked_count = 0
+        for checkbox in self.file_type_checkboxes.values():
+            if checkbox.isEnabled():
+                enabled_count += 1
+                if checkbox.isChecked():
+                    checked_count += 1
+        
+        all_checked = enabled_count > 0 and checked_count == enabled_count
+        print(f"DEBUG: 更新全选复选框状态: {all_checked} ({checked_count}/{enabled_count})")
+        
+        # 设置全选复选框状态
+        self.select_all_types_checkbox.setChecked(all_checked)
+        
+        # 恢复信号连接
+        self.select_all_types_checkbox.blockSignals(False)
+        
+        # 保存当前选中状态到内存变量（不直接保存到设置中）
+        self.selected_file_types = self._save_current_file_types()
+
 # --- Main GUI Window ---
 class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # Signal to trigger indexing in the worker thread
-    # --- MODIFIED: Add int parameter for txt_content_limit_kb ---
-    startIndexingSignal = Signal(list, str, bool, int, int) # source_dirs, index_dir, enable_ocr, timeout, txt_limit_kb
+    # --- MODIFIED: Add file_types_to_index parameter ---
+    startIndexingSignal = Signal(list, str, bool, int, int, object) # source_dirs, index_dir, enable_ocr, timeout, txt_limit_kb, file_types_to_index
     # ---------------------------------------------------------
     # Signal to trigger search in the worker thread (add types for size, date, file type, and case sensitivity)
     startSearchSignal = Signal(str, str, object, object, object, object, object, str, bool, str, object) # Added object for search_dirs
@@ -3841,7 +4215,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             return
 
         # --- MODIFIED: Read source directories from settings ---
-        # directory = self.dir_entry.text() # REMOVED
         source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
         if not source_dirs:
              QMessageBox.warning(self, "未配置源目录", "请先前往 \"设置 -> 索引设置\" 添加需要索引的文件夹。")
@@ -3849,7 +4222,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # -----------------------------------------------------
 
         # --- Get Index Directory from Settings ---
-        # settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME) # Already have self.settings
         default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
         index_dir = self.settings.value("indexing/indexDirectory", default_index_path) # Use specific key
         if not index_dir:
@@ -3872,7 +4244,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
         # --- ADDED: Get OCR Setting --- 
         enable_ocr = self.settings.value("indexing/enableOcr", True, type=bool)
-        print(f"Starting indexing for {len(source_dirs)} source(s) -> '{index_dir}'. Enable OCR: {enable_ocr}")
         # ------------------------------
 
         # --- ADDED: Get Extraction Timeout Setting ---
@@ -3882,16 +4253,49 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- ADDED: Get TXT Content Limit Setting --- 
         txt_content_limit_kb = self.settings.value("indexing/txtContentLimitKb", 0, type=int) # Default 0
         # -------------------------------------------
+        
+        # --- ADDED: 获取要索引的文件类型设置 ---
+        selected_file_types = self.settings.value("indexing/selectedFileTypes", [], type=list)
+        print(f"DEBUG: start_indexing_slot 读取 'indexing/selectedFileTypes' = {selected_file_types}")
+        print(f"DEBUG: selected_file_types 类型: {type(selected_file_types)}")
+        print(f"DEBUG: selected_file_types 是空列表?: {len(selected_file_types) == 0}")
+        print(f"DEBUG: selected_file_types 是None?: {selected_file_types is None}")
+        
+        # 如果文件类型列表为空，询问用户是否使用所有文件类型
+        if not selected_file_types:
+            reply = QMessageBox.question(
+                self, 
+                "未选择文件类型", 
+                "您没有选择任何要索引的文件类型。\n\n请问您是否希望索引所有支持的文件类型？\n\n如果选择\"否\"，您可以前往\"设置 -> 索引设置\"选择需要索引的文件类型。",
+                QMessageBox.Yes | QMessageBox.No, 
+                QMessageBox.Yes
+            )
+            
+            if reply == QMessageBox.Yes:
+                # 用户确认使用所有文件类型
+                selected_file_types = ['txt', 'docx', 'xlsx', 'pptx', 'html', 'rtf', 'zip', 'rar', 'pdf', 'md', 'eml', 'msg']
+                print(f"DEBUG: 用户确认使用所有支持的类型: {selected_file_types}")
+            else:
+                # 用户取消操作
+                print(f"DEBUG: 用户取消了索引操作，因为未选择文件类型")
+                return
+            
+        file_types_str = "所有支持的类型" if len(selected_file_types) == 12 else f"{', '.join(selected_file_types)}"
+        # -------------------------------------
 
-        # Updated print to include the new limit
-        print(f"Starting indexing for {len(source_dirs)} source(s) -> '{index_dir}'. OCR: {enable_ocr}, Timeout: {extraction_timeout}s, TXT Limit: {txt_content_limit_kb}KB")
+        # Updated print to include all settings
+        print(f"开始索引 {len(source_dirs)} 个源目录 -> '{index_dir}'")
+        print(f"- OCR: {enable_ocr}")
+        print(f"- 单文件提取超时: {extraction_timeout}秒") 
+        print(f"- TXT文件大小限制: {txt_content_limit_kb}KB")
+        print(f"- 索引文件类型: {file_types_str}")
 
         self.set_busy_state(True)
         self.results_text.clear()  # Clear previous results/logs
         self.statusBar().showMessage(f"开始准备索引 {len(source_dirs)} 个源目录...", 3000)
 
-        # --- MODIFIED: Emit signal with txt_content_limit_kb --- 
-        self.startIndexingSignal.emit(source_dirs, index_dir, enable_ocr, extraction_timeout, txt_content_limit_kb)
+        # --- MODIFIED: 传递文件类型过滤参数 --- 
+        self.startIndexingSignal.emit(source_dirs, index_dir, enable_ocr, extraction_timeout, txt_content_limit_kb, selected_file_types)
         # -------------------------------------------------------
     
     def _open_selected_folder(self):
@@ -3991,9 +4395,187 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.skipped_files_dialog.activateWindow()  # 激活窗口
                 return
                 
-            # 创建对话框实例（不需要导入外部模块，直接使用）
-            from search_gui_pyside_py1 import SkippedFilesDialog
-            self.skipped_files_dialog = SkippedFilesDialog(self)
+            # 直接在此创建一个简单的跳过文件对话框
+            class SimpleSkippedFilesDialog(QDialog):
+                def __init__(self, parent=None):
+                    super().__init__(parent)
+                    self.setWindowTitle("跳过的文件")
+                    self.resize(800, 500)
+                    self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
+                    
+                    # 创建布局
+                    layout = QVBoxLayout(self)
+                    
+                    # 添加说明标签
+                    info_label = QLabel("以下文件在索引过程中被跳过：")
+                    layout.addWidget(info_label)
+                    
+                    # 创建表格
+                    self.table = QTableWidget()
+                    self.table.setColumnCount(3)
+                    self.table.setHorizontalHeaderLabels(["文件路径", "跳过原因", "时间"])
+                    self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+                    self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                    self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+                    layout.addWidget(self.table)
+                    
+                    # 创建过滤部分
+                    filter_layout = QHBoxLayout()
+                    filter_label = QLabel("过滤条件:")
+                    self.filter_entry = QLineEdit()
+                    self.filter_entry.setPlaceholderText("输入关键词过滤")
+                    self.filter_entry.textChanged.connect(self._apply_filter)
+                    filter_layout.addWidget(filter_label)
+                    filter_layout.addWidget(self.filter_entry, 1)
+                    layout.addLayout(filter_layout)
+                    
+                    # 创建按钮
+                    button_layout = QHBoxLayout()
+                    self.clear_log_button = QPushButton("清空日志")
+                    self.clear_log_button.clicked.connect(self._clear_log)
+                    close_button = QPushButton("关闭")
+                    close_button.clicked.connect(self.accept)
+                    button_layout.addWidget(self.clear_log_button)
+                    button_layout.addStretch()
+                    button_layout.addWidget(close_button)
+                    layout.addLayout(button_layout)
+                    
+                    # 加载跳过文件数据
+                    self._load_skipped_files()
+                
+                def _load_skipped_files(self):
+                    """从TSV文件加载被跳过的文件数据"""
+                    self.skipped_files = []
+                    
+                    # 获取索引目录
+                    default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
+                    index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
+                    
+                    if not index_dir or not os.path.exists(index_dir):
+                        return
+                    
+                    # 构建日志文件路径
+                    log_file_path = os.path.join(index_dir, "index_skipped_files.tsv")
+                    
+                    if not os.path.exists(log_file_path):
+                        return
+                    
+                    try:
+                        import csv
+                        with open(log_file_path, 'r', encoding='utf-8', newline='') as f:
+                            reader = csv.reader(f, delimiter='\t')
+                            # 跳过表头行
+                            headers = next(reader, None)
+                            
+                            # 针对旧版本可能的不同表头进行兼容处理
+                            path_idx, reason_idx, time_idx = 0, 1, 2
+                            if headers:
+                                for i, header in enumerate(headers):
+                                    if "路径" in header:
+                                        path_idx = i
+                                    elif "原因" in header:
+                                        reason_idx = i
+                                    elif "时间" in header:
+                                        time_idx = i
+                            
+                            # 读取数据行
+                            for row in reader:
+                                if len(row) >= 3:
+                                    file_path = row[path_idx]
+                                    reason = row[reason_idx]
+                                    timestamp = row[time_idx]
+                                    self.skipped_files.append({
+                                        'path': file_path,
+                                        'reason': reason,
+                                        'time': timestamp
+                                    })
+                        
+                        # 更新UI
+                        self._apply_filter()
+                    except Exception as e:
+                        print(f"读取跳过文件记录时出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        if self.parent():
+                            QMessageBox.warning(self.parent(), "错误", f"读取跳过文件记录时出错: {e}")
+                
+                def _apply_filter(self):
+                    """应用过滤器并更新表格"""
+                    filter_text = self.filter_entry.text().lower()
+                    self.table.setRowCount(0)
+                    
+                    if not self.skipped_files:
+                        return
+                    
+                    # 过滤并显示结果
+                    for item in self.skipped_files:
+                        # 如果过滤文本为空或者任何字段包含过滤文本，则显示该项目
+                        if not filter_text or \
+                           filter_text in item['path'].lower() or \
+                           filter_text in item['reason'].lower() or \
+                           filter_text in item['time'].lower():
+                            
+                            row = self.table.rowCount()
+                            self.table.insertRow(row)
+                            
+                            path_item = QTableWidgetItem(item['path'])
+                            path_item.setToolTip(item['path'])
+                            self.table.setItem(row, 0, path_item)
+                            
+                            reason_item = QTableWidgetItem(item['reason'])
+                            reason_item.setToolTip(item['reason'])
+                            self.table.setItem(row, 1, reason_item)
+                            
+                            time_item = QTableWidgetItem(item['time'])
+                            self.table.setItem(row, 2, time_item)
+                    
+                    # 更新标题以显示过滤结果
+                    if filter_text:
+                        self.setWindowTitle(f"跳过的文件 (已过滤: {self.table.rowCount()}/{len(self.skipped_files)})")
+                    else:
+                        self.setWindowTitle(f"跳过的文件 ({len(self.skipped_files)})")
+                
+                def _clear_log(self):
+                    """清空跳过文件的日志"""
+                    reply = QMessageBox.question(self, "确认清空", 
+                                               "确定要清空跳过文件的记录吗？此操作不可撤销。",
+                                               QMessageBox.Yes | QMessageBox.No, 
+                                               QMessageBox.No)
+                    
+                    if reply != QMessageBox.Yes:
+                        return
+                        
+                    # 获取索引目录
+                    default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
+                    index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
+                    
+                    if not index_dir or not os.path.exists(index_dir):
+                        QMessageBox.warning(self, "错误", "索引目录不存在或未配置！")
+                        return
+                        
+                    # 构建日志文件路径
+                    log_file_path = os.path.join(index_dir, "index_skipped_files.tsv")
+                    
+                    try:
+                        # 清空文件，但保留表头 - 确保使用与读取时相同的字段名
+                        import csv
+                        with open(log_file_path, 'w', encoding='utf-8', newline='') as f:
+                            writer = csv.writer(f, delimiter='\t')
+                            # 使用与_load_skipped_files方法中相同的表头字段
+                            writer.writerow(["文件路径", "跳过原因", "时间"])
+                            
+                        # 清空内存中的记录并更新UI
+                        self.skipped_files = []
+                        self._apply_filter()
+                        QMessageBox.information(self, "已清空", "跳过文件记录已清空。")
+                        
+                    except Exception as e:
+                        QMessageBox.critical(self, "错误", f"清空记录时出错: {e}")
+                        import traceback
+                        print(f"清空记录错误: {e}\n{traceback.format_exc()}")
+                        
+            # 创建我们刚刚定义的对话框
+            self.skipped_files_dialog = SimpleSkippedFilesDialog(self)
             self.skipped_files_dialog.show()
         except Exception as e:
             print(f"显示跳过文件对话框时出错: {e}")
@@ -4596,7 +5178,9 @@ class IndexDirectoriesDialog(QDialog):
         # 确保应用按钮始终可用
         self.apply_button.setEnabled(True)
         
-        print(f"全选复选框更新为: {'选中' if all_checked else '未选中'}, 有选择项: {'是' if any_checked else '否'}")# --- Main Execution --- 
+        print(f"全选复选框更新为: {'选中' if all_checked else '未选中'}, 有选择项: {'是' if any_checked else '否'}")
+
+# --- Main Execution --- 
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
