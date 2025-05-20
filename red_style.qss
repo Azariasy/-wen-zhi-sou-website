@@ -225,7 +225,7 @@ QRadioButton::indicator {
     width: 16px;
     height: 16px;
     border-radius: 8px;
-    border: 2px solid #e74c3c;
+    border: 1px solid #ddd;
 }
 
 QRadioButton::indicator:unchecked {
@@ -233,8 +233,9 @@ QRadioButton::indicator:unchecked {
 }
 
 QRadioButton::indicator:checked {
+    background-color: #e74c3c;
+    border: 1px solid #e74c3c;
     image: url(radio_checked_red.png);
-    border: none;
 }
 
 QRadioButton:hover {
@@ -250,17 +251,18 @@ QCheckBox {
 QCheckBox::indicator {
     width: 16px;
     height: 16px;
-    border-radius: 2px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
 }
 
 QCheckBox::indicator:unchecked {
-    border: 2px solid #e74c3c;
     background-color: white;
 }
 
 QCheckBox::indicator:checked {
+    background-color: #e74c3c;
+    border: 1px solid #e74c3c;
     image: url(checkmark_red.png);
-    border: none;
 }
 
 QCheckBox:hover {

@@ -47,6 +47,7 @@ a = Analysis(
         ('generate_device_id.py', '.'),
         ('device_manager_dialog.py', '.'),
         ('license_manager.py', '.'),
+        ('file_version_info.txt', '.'),  # 添加版本信息文件
     ],
     hiddenimports=[
         # 中文分词
@@ -115,13 +116,17 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,      # 添加所有二进制文件到exe
+    a.zipfiles,      # 添加所有zip文件到exe
+    a.datas,         # 添加所有数据文件到exe
     [],
-    exclude_binaries=True,
     name='文智搜',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -132,14 +137,4 @@ exe = EXE(
     icon='app_icon.ico',
     version='file_version_info.txt',
 )
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='文智搜',
-)
+# COLLECT部分已移除，不再创建文件夹，直接生成单个exe文件

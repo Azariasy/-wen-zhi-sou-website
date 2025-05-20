@@ -225,7 +225,7 @@ QRadioButton::indicator {
     width: 16px;
     height: 16px;
     border-radius: 8px;
-    border: 2px solid #3498db;
+    border: 1px solid #ddd;
 }
 
 QRadioButton::indicator:unchecked {
@@ -233,8 +233,9 @@ QRadioButton::indicator:unchecked {
 }
 
 QRadioButton::indicator:checked {
+    background-color: #3498db;
+    border: 1px solid #3498db;
     image: url(radio_checked_blue.png);
-    border: none;
 }
 
 QRadioButton:hover {
