@@ -586,6 +586,8 @@ class SettingsDialog(QDialog):
         
         # --- 初始化设置对象 ---
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
+                    # 初始化跳过的文件列表
+                    self.skipped_files = []
         # -----------------
         
         # --- 初始化主题文件列表 ---
@@ -1173,7 +1175,7 @@ class SettingsDialog(QDialog):
         else:
             # 默认设置为远过去的日期
             self.start_date_edit.setDate(QDate(1900, 1, 1))
-            
+        
         if end_date_str:
             end_date = QDate.fromString(end_date_str, "yyyy-MM-dd")
             if end_date.isValid():
@@ -4253,7 +4255,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- ADDED: Get TXT Content Limit Setting --- 
         txt_content_limit_kb = self.settings.value("indexing/txtContentLimitKb", 0, type=int) # Default 0
         # -------------------------------------------
-
+        
         # --- ADDED: 获取要索引的文件类型设置 ---
         selected_file_types = self.settings.value("indexing/selectedFileTypes", [], type=list)
         print(f"DEBUG: start_indexing_slot 读取 'indexing/selectedFileTypes' = {selected_file_types}")
@@ -4300,26 +4302,44 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     
     def _open_selected_folder(self):
         """打开选中文件所在的文件夹"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            return
+        try:
+            selected_items = self.table.selectedItems()
+            if not selected_items:
+                return
+                
+            row = selected_items[0].row()
+            file_path = self.table.item(row, 0).text()
+            folder_path = os.path.dirname(file_path)
             
-        row = selected_rows[0].row()
-        # 从第一个单元格获取存储的完整数据
-        item_data = self.table.item(row, 0).data(Qt.UserRole)
-        file_path = item_data["file_path"]
-        
-        # 获取文件夹路径
-        folder_path = ""
-        if "::" in file_path:
-            archive_path = file_path.split("::")[0]
-            folder_path = str(Path(archive_path).parent)
-        else:
-            folder_path = str(Path(file_path).parent)
-            
-        # 使用主窗口的方法打开文件夹
-        if self.parent():
-            self.parent()._open_path_with_desktop_services(folder_path, is_file=False)
+            if not os.path.exists(folder_path):
+                QMessageBox.warning(self, "文件夹不存在", f"找不到文件夹:\n{folder_path}")
+                return
+                
+            # 使用主窗口的方法打开文件夹
+            if self.parent():
+                try:
+                    self.parent()._open_path_with_desktop_services(folder_path, False)
+                except Exception as e:
+                    print(f"使用父窗口方法打开文件夹出错: {e}")
+                    # 如果父窗口方法失败，尝试直接使用QDesktopServices
+                    url = QUrl.fromLocalFile(folder_path)
+                    if not QDesktopServices.openUrl(url):
+                        raise Exception(f"无法打开文件夹: {folder_path}")
+            else:
+                # 如果没有父窗口，直接使用本地实现
+                url = QUrl.fromLocalFile(folder_path)
+                if not QDesktopServices.openUrl(url):
+                    # 在Windows上尝试使用备用方法
+                    if sys.platform == 'win32':
+                        import subprocess
+                        subprocess.Popen(f'explorer "{folder_path}"', shell=True)
+                    else:
+                        raise Exception(f"无法打开文件夹: {folder_path}")
+        except Exception as e:
+            print(f"打开文件夹时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(self, "打开文件夹错误", f"尝试打开文件夹时出错:\n{str(e)}")
     
     def _clear_log(self):
         """清空跳过文件的日志"""
@@ -4424,7 +4444,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 右键菜单
                     self.table.setContextMenuPolicy(Qt.CustomContextMenu)
                     self.table.customContextMenuRequested.connect(self._show_context_menu)
-                    # 连接表格选择变更信号
+                    # 连接选择变化信号
                     self.table.itemSelectionChanged.connect(self._update_button_states)
                     layout.addWidget(self.table)
                     
@@ -4461,8 +4481,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 恢复窗口位置和大小
                     self._restore_geometry()
                     
-                    # 更新按钮状态
-                    self._update_button_states()
+                    # 初始化时禁用打开文件和打开文件夹按钮，直到用户选择文件
+                    self.open_file_button.setEnabled(False)
+                    self.open_folder_button.setEnabled(False)
                     
                     # 设置窗口特性，允许最大化
                     self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
@@ -4495,32 +4516,156 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     has_selection = len(selected_items) > 0
                     self.open_file_button.setEnabled(has_selection)
                     self.open_folder_button.setEnabled(has_selection)
+                def _load_skipped_files(self):
+                    """加载跳过的文件数据"""
+                    self.skipped_files = []
+                    
+                    # 获取索引目录
+                    index_dir = self.settings.value("indexing/indexDirectory", "", type=str)
+                    if not index_dir or not os.path.exists(index_dir):
+                        print("索引目录不存在，无法加载跳过的文件")
+                        return
+                        
+                    # 跳过文件日志的路径
+                    skipped_files_path = os.path.join(index_dir, "index_skipped_files.tsv")
+                    if not os.path.exists(skipped_files_path):
+                        print(f"跳过文件日志不存在: {skipped_files_path}")
+                        return
+                        
+                    try:
+                        with open(skipped_files_path, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                parts = line.strip().split('\t')
+                                if len(parts) >= 3:
+                                    file_path = parts[0]
+                                    reason = parts[1]
+                                    timestamp = parts[2]
+                                    self.skipped_files.append({
+                                        'file_path': file_path,
+                                        'reason': reason,
+                                        'timestamp': timestamp
+                                    })
+                                    
+                        # 更新表格显示
+                        self._apply_filter()
+                        
+                    except Exception as e:
+                        print(f"加载跳过文件时出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                def _apply_filter(self):
+                    """根据过滤条件显示跳过的文件"""
+                    filter_text = self.filter_entry.text().lower()
+                    
+                    # 清空表格
+                    self.table.setRowCount(0)
+                    
+                    filtered_count = 0
+                    
+                    # 添加符合过滤条件的项目
+                    for item in self.skipped_files:
+                        file_path = item.get('file_path', '')
+                        reason = item.get('reason', '')
+                        timestamp = item.get('timestamp', '')
+                        
+                        # 检查是否符合过滤条件
+                        if (filter_text == "" or 
+                            filter_text in file_path.lower() or 
+                            filter_text in reason.lower()):
+                            
+                            row = self.table.rowCount()
+                            self.table.insertRow(row)
+                            
+                            # 添加文件路径
+                            path_item = QTableWidgetItem(file_path)
+                            self.table.setItem(row, 0, path_item)
+                            
+                            # 添加跳过原因
+                            reason_item = QTableWidgetItem(reason)
+                            self.table.setItem(row, 1, reason_item)
+                            
+                            # 添加时间戳
+                            time_item = QTableWidgetItem(timestamp)
+                            self.table.setItem(row, 2, time_item)
+                            
+                            filtered_count += 1
+                    
+                    # 更新窗口标题，显示结果数量
+                    if filter_text:
+                        self.setWindowTitle(f"跳过的文件 - {filtered_count}/{len(self.skipped_files)} 个结果")
+                    else:
+                        self.setWindowTitle(f"跳过的文件 - {filtered_count} 个文件")
+                        
+                    # 更新按钮状态
+                    self._update_button_states()
+
+                
+                def _apply_filter(self):
+                    """根据过滤条件显示跳过的文件"""
+                    filter_text = self.filter_entry.text().lower()
+                    
+                    # 清空表格
+                    self.table.setRowCount(0)
+                    
+                    filtered_count = 0
+                    
+                    # 添加符合过滤条件的项目
+                    for item in self.skipped_files:
+                        file_path = item['file_path']
+                        reason = item['reason']
+                        timestamp = item['timestamp']
+                        
+                        # 检查是否符合过滤条件
+                        if (filter_text == "" or 
+                            filter_text in file_path.lower() or 
+                            filter_text in reason.lower()):
+                            
+                            row = self.table.rowCount()
+                            self.table.insertRow(row)
+                            
+                            # 添加文件路径
+                            path_item = QTableWidgetItem(file_path)
+                            self.table.setItem(row, 0, path_item)
+                            
+                            # 添加跳过原因
+                            reason_item = QTableWidgetItem(reason)
+                            self.table.setItem(row, 1, reason_item)
+                            
+                            # 添加时间戳
+                            time_item = QTableWidgetItem(timestamp)
+                            self.table.setItem(row, 2, time_item)
+                            
+                            filtered_count += 1
+                    
+                    # 更新窗口标题，显示结果数量
+                    if filter_text:
+                        self.setWindowTitle(f"跳过的文件 - {filtered_count}/{len(self.skipped_files)} 个结果")
+                    else:
+                        self.setWindowTitle(f"跳过的文件 - {filtered_count} 个文件")
+                        
+                    # 更新按钮状态
+                    self._update_button_states()
+
                 
                 def _on_cell_double_clicked(self, row, column):
                     """双击单元格时打开文件"""
+                    QApplication.setOverrideCursor(Qt.WaitCursor)
                     try:
-                        import os, sys  # 导入必要的模块
-                        
-                        file_path = self.table.item(row, 0).text()
-                        
-                        if not os.path.exists(file_path):
-                            QMessageBox.warning(self, "文件不存在", f"找不到文件:\n{file_path}")
-                            return
-                        
-                        # 直接使用QDesktopServices打开文件，避免直接调用self._open_selected_file()
-                        url = QUrl.fromLocalFile(str(file_path))
-                        result = QDesktopServices.openUrl(url)
-                        
-                        if not result and sys.platform == 'win32':
-                            try:
-                                # 使用startfile而不是subprocess.Popen，更安全
-                                os.startfile(file_path)
-                            except Exception as e:
-                                QMessageBox.warning(self, "打开失败", f"无法打开文件:\n{file_path}\n\n错误: {e}")
+                        if row >= 0 and row < self.table.rowCount() and column >= 0:
+                            file_path = self.table.item(row, 0).text()
+                            if file_path and os.path.exists(file_path):
+                                # 使用异步方式打开文件，避免界面卡死
+                                url = QUrl.fromLocalFile(file_path)
+                                QDesktopServices.openUrl(url)
+                            else:
+                                QMessageBox.warning(self, "文件不存在", f"找不到文件:\n{file_path}")
                     except Exception as e:
                         print(f"双击打开文件时出错: {e}")
                         import traceback
                         traceback.print_exc()
+                        QMessageBox.warning(self, "错误", f"打开文件时出错: {e}")
+                    finally:
+                        QApplication.restoreOverrideCursor()
                 
                 def _show_context_menu(self, pos):
                     """显示右键菜单"""
@@ -4532,8 +4677,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     open_file_action = menu.addAction("打开文件")
                     open_folder_action = menu.addAction("打开所在文件夹")
                     
-                    # 使用exec代替exec_
-                    action = menu.exec(self.table.mapToGlobal(pos))
+                    action = menu.exec_(self.table.mapToGlobal(pos))
                     
                     if action == open_file_action:
                         self._open_selected_file()
@@ -4542,190 +4686,56 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 
                 def _open_selected_file(self):
                     """打开选中的文件"""
-                    import os, sys  # 导入必要的模块
-                    
-                    selected_items = self.table.selectedItems()
-                    if not selected_items:
-                        return
+                    QApplication.setOverrideCursor(Qt.WaitCursor)
+                    try:
+                        selected_items = self.table.selectedItems()
+                        if not selected_items:
+                            return
+                            
+                        row = selected_items[0].row()
+                        file_path = self.table.item(row, 0).text()
                         
-                    row = selected_items[0].row()
-                    file_path = self.table.item(row, 0).text()
-                    
-                    if not os.path.exists(file_path):
-                        QMessageBox.warning(self, "文件不存在", f"找不到文件:\n{file_path}")
-                        return
-                    
-                    # 直接使用QDesktopServices打开文件，避免调用parent方法
-                    url = QUrl.fromLocalFile(str(file_path))
-                    result = QDesktopServices.openUrl(url)
-                    
-                    if not result and sys.platform == 'win32':
-                        try:
-                            # 使用startfile而不是subprocess.Popen，更安全
-                            os.startfile(file_path)
-                        except Exception as e:
-                            QMessageBox.warning(self, "打开失败", f"无法打开文件:\n{file_path}\n\n错误: {e}")
+                        if not os.path.exists(file_path):
+                            QMessageBox.warning(self, "文件不存在", f"找不到文件:\n{file_path}")
+                            return
+                            
+                        # 使用异步方式打开文件，避免界面卡死
+                        url = QUrl.fromLocalFile(file_path)
+                        QDesktopServices.openUrl(url)
+                    except Exception as e:
+                        print(f"打开文件时出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        QMessageBox.warning(self, "打开文件错误", f"尝试打开文件时出错:\n{str(e)}")
+                    finally:
+                        QApplication.restoreOverrideCursor()
                 
                 def _open_selected_folder(self):
                     """打开所选文件所在的文件夹"""
-                    import os, sys  # 导入必要的模块
-                    
-                    selected_items = self.table.selectedItems()
-                    if not selected_items:
-                        return
-                        
-                    row = selected_items[0].row()
-                    file_path = self.table.item(row, 0).text()
-                    folder_path = os.path.dirname(file_path)
-                    
-                    if not os.path.exists(folder_path):
-                        QMessageBox.warning(self, "文件夹不存在", f"找不到文件夹:\n{folder_path}")
-                        return
-                    
-                    # 直接使用QDesktopServices打开文件夹，避免调用parent方法
-                    url = QUrl.fromLocalFile(str(folder_path))
-                    result = QDesktopServices.openUrl(url)
-                    
-                    if not result and sys.platform == 'win32':
-                        try:
-                            # 使用startfile而不是subprocess.Popen，更安全
-                            os.startfile(folder_path)
-                        except Exception as e:
-                            QMessageBox.warning(self, "打开失败", f"无法打开文件夹:\n{folder_path}\n\n错误: {e}")
-                
-                def _load_skipped_files(self):
-                    """从TSV文件加载被跳过的文件数据"""
-                    self.skipped_files = []
-                    
-                    # 获取索引目录
-                    default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
-                    index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
-                    
-                    if not index_dir or not os.path.exists(index_dir):
-                        return
-                    
-                    # 构建日志文件路径
-                    log_file_path = os.path.join(index_dir, "index_skipped_files.tsv")
-                    
-                    if not os.path.exists(log_file_path):
-                        return
-                    
+                    QApplication.setOverrideCursor(Qt.WaitCursor)
                     try:
-                        import csv
-                        with open(log_file_path, 'r', encoding='utf-8', newline='') as f:
-                            reader = csv.reader(f, delimiter='\t')
-                            # 跳过表头行
-                            headers = next(reader, None)
+                        selected_items = self.table.selectedItems()
+                        if not selected_items:
+                            return
                             
-                            # 针对旧版本可能的不同表头进行兼容处理
-                            path_idx, reason_idx, time_idx = 0, 1, 2
-                            if headers:
-                                for i, header in enumerate(headers):
-                                    if "路径" in header:
-                                        path_idx = i
-                                    elif "原因" in header:
-                                        reason_idx = i
-                                    elif "时间" in header:
-                                        time_idx = i
-                            
-                            # 读取数据行
-                            for row in reader:
-                                if len(row) >= 3:
-                                    file_path = row[path_idx]
-                                    reason = row[reason_idx]
-                                    timestamp = row[time_idx]
-                                    self.skipped_files.append({
-                                        'path': file_path,
-                                        'reason': reason,
-                                        'time': timestamp
-                                    })
+                        row = selected_items[0].row()
+                        file_path = self.table.item(row, 0).text()
+                        folder_path = os.path.dirname(file_path)
                         
-                        # 更新UI
-                        self._apply_filter()
+                        if not os.path.exists(folder_path):
+                            QMessageBox.warning(self, "文件夹不存在", f"找不到文件夹:\n{folder_path}")
+                            return
+                            
+                        # 使用异步方式打开文件夹，避免界面卡死
+                        url = QUrl.fromLocalFile(folder_path)
+                        QDesktopServices.openUrl(url)
                     except Exception as e:
-                        print(f"读取跳过文件记录时出错: {e}")
+                        print(f"打开文件夹时出错: {e}")
                         import traceback
                         traceback.print_exc()
-                        if self.parent():
-                            QMessageBox.warning(self.parent(), "错误", f"读取跳过文件记录时出错: {e}")
-
-                def _apply_filter(self):
-                    """应用过滤器并更新表格"""
-                    filter_text = self.filter_entry.text().lower()
-                    self.table.setRowCount(0)
-                    
-                    if not self.skipped_files:
-                        return
-                    
-                    # 过滤并显示结果
-                    for item in self.skipped_files:
-                        # 如果过滤文本为空或者任何字段包含过滤文本，则显示该项目
-                        if not filter_text or \
-                           filter_text in item['path'].lower() or \
-                           filter_text in item['reason'].lower() or \
-                           filter_text in item['time'].lower():
-                            
-                            row = self.table.rowCount()
-                            self.table.insertRow(row)
-                            
-                            path_item = QTableWidgetItem(item['path'])
-                            path_item.setToolTip(item['path'])
-                            self.table.setItem(row, 0, path_item)
-                            
-                            reason_item = QTableWidgetItem(item['reason'])
-                            reason_item.setToolTip(item['reason'])
-                            self.table.setItem(row, 1, reason_item)
-                            
-                            time_item = QTableWidgetItem(item['time'])
-                            self.table.setItem(row, 2, time_item)
-                    
-                    # 更新标题以显示过滤结果
-                    if filter_text:
-                        self.setWindowTitle(f"跳过的文件 (已过滤: {self.table.rowCount()}/{len(self.skipped_files)})")
-                    else:
-                        self.setWindowTitle(f"跳过的文件 ({len(self.skipped_files)})")
-                        
-                    # 更新按钮状态
-                    self._update_button_states()
-
-                def _clear_log(self):
-                    """清空跳过文件的日志"""
-                    reply = QMessageBox.question(self, "确认清空", 
-                                               "确定要清空跳过文件的记录吗？此操作不可撤销。",
-                                               QMessageBox.Yes | QMessageBox.No, 
-                                               QMessageBox.No)
-                    
-                    if reply != QMessageBox.Yes:
-                        return
-                        
-                    # 获取索引目录
-                    default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
-                    index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
-                    
-                    if not index_dir or not os.path.exists(index_dir):
-                        QMessageBox.warning(self, "错误", "索引目录不存在或未配置！")
-                        return
-                        
-                    # 构建日志文件路径
-                    log_file_path = os.path.join(index_dir, "index_skipped_files.tsv")
-                    
-                    try:
-                        # 清空文件，但保留表头 - 确保使用与读取时相同的字段名
-                        import csv
-                        with open(log_file_path, 'w', encoding='utf-8', newline='') as f:
-                            writer = csv.writer(f, delimiter='\t')
-                            # 使用与_load_skipped_files方法中相同的表头字段
-                            writer.writerow(["文件路径", "跳过原因", "时间"])
-                            
-                        # 清空内存中的记录并更新UI
-                        self.skipped_files = []
-                        self._apply_filter()
-                        QMessageBox.information(self, "已清空", "跳过文件记录已清空。")
-                        
-                    except Exception as e:
-                        QMessageBox.critical(self, "错误", f"清空记录时出错: {e}")
-                        import traceback
-                        print(f"清空记录错误: {e}\n{traceback.format_exc()}")
+                        QMessageBox.warning(self, "打开文件夹错误", f"尝试打开文件夹时出错:\n{str(e)}")
+                    finally:
+                        QApplication.restoreOverrideCursor()
             
             # 创建我们刚刚定义的对话框
             self.skipped_files_dialog = SimpleSkippedFilesDialog(self)
