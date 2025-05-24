@@ -1,5 +1,29 @@
 import sys
-import io # 新增导入
+import os
+import io  # 添加io模块导入
+import csv
+import time
+import json
+import re
+import functools
+import webbrowser
+import platform
+import subprocess
+import threading
+import traceback
+import locale
+import argparse  # 添加argparse模块用于处理命令行参数
+from datetime import datetime  # 只导入datetime类
+from pathlib import Path
+from hotkey_manager import HotkeyManager  # 导入热键管理器
+
+# 检查许可证管理模块是否可用
+try:
+    from license_manager import get_license_manager
+    _license_manager_available = True
+except ImportError:
+    _license_manager_available = False
+    print("许可证管理模块不可用，将使用有限功能模式")
 
 # 确保 stdout 和 stderr 在非控制台模式下是可写的
 # 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
@@ -21,6 +45,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QTabWidget, QScrollArea, QTabBar, QTabWidget,
     QGridLayout, QMenu, # 添加QMenu用于右键菜单
+    QSystemTrayIcon,
 )
 from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex # Added QSize, QDir and QModelIndex 
 from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem # Added QStandardItemModel and QStandardItem
@@ -381,7 +406,7 @@ class Worker(QObject):
                     if '::' in file_path:
                         archive_path = file_path.split('::', 1)[0]
                         parent_dir = os.path.dirname(os.path.normpath(archive_path))
-                    else:
+        else:
                         parent_dir = os.path.dirname(os.path.normpath(file_path))
                     
                     # 检查文件的父目录是否在选定的目录列表中或其子目录中
@@ -1049,7 +1074,7 @@ class SettingsDialog(QDialog):
                     if normalized_item.lower() == normalized_dir.lower():
                         already_exists = True
                         break
-                else:
+    else:
                     if normalized_item == normalized_dir:
                          already_exists = True
                          break
@@ -1080,150 +1105,261 @@ class SettingsDialog(QDialog):
                 self.source_dirs_list.takeItem(row)
 
     def _load_settings(self):
-        """Load all settings from QSettings"""
-        # Source Directories
-        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
-        self.source_dirs_list.clear()
-        for directory in source_dirs:
-            self.source_dirs_list.addItem(directory)
+        """加载所有设置并更新UI"""
+        # 加载索引目录
+        source_dirs = self.settings.value("indexing/sourceDirectories", [])
+        # 更新源目录列表框
+        self.source_dir_list.clear()
+        self.source_dir_list.addItems(source_dirs)
+        
+        # 加载索引目录
+        index_dir = self.settings.value("indexing/indexDirectory", "")
+        self.index_dir_edit.setText(index_dir)
+        
+        # 加载OCR设置
+        enable_ocr = self.settings.value("indexing/enableOcr", True, type=bool)
+        self.enable_ocr_checkbox.setChecked(enable_ocr)
 
-        # OCR Setting
-        ocr_enabled = self.settings.value("indexing/enableOcr", True, type=bool)
-        self.enable_ocr_checkbox.setChecked(ocr_enabled)
-        
-        # --- ADDED: Load File Type Settings ---
-        # 获取已保存的文件类型设置，如果没有则默认全选
-        selected_file_types = self.settings.value("indexing/selectedFileTypes", [], type=list)
-        print("DEBUG: 从设置加载文件类型 =", selected_file_types)
-        
-        # 只有在首次运行（返回None）或格式不正确时才设置为默认全选
-        # 当设置中存储的是空列表时，保持为空列表
-        if selected_file_types is None or not isinstance(selected_file_types, list):
-            selected_file_types = list(self.file_type_checkboxes.keys())
-            print("DEBUG: 设置为默认全选 =", selected_file_types)
-        
-        # 保存选中的文件类型到成员变量
-        self.selected_file_types = selected_file_types
-        print("DEBUG: 设置 self.selected_file_types =", self.selected_file_types)
-        
-        # 暂时阻断复选框信号
-        for checkbox in self.file_type_checkboxes.values():
-            checkbox.blockSignals(True)
-        
-        # 设置复选框状态
-        enabled_checkboxes_count = 0
-        checked_enabled_count = 0
-        for type_key, checkbox in self.file_type_checkboxes.items():
-            if checkbox.isEnabled():  # 只处理可用的复选框
-                enabled_checkboxes_count += 1
-                is_checked = type_key in selected_file_types
-                checkbox.setChecked(is_checked)
-                if is_checked:
-                    checked_enabled_count += 1
-                print(f"DEBUG: 设置复选框 {type_key} = {is_checked} (可用: {checkbox.isEnabled()})")
-        
-        # 恢复复选框信号
-        for checkbox in self.file_type_checkboxes.values():
-            checkbox.blockSignals(False)
-        
-        # 检查是否全选了，并更新全选复选框状态
-        all_enabled_checked = checked_enabled_count == enabled_checkboxes_count
-        print(f"DEBUG: 所有可用均被选中: {all_enabled_checked} ({checked_enabled_count}/{enabled_checkboxes_count})")
-        
-        # 阻断全选复选框信号
-        self.select_all_types_checkbox.blockSignals(True)
-        self.select_all_types_checkbox.setChecked(all_enabled_checked)
-        self.select_all_types_checkbox.blockSignals(False)
-        # ---------------------------------
-        
-        # Index Directory
-        default_index_path = str(Path.home() / "Documents" / "DocumentSearchIndex")
-        index_dir = self.settings.value("indexing/indexDirectory", default_index_path)
-        self.index_dir_entry.setText(index_dir or default_index_path)
-        
-        # --- ADDED: Extraction Timeout ---
+        # 加载提取超时设置
         extraction_timeout = self.settings.value("indexing/extractionTimeout", 120, type=int)
         self.extraction_timeout_spinbox.setValue(extraction_timeout)
-        # ------------------------------
         
-        # --- ADDED: TXT Content Limit ---
-        txt_content_limit = self.settings.value("indexing/txtContentLimitKb", 0, type=int)
-        self.txt_content_limit_spinbox.setValue(txt_content_limit)
-        # ------------------------------
+        # 加载文本文件大小限制
+        txt_content_limit_kb = self.settings.value("indexing/txtContentLimitKb", 0, type=int)
+        self.txt_limit_spinbox.setValue(txt_content_limit_kb)
         
-        # Search Settings
+        # 加载日期范围设置
+        start_date_raw = self.settings.value("search/dateFilter/startDate")
+        end_date_raw = self.settings.value("search/dateFilter/endDate")
+        if isinstance(start_date_raw, QDate) and not start_date_raw.isNull():
+            self.start_date_edit.setDate(start_date_raw)
+        else:
+            # 设置为较早的默认日期
+            self.start_date_edit.setDate(QDate(1900, 1, 1))
+            
+        if isinstance(end_date_raw, QDate) and not end_date_raw.isNull():
+            self.end_date_edit.setDate(end_date_raw)
+        else:
+            # 设置为当前日期
+            self.end_date_edit.setDate(QDate.currentDate())
+            
+        # 设置日期过滤使能状态
+        use_date_filter = self.settings.value("search/dateFilter/enabled", False, type=bool)
+        self.enable_date_filter_checkbox.setChecked(use_date_filter)
+        self.start_date_edit.setEnabled(use_date_filter)
+        self.end_date_edit.setEnabled(use_date_filter)
+        
+        # 加载大小范围设置
+        min_size_kb = self.settings.value("search/sizeFilter/minSizeKB", 0, type=int)
+        max_size_kb = self.settings.value("search/sizeFilter/maxSizeKB", 0, type=int)
+        self.min_size_spinbox.setValue(min_size_kb)
+        self.max_size_spinbox.setValue(max_size_kb)
+        
+        # 设置大小过滤使能状态
+        use_size_filter = self.settings.value("search/sizeFilter/enabled", False, type=bool)
+        self.enable_size_filter_checkbox.setChecked(use_size_filter)
+        self.min_size_spinbox.setEnabled(use_size_filter)
+        self.max_size_spinbox.setEnabled(use_size_filter)
+        
+        # 加载大小写敏感设置
         case_sensitive = self.settings.value("search/caseSensitive", False, type=bool)
         self.case_sensitive_checkbox.setChecked(case_sensitive)
         
-        # --- ADDED: Size filter settings ---
-        min_size = self.settings.value("search/minSizeKb", "", type=str)
-        max_size = self.settings.value("search/maxSizeKb", "", type=str)
-        self.min_size_entry.setText(min_size)
-        self.max_size_entry.setText(max_size)
-        # --------------------------------
-        
-        # --- ADDED: Date filter settings ---
-        start_date_str = self.settings.value("search/startDate", "", type=str)
-        end_date_str = self.settings.value("search/endDate", "", type=str)
-        
-        if start_date_str:
-            start_date = QDate.fromString(start_date_str, "yyyy-MM-dd")
-            if start_date.isValid():
-                self.start_date_edit.setDate(start_date)
-        else:
-            # 默认设置为远过去的日期
-            self.start_date_edit.setDate(QDate(1900, 1, 1))
-            
-        if end_date_str:
-            end_date = QDate.fromString(end_date_str, "yyyy-MM-dd")
-            if end_date.isValid():
-                self.end_date_edit.setDate(end_date)
-        else:
-            # 默认设置为当前日期
-            self.end_date_edit.setDate(QDate.currentDate())
-        # ---------------------------------
-        
-        # Populate Theme ComboBox
-        theme_name = self.settings.value("interface/theme", "默认", type=str)
-        # 设置默认主题（如果没有设置或设置无效）
-        if not theme_name in self.theme_files:
-            theme_name = "默认"
-        
-        # 设置主题下拉框的当前选项
-        theme_index = self.theme_combo.findText(theme_name)
+        # 加载主题设置
+        current_theme = self.settings.value("ui/theme", "系统默认")
+        # 找到主题在列表中的索引
+        theme_index = self.theme_combo.findText(current_theme)
         if theme_index >= 0:
             self.theme_combo.setCurrentIndex(theme_index)
             
-        # --- ADDED: Font Size Settings ---
-        font_size = self.settings.value("interface/resultFontSize", 10, type=int)
-        self.result_font_size_spinbox.setValue(font_size)
-        # --------------------------------
+        # 加载字体大小设置
+        font_size = self.settings.value("ui/resultFontSize", 10, type=int)
+        self.font_size_spinbox.setValue(font_size)
         
-        # --- ADDED: Default Sort Settings ---
-        sort_field = self.settings.value("interface/defaultSortField", "修改时间", type=str)
-        sort_order = self.settings.value("interface/defaultSortOrder", "降序", type=str)
+        # 加载文件类型设置
+        # 获取当前保存的已选文件类型
+        selected_file_types = self.settings.value("indexing/selectedFileTypes", list(self.file_type_checkboxes.keys()), type=list)
         
-        sort_field_index = self.default_sort_combo.findText(sort_field)
-        if sort_field_index >= 0:
-            self.default_sort_combo.setCurrentIndex(sort_field_index)
-            
-        if sort_order == "升序":
-            self.default_sort_asc_radio.setChecked(True)
-        else:
-            self.default_sort_desc_radio.setChecked(True)
-        # -----------------------------------
+        if selected_file_types:
+            # 遍历所有复选框，设置其选中状态
+            for checkbox, type_name in self.file_type_checkboxes.items():
+                checkbox.setChecked(type_name in selected_file_types)
+        
+        # 更新"全选"复选框状态
+        self._update_select_all_checkbox_state()
+        
+        # 加载通用设置
+        # 最小化到托盘设置
+        minimize_to_tray = self.settings.value("general/minimizeToTray", True, type=bool)
+        self.minimize_to_tray_checkbox.setChecked(minimize_to_tray)
+        
+        # Windows特有的开机启动设置
+        if sys.platform == "win32" and hasattr(self, 'autostart_checkbox'):
+            # 通过检查注册表项来确定是否设置了开机启动
+            import winreg
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                   r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                                   0, winreg.KEY_READ)
+                autostart = False
+                try:
+                    winreg.QueryValueEx(key, "文智搜")
+                    autostart = True
+                except FileNotFoundError:
+                    autostart = False
+                winreg.CloseKey(key)
+                self.autostart_checkbox.setChecked(autostart)
+                
+                # 加载自动启动时最小化设置
+                start_minimized = self.settings.value("general/startMinimized", False, type=bool)
+                self.start_minimized_checkbox.setChecked(start_minimized)
+                self.start_minimized_checkbox.setEnabled(autostart)
+            except Exception as e:
+                print(f"读取开机启动设置时出错: {e}")
+                # 出错时默认不选中
+                self.autostart_checkbox.setChecked(False)
+                self.start_minimized_checkbox.setEnabled(False)
 
-        # 阻断全选复选框信号
-        self.select_all_types_checkbox.blockSignals(True)
-        self.select_all_types_checkbox.setChecked(all_enabled_checked)
-        self.select_all_types_checkbox.blockSignals(False)
+        # 加载热键设置
+        # 热键启用状态
+        enable_quick_search = self.settings.value("quicksearch/enabled", True, type=bool)
+        self.enable_quick_search_checkbox.setChecked(enable_quick_search)
         
-        # 确保选中状态与当前复选框状态一致
-        current_selected = self._save_current_file_types()
-        if set(current_selected) != set(self.selected_file_types):
-            print(f"DEBUG: 更新 self.selected_file_types 以匹配当前复选框状态")
-            self.selected_file_types = current_selected
-        # ---------------------------------
+        # 热键
+        hotkey = self.settings.value("quicksearch/hotkey", "ctrl+ctrl")
+        self.hotkey_edit.setText(hotkey)
+        
+        # 检查热键服务状态
+        if self.parent() and hasattr(self.parent(), 'hotkey_manager'):
+            if self.parent().hotkey_manager.is_running:
+                self.hotkey_status_label.setText("热键服务状态: 正在运行")
+            else:
+                self.hotkey_status_label.setText("热键服务状态: 已停止")
+        else:
+            self.hotkey_status_label.setText("热键服务状态: 未可用")
+
+    def accept(self):
+        """当用户点击'确定'按钮时应用所有设置"""
+        # 保存源目录列表
+        source_dirs = []
+        for i in range(self.source_dir_list.count()):
+            source_dirs.append(self.source_dir_list.item(i).text())
+        self.settings.setValue("indexing/sourceDirectories", source_dirs)
+        
+        # 保存索引目录
+        self.settings.setValue("indexing/indexDirectory", self.index_dir_edit.text())
+        
+        # 保存OCR设置
+        self.settings.setValue("indexing/enableOcr", self.enable_ocr_checkbox.isChecked())
+        
+        # 保存提取超时设置
+        self.settings.setValue("indexing/extractionTimeout", self.extraction_timeout_spinbox.value())
+        
+        # 保存文本文件大小限制
+        self.settings.setValue("indexing/txtContentLimitKb", self.txt_limit_spinbox.value())
+        
+        # 保存日期范围设置
+        self.settings.setValue("search/dateFilter/startDate", self.start_date_edit.date())
+        self.settings.setValue("search/dateFilter/endDate", self.end_date_edit.date())
+        self.settings.setValue("search/dateFilter/enabled", self.enable_date_filter_checkbox.isChecked())
+        
+        # 保存大小范围设置
+        self.settings.setValue("search/sizeFilter/minSizeKB", self.min_size_spinbox.value())
+        self.settings.setValue("search/sizeFilter/maxSizeKB", self.max_size_spinbox.value())
+        self.settings.setValue("search/sizeFilter/enabled", self.enable_size_filter_checkbox.isChecked())
+        
+        # 保存大小写敏感设置
+        self.settings.setValue("search/caseSensitive", self.case_sensitive_checkbox.isChecked())
+        
+        # 保存主题设置
+        self.settings.setValue("ui/theme", self.theme_combo.currentText())
+        
+        # 保存字体大小设置
+        self.settings.setValue("ui/resultFontSize", self.font_size_spinbox.value())
+        
+        # 保存当前选中的文件类型
+        self._save_current_file_types()
+        
+        # 保存通用设置
+        # 最小化到托盘设置
+        self.settings.setValue("general/minimizeToTray", self.minimize_to_tray_checkbox.isChecked())
+        
+        # Windows特有的开机启动设置
+        if sys.platform == "win32" and hasattr(self, 'autostart_checkbox'):
+            autostart = self.autostart_checkbox.isChecked()
+            try:
+                # 设置开机启动
+                self._set_autostart(autostart)
+                
+                # 保存自动启动时最小化设置
+                start_minimized = self.start_minimized_checkbox.isChecked()
+                self.settings.setValue("general/startMinimized", start_minimized)
+            except Exception as e:
+                print(f"设置开机自启动时出错: {e}")
+                # 显示错误消息
+                QMessageBox.warning(self, "设置失败", f"无法设置开机自启动: {e}")
+        
+        # 保存热键设置
+        self.settings.setValue("quicksearch/enabled", self.enable_quick_search_checkbox.isChecked())
+        self.settings.setValue("quicksearch/hotkey", self.hotkey_edit.text())
+        
+        # 更新热键
+        if self.parent() and hasattr(self.parent(), 'hotkey_manager'):
+            try:
+                # 停止当前热键服务
+                self.parent().hotkey_manager.stop()
+                
+                # 更新热键设置
+                hotkey = self.hotkey_edit.text()
+                if hotkey:
+                    self.parent().hotkey_manager.update_hotkey("quicksearch", hotkey)
+                
+                # 如果启用热键，则重新启动热键服务
+                if self.enable_quick_search_checkbox.isChecked():
+                    self.parent().hotkey_manager.start()
+            except Exception as e:
+                print(f"更新热键设置时出错: {str(e)}")
+        
+        # 确保设置被写入磁盘
+        self.settings.sync()
+        
+        # 调用父类方法关闭对话框
+        super().accept()
+    
+    def _set_autostart(self, enable=True):
+        """设置应用程序开机自启动"""
+        if sys.platform != "win32":
+            return
+            
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                            r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                            0, winreg.KEY_SET_VALUE)
+                            
+        if enable:
+            # 获取当前可执行文件路径
+            app_path = os.path.abspath(sys.argv[0])
+            # 如果是Python脚本，需要使用python解释器启动
+            if app_path.endswith('.py'):
+                command = f'"{sys.executable}" "{app_path}"'
+                if self.start_minimized_checkbox.isChecked():
+                    command += " --minimized"
+            else:
+                # 直接启动可执行文件
+                command = f'"{app_path}"'
+                if self.start_minimized_checkbox.isChecked():
+                    command += " --minimized"
+                    
+            # 设置注册表项
+            winreg.SetValueEx(key, "文智搜", 0, winreg.REG_SZ, command)
+        else:
+            # 删除注册表项
+            try:
+                winreg.DeleteValue(key, "文智搜")
+            except FileNotFoundError:
+                pass  # 如果键不存在，忽略错误
+                
+        winreg.CloseKey(key)
 
     def _apply_settings(self):
         """Apply all settings from the dialog to QSettings"""
@@ -1491,8 +1627,37 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # ----------------------------------------
 
     def __init__(self):
+        """初始化主窗口"""
         super().__init__()
-        self.setWindowTitle("文智搜 (PySide6)")
+        
+        # 在初始化任何UI之前加载许可证管理器
+        if _license_manager_available:
+            self.license_manager = get_license_manager()
+        else:
+            print("警告: 许可证管理器不可用，某些功能可能受限")
+        
+        # 创建settings对象
+        self.settings = QSettings("WenZhiSou", "DocumentSearch")
+
+        # 设置应用程序基本信息
+        self.setWindowTitle("文智搜 - 本地文档内容智能检索工具")
+        
+        # 创建热键管理器
+        self.hotkey_manager = HotkeyManager(self)
+        self.hotkey_manager.hotkeyTriggered.connect(self._on_hotkey_triggered)
+        self.hotkey_manager.hotkeyError.connect(self._on_hotkey_error)
+        
+        # 注册快速搜索热键
+        hotkey = self.settings.value("quicksearch/hotkey", "ctrl+ctrl")
+        self.hotkey_manager.register_hotkey("quicksearch", hotkey, self.show_quick_search)
+        
+        # 启动热键监听
+        self.hotkey_manager.start()
+        
+        # 创建系统托盘图标
+        self.setup_tray_icon()
+        
+        # 初始化UI
         self.setMinimumSize(600, 450) # ADDED: Set a minimum window size
         
         # --- 设置窗口图标 ---
@@ -1505,9 +1670,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
         # --- Initialize Config (using QSettings) --- 
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
-        
-        # --- 初始化许可证管理器（放在所有UI元素创建之前) ---
-        self.license_manager = get_license_manager()
         
         self.MAX_HISTORY_ITEMS = 10 # Max number of search history items
         self.worker_thread = None # Initialize worker_thread to None
@@ -1640,7 +1802,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- 检查文件夹树功能是否可用 ---
         folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
-        if hasattr(self, 'main_splitter') and hasattr(self, 'folder_tree'):
+            if hasattr(self, 'main_splitter') and hasattr(self, 'folder_tree'):
             # 获取主分隔器中的左侧窗口小部件（应该是包含文件夹树的容器）
             left_container = self.main_splitter.widget(0)
             
@@ -1651,7 +1813,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if folder_tree_available:
                     # 如果显示文件夹树，设置分隔器位置为1/4处
                     self.main_splitter.setSizes([200, 600])
-                else:
+    else:
                     # 如果不显示文件夹树，将宽度设置为0，让右侧搜索结果占满宽度
                     self.main_splitter.setSizes([0, self.main_splitter.width()])
         # ---------------------------------------
@@ -1683,6 +1845,100 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 检查首次启动 ---
         # 使用QTimer确保界面完全加载后再显示引导对话框
         QTimer.singleShot(500, self._check_first_launch)
+
+    def setup_tray_icon(self):
+        """设置系统托盘图标和菜单"""
+        self.tray_icon = QSystemTrayIcon(self)
+        icon = QIcon(get_resource_path("app_icon.png"))
+        self.tray_icon.setIcon(icon)
+        self.tray_icon.setToolTip("文智搜")
+        
+        # 创建托盘菜单
+        tray_menu = QMenu()
+        
+        # 显示主窗口动作
+        show_action = tray_menu.addAction("显示主窗口")
+        show_action.triggered.connect(self.show_and_activate)
+        
+        # 添加分隔线
+        tray_menu.addSeparator()
+        
+        # 快速搜索动作
+        quick_search_action = tray_menu.addAction("快速搜索")
+        quick_search_action.triggered.connect(self.show_quick_search)
+        
+        # 添加分隔线
+        tray_menu.addSeparator()
+        
+        # 退出动作
+        quit_action = tray_menu.addAction("退出")
+        quit_action.triggered.connect(self.quit_application)
+        
+        # 设置托盘菜单
+        self.tray_icon.setContextMenu(tray_menu)
+        
+        # 连接托盘图标激活信号
+        self.tray_icon.activated.connect(self.tray_icon_activated)
+        
+        # 显示托盘图标
+        self.tray_icon.show()
+    
+    def tray_icon_activated(self, reason):
+        """处理托盘图标激活事件"""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            # 双击托盘图标时显示主窗口
+            self.show_and_activate()
+    
+    def show_and_activate(self):
+        """显示并激活主窗口"""
+        self.show()
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.activateWindow()
+    
+    def show_quick_search(self):
+        """显示快速搜索对话框"""
+        try:
+            # 导入QuickSearchDialog
+            from quick_search_dialog import QuickSearchDialog
+            
+            # 创建对话框
+            self.quick_search_dialog = QuickSearchDialog(self)
+            
+            # 连接信号
+            self.quick_search_dialog.resultSelected.connect(self._on_quick_search_result_selected)
+            self.quick_search_dialog.showMainWindow.connect(self.show_and_activate)
+            
+            # 显示对话框
+            self.quick_search_dialog.show_at_cursor()
+        except Exception as e:
+            # 创建快速搜索对话框失败，使用普通消息框
+            print(f"创建快速搜索对话框失败: {e}")
+            QMessageBox.information(None, "快速搜索", "快速搜索功能暂不可用！\n错误信息: " + str(e))
+    
+    def _on_quick_search_result_selected(self, result_data):
+        """
+        处理用户从快速搜索对话框中选择的结果
+        
+        Args:
+            result_data: 搜索结果数据
+        """
+        # 可以在这里执行一些操作，如记录历史记录、更新最近访问等
+        file_path = result_data.get("file_path", "")
+        if file_path:
+            print(f"用户选择了搜索结果: {file_path}")
+    
+    def quit_application(self):
+        """退出应用程序"""
+        # 停止热键监听
+            if hasattr(self, 'hotkey_manager'):
+            print("停止热键监听")
+            self.hotkey_manager.stop()
+            
+        # 保存设置
+        self._save_window_geometry()
+        
+        # 退出应用
+        QApplication.quit()
 
     def _create_search_bar(self):
         layout = QHBoxLayout()
@@ -1842,7 +2098,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if is_pro_feature and feature_available:
                     # 专业版功能已激活时，不显示"专业版"标签，直接添加复选框
                     type_filter_layout.addWidget(checkbox)
-                else:
+    else:
                     # 基础版功能
                     type_filter_layout.addWidget(checkbox)
             
@@ -1980,7 +2236,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         """创建并设置工作线程及其工作对象"""
         try:
             # 如果已存在线程，确保它被正确清理
-            if hasattr(self, 'worker_thread') and self.worker_thread and self.worker_thread.isRunning():
+                if hasattr(self, 'worker_thread') and self.worker_thread and self.worker_thread.isRunning():
                 print("警告: 工作线程已存在，先清理...")
                 self.worker_thread.quit()
                 if not self.worker_thread.wait(3000):  # 等待最多3秒
@@ -1988,7 +2244,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self.worker_thread.terminate()
                     self.worker_thread.wait(1000)
                 
-                if hasattr(self, 'worker') and self.worker:
+                    if hasattr(self, 'worker') and self.worker:
                     self.worker.deleteLater()
                 
                 self.worker_thread.deleteLater()
@@ -2027,11 +2283,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         except Exception as e:
             print(f"创建工作线程时发生错误: {str(e)}")
             # 确保清理任何可能部分创建的资源
-            if hasattr(self, 'worker') and self.worker:
+                if hasattr(self, 'worker') and self.worker:
                 self.worker.deleteLater()
                 self.worker = None
             
-            if hasattr(self, 'worker_thread') and self.worker_thread:
+                if hasattr(self, 'worker_thread') and self.worker_thread:
                 self.worker_thread.quit()
                 self.worker_thread.wait(1000)
                 self.worker_thread.deleteLater()
@@ -2120,7 +2376,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 恢复用户界面状态
                     self.set_busy_state(False)
                     return
-                else:
+    else:
                     # 其他错误显示普通错误对话框
                     QMessageBox.warning(self, "搜索错误", error_msg)
                     # 恢复用户界面状态
@@ -2298,7 +2554,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if '::' in file_path:
                     archive_path = file_path.split('::', 1)[0]
                     folder_path = str(Path(archive_path).parent)
-                else:
+    else:
                     folder_path = str(Path(file_path).parent)
                     
                 # 检查文件路径是否属于所选文件夹
@@ -2307,7 +2563,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if self.current_filter_folder.endswith(':\\'):  # 根目录情况
                     # 对于D:\这样的根目录，直接检查文件路径是否以此开头
                     is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
-                else:
+    else:
                     # 非根目录的正常情况
                     is_match = (folder_path == self.current_filter_folder or 
                                folder_path.startswith(self.current_filter_folder + os.path.sep))
@@ -2320,22 +2576,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # 保存过滤后的结果
         self.search_results = filtered_results
-        
-        # 检查是否处于过滤更新阻断状态
-        if self.blocking_filter_update:
-            print("DEBUG: Filter update is currently blocked")  # DEBUG
-            return
-        
-        # 检查是否是轻量级搜索模式
-        if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
-            print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
-            # 在轻量级搜索模式下，直接使用所有原始结果
-            filtered_results = self.original_search_results.copy()
-            # 保存过滤后的结果
-            self.search_results = filtered_results
-            # 直接调用display_search_results_slot
-            self.display_search_results_slot(filtered_results)
-            return
         
         # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
         # 避免递归调用
@@ -2387,7 +2627,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 elif sort_key == 'size':
                     # 按文件大小排序
                     return item.get('file_size_kb', 0) or 0
-                else:
+    else:
                     # 默认按相关度排序
                     return item.get('score', 0) or 0
             
@@ -2537,7 +2777,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     message = "您的搜索词中包含逻辑操作符（AND、OR、NOT）和通配符（*、?），这些在精确搜索模式下不起作用。"
                 elif has_logical_operators:
                     message = "您的搜索词中包含逻辑操作符（AND、OR、NOT），这些在精确搜索模式下不起作用。"
-                else:  # has_wildcards
+    else:  # has_wildcards
                     message = "您的搜索词中包含通配符（*、?），这些在精确搜索模式下不起作用。"
                     
                 switch_to_fuzzy = QMessageBox.question(
@@ -2738,7 +2978,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 max_len = 40 # Max length for filename part
                 if len(filename) > max_len:
                     short_filename = "..." + filename[-(max_len-3):] # Show end part
-                else:
+    else:
                     short_filename = filename
                 display_text = f"{prefix}{short_filename}"
                 prefix_found = True
@@ -2832,7 +3072,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             toggle_link_style = f'style="color: {toggle_color}; text-decoration:none; font-weight:bold;"'
             # -----------------------------------------------------------
 
-            if hasattr(self, 'last_search_scope') and self.last_search_scope == 'filename':
+                if hasattr(self, 'last_search_scope') and self.last_search_scope == 'filename':
                 # --- Render Simplified List --- 
                 html_output = []
                 html_output.append("<h4>文件名搜索结果:</h4>")
@@ -2851,7 +3091,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         if is_archive_member:
                             archive_file_path = file_path.split("::", 1)[0]
                             folder_path_str = str(Path(archive_file_path).parent)
-                        else:
+            else:
                             path_obj = Path(file_path)
                             if path_obj.is_file():
                                 folder_path_str = str(path_obj.parent)
@@ -2911,7 +3151,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                 if 0 <= match_start < match_end <= len(escaped_paragraph):
                                     pre = escaped_paragraph[:match_start]; mat=escaped_paragraph[match_start:match_end]; post=escaped_paragraph[match_end:]
                                     highlighted_paragraph_display = f"{pre}{phrase_highlight_start}{mat}{highlight_end}{post}"
-                                else: 
+                    else: 
                                     print(f"W: Invalid phrase idx [{match_start}:{match_end}]")
                             elif marked_paragraph and escaped_start_marker in escaped_paragraph:
                                 highlighted_paragraph_display = escaped_paragraph.replace(escaped_start_marker, fuzzy_highlight_start).replace(escaped_end_marker, highlight_end)
@@ -2941,7 +3181,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                 if is_archive_member:
                                     archive_file_path = file_path.split("::", 1)[0]
                                     folder_path_str = str(Path(archive_file_path).parent)
-                                else:
+                    else:
                                     path_obj = Path(file_path)
                                     if path_obj.is_file():
                                         folder_path_str = str(path_obj.parent)
@@ -2954,7 +3194,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             if not is_file_collapsed:
                                 html_output.append('<div class="file-details" style="display: block;">')
                                 current_file_div_open = True
-                            else:
+                else:
                                 current_file_div_open = False 
                             last_displayed_heading = None 
                             last_file_path = file_path
@@ -2969,10 +3209,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                 if not is_chapter_collapsed:
                                     html_output.append('<div class="chapter-details" style="display: block;">')
                                     current_chapter_div_open = True
-                                else:
+                    else:
                                     current_chapter_div_open = False
                                 last_displayed_heading = original_heading
-                            else:
+                else:
                                 current_chapter_div_open = False 
                                 last_displayed_heading = None
                         # (Output content: Excel or Paragraph)
@@ -3210,7 +3450,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if '::' in file_path:
                     archive_path = file_path.split('::', 1)[0]
                     folder_path = str(Path(archive_path).parent)
-                else:
+    else:
                     folder_path = str(Path(file_path).parent)
                     
                 # 检查文件路径是否属于所选文件夹
@@ -3219,7 +3459,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if self.current_filter_folder.endswith(':\\'):  # 根目录情况
                     # 对于D:\这样的根目录，直接检查文件路径是否以此开头
                     is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
-                else:
+    else:
                     # 非根目录的正常情况
                     is_match = (folder_path == self.current_filter_folder or 
                                folder_path.startswith(self.current_filter_folder + os.path.sep))
@@ -3232,22 +3472,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # 保存过滤后的结果
         self.search_results = filtered_results
-        
-        # 检查是否处于过滤更新阻断状态
-        if self.blocking_filter_update:
-            print("DEBUG: Filter update is currently blocked")  # DEBUG
-            return
-        
-        # 检查是否是轻量级搜索模式
-        if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
-            print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
-            # 在轻量级搜索模式下，直接使用所有原始结果
-            filtered_results = self.original_search_results.copy()
-            # 保存过滤后的结果
-            self.search_results = filtered_results
-            # 直接调用display_search_results_slot
-            self.display_search_results_slot(filtered_results)
-            return
         
         # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
         # 避免递归调用
@@ -3410,19 +3634,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         interface_settings_action = QAction("界面设置(&U)...", self) # U for User interface
         interface_settings_action.triggered.connect(self.show_interface_settings_dialog_slot)
         settings_menu.addAction(interface_settings_action)
-
-        # 添加托盘设置菜单项
-        tray_settings_action = QAction("托盘设置(&R)...", self)
-        tray_settings_action.triggered.connect(self.show_tray_settings_dialog_slot)
-        settings_menu.addAction(tray_settings_action)
         
-        # 添加启动设置菜单项
-        startup_settings_action = QAction("启动设置(&S)...", self)
-        startup_settings_action.triggered.connect(self.show_startup_settings_dialog_slot)
-        settings_menu.addAction(startup_settings_action)
-
         # 添加热键设置菜单项
-        hotkey_settings_action = QAction("热键设置(&K)...", self)
+        hotkey_settings_action = QAction("热键设置(&H)...", self)
         hotkey_settings_action.triggered.connect(self.show_hotkey_settings_dialog_slot)
         settings_menu.addAction(hotkey_settings_action)
 
@@ -3537,7 +3751,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if isinstance(widget, QHeaderView):
                     # 对于 QHeaderView，我们可以调用updateSection或直接跳过
                     continue
-                else:
+    else:
                     widget.style().unpolish(widget)
                     widget.style().polish(widget)
                     widget.update()
@@ -3585,17 +3799,17 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.is_busy = is_busy
         
         # 禁用或启用主要操作按钮
-        if hasattr(self, 'search_button'):
+            if hasattr(self, 'search_button'):
             self.search_button.setEnabled(not is_busy)
-        if hasattr(self, 'index_button'):
+            if hasattr(self, 'index_button'):
             self.index_button.setEnabled(not is_busy)
-        if hasattr(self, 'clear_search_button'):
+            if hasattr(self, 'clear_search_button'):
             self.clear_search_button.setEnabled(not is_busy)
-        if hasattr(self, 'clear_results_button'):
+            if hasattr(self, 'clear_results_button'):
             self.clear_results_button.setEnabled(not is_busy)
         
         # 显示或隐藏进度条
-        if hasattr(self, 'progress_bar'):
+            if hasattr(self, 'progress_bar'):
             self.progress_bar.setVisible(is_busy)
 
 
@@ -3616,7 +3830,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self._update_pro_menu()
         
         # 更新文件夹树的可见性
-        if hasattr(self, 'main_splitter') and hasattr(self, 'folder_tree'):
+            if hasattr(self, 'main_splitter') and hasattr(self, 'folder_tree'):
             # 获取主分隔器中的左侧窗口小部件（应该是包含文件夹树的容器）
             left_container = self.main_splitter.widget(0)
             
@@ -3632,7 +3846,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self.main_splitter.setSizes([0, self.main_splitter.width()])
         
         # 更新文件类型复选框的状态
-        if hasattr(self, 'file_type_checkboxes') and hasattr(self, 'pro_file_types'):
+            if hasattr(self, 'file_type_checkboxes') and hasattr(self, 'pro_file_types'):
             # 遍历所有的专业版文件类型复选框
             for checkbox, info in self.pro_file_types.items():
                 feature = info.get('feature')
@@ -3961,7 +4175,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 同时保持原有的替换逻辑
                     stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
                     stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
-                else:
+    else:
                     # 在开发环境中
                     stylesheet = stylesheet.replace("image: url(checkmark.png)", "image: url(checkmark_blue.png)")
                     stylesheet = stylesheet.replace("image: url(down_arrow.png)", "image: url(down_arrow_blue.png)")
@@ -4160,96 +4374,55 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
     # --- Cleanup --- 
     def closeEvent(self, event):
-        """Handle window close event to clean up the worker thread and save settings."""
-        print("DEBUG: closeEvent started...") # DEBUG
-        print("接收到关闭事件，开始清理和保存...")
-        
-        # --- Save Settings --- 
-        self._save_window_geometry() 
-        self._save_default_sort() # Save current sort settings as default
-        
-        # --- 保存分隔器状态 ---
-        self.settings.setValue("ui/splitterState", self.main_splitter.saveState())
-        # -----------------------
-        
-        # --- 确保所有设置被写入磁盘 ---
-        self.settings.sync()
-        
-        # --- 确保许可证信息被保存 ---
-        if hasattr(self, 'license_manager'):
-            # 这将触发LicenseManager的_save_license_info方法
-            license_status = self.license_manager.get_license_status()
-            print(f"正在保存许可证状态: {license_status}")
-        # ---------------------------------
-
-        # --- Stop Worker Thread --- 
-        if self.worker_thread and self.worker_thread.isRunning():
-            print("  尝试退出线程...")
-            # 停止任何正在进行的操作
-            if self.worker:
-                # 首先尝试断开所有信号连接，防止在清理过程中触发回调
-                try:
-                    # 断开工作线程的信号连接
-                    self.worker.statusChanged.disconnect()
-                    self.worker.progressUpdated.disconnect()
-                    self.worker.resultsReady.disconnect()
-                    self.worker.indexingComplete.disconnect()
-                    self.worker.errorOccurred.disconnect()
-                    
-                    # 断开主线程发送到工作线程的信号
-                    self.startIndexingSignal.disconnect()
-                    self.startSearchSignal.disconnect()
-                    # --- ADDED: Connect update check signal to worker ---
-                    self.startUpdateCheckSignal.disconnect()
-                    # ---------------------------------------------------
-                except Exception as e:
-                    print(f"  断开信号时发生错误: {str(e)}")
-                    pass  # 忽略任何断开连接错误
-                
-                # 确保工作线程知道需要停止任何长时间运行的操作
-                if hasattr(self.worker, 'stop_requested'):
-                    self.worker.stop_requested = True
-                
-                # 给工作线程一些时间来响应停止请求
-                time.sleep(0.2)
+        """处理窗口关闭事件"""
+        # 检查是否有正在进行的操作
+        if self.is_busy:
+            reply = QMessageBox.question(
+                self, "确认退出", 
+                "有操作正在进行中，确定要退出吗？",
+                QMessageBox.Yes | QMessageBox.No, 
+                QMessageBox.No
+            )
             
-            # 请求线程退出并等待
-            print("  请求线程退出...")
-            self.worker_thread.quit()  # 请求事件循环退出
+            if reply == QMessageBox.No:
+                event.ignore()
+                return
+        
+        # 是否彻底退出应用
+        # 默认行为是最小化到托盘
+        minimize_to_tray = self.settings.value("general/minimizeToTray", True, type=bool)
+        
+        if minimize_to_tray:
+            # 保存设置
+            self._save_window_geometry()
+            self.hide()  # 隐藏窗口但不退出应用
+            event.ignore()  # 忽略关闭事件
             
-            # 等待线程退出，使用更积极的超时策略
-            timeout_ms = 5000  # 最多等待5秒
-            if not self.worker_thread.wait(timeout_ms):
-                print(f"  警告: 线程未能在{timeout_ms/1000}秒内退出，将强制终止。")
-                
-                # 在终止前，再次检查线程状态
-                if self.worker_thread.isRunning():
-                    print("  线程仍在运行，执行强制终止...")
-                    self.worker_thread.terminate()  # 强制终止线程
-                    
-                    # 再等待一小段时间确保终止完成
-                    if not self.worker_thread.wait(1000): 
-                        print("  严重警告: 即使在强制终止后，线程仍未停止!")
-                    else:
-                        print("  线程已成功强制终止。")
-                else:
-                    print("  线程现在已停止运行。")
-            else:
-                print("  线程成功正常退出。")
+            # 首次最小化到托盘时显示提示信息
+            if not self.settings.value("general/trayNoticeShown", False, type=bool):
+                self.tray_icon.showMessage(
+                    "文智搜已最小化到系统托盘",
+                    "应用程序将继续在后台运行。\n双击托盘图标可以重新打开主窗口。",
+                    QSystemTrayIcon.Information,
+                    5000  # 显示5秒
+                )
+                self.settings.setValue("general/trayNoticeShown", True)
         else:
-            print("  线程未运行或已清理。")
-
-        # 显式设置对象为None，帮助垃圾回收
-        if hasattr(self, 'worker') and self.worker:
-            self.worker.deleteLater()
-            self.worker = None
+            # 原有退出逻辑
+            self._save_window_geometry()
             
-        if hasattr(self, 'worker_thread') and self.worker_thread:
-            self.worker_thread.deleteLater()
-            self.worker_thread = None
+            # 停止热键监听
+                if hasattr(self, 'hotkey_manager'):
+                self.hotkey_manager.stop()
+            
+            # 停止工作线程
+                if hasattr(self, 'worker_thread') and self.worker_thread:
+                self.worker_thread.quit()
+                print("已请求工作线程退出")
 
-        print("清理完成，接受关闭事件。")
-        print("DEBUG: closeEvent finishing...") # DEBUG
+                # 等待线程完成，但不超过2秒
+                if not self.worker_thread.wait(2000):
+                    print("工作线程未能在2秒内退出")
         
         # 接受关闭事件
         event.accept()
@@ -4436,7 +4609,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         """显示被跳过文件的对话框"""
         try:
             # 如果对话框已经存在，则只需显示它
-            if hasattr(self, 'skipped_files_dialog') and self.skipped_files_dialog:
+                if hasattr(self, 'skipped_files_dialog') and self.skipped_files_dialog:
                 self.skipped_files_dialog.show()
                 self.skipped_files_dialog.raise_()  # 确保对话框位于前台
                 self.skipped_files_dialog.activateWindow()  # 激活窗口
@@ -4528,7 +4701,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 def _save_geometry(self):
                     """保存窗口位置和大小"""
                     self.settings.setValue("skippedFilesDialog/geometry", self.saveGeometry())
-                    if hasattr(self, "saveState"):
+                        if hasattr(self, "saveState"):
                         self.settings.setValue("skippedFilesDialog/state", self.saveState())
                 
                 def _restore_geometry(self):
@@ -4729,7 +4902,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 更新标题以显示过滤结果
                     if filter_text:
                         self.setWindowTitle(f"跳过的文件 (已过滤: {self.table.rowCount()}/{len(self.skipped_files)})")
-                    else:
+        else:
                         self.setWindowTitle(f"跳过的文件 ({len(self.skipped_files)})")
                         
                     # 更新按钮状态
@@ -4814,7 +4987,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         subprocess.Popen(f'explorer "{path}"', shell=True)
                     except Exception as e:
                         QMessageBox.warning(self, "打开失败", f"无法打开{'文件' if is_file else '文件夹'}:\n{path}\n\n错误: {e}")
-                else:
+    else:
                     QMessageBox.warning(self, "打开失败", f"无法打开{'文件' if is_file else '文件夹'}:\n{path}")
         except Exception as e:
             QMessageBox.warning(self, "错误", f"尝试打开{'文件' if is_file else '文件夹'}时出错:\n{path}\n\n错误: {e}")
@@ -4969,62 +5142,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         help_dialog.resize(500, 450)
         help_dialog.exec_()
 
-    @Slot()
-    def show_tray_settings_dialog_slot(self):
-        """显示托盘设置对话框"""
-        try:
-            from tray_settings import TraySettingsDialog
-            dialog = TraySettingsDialog(self)
-            # 连接设置更新信号
-            dialog.settings_updated_signal.connect(self._on_tray_settings_updated)
-            dialog.exec()
-        except ImportError:
-            QMessageBox.information(self, "托盘设置", "托盘设置功能暂不可用。")
+    def _on_hotkey_triggered(self, name):
+        """处理热键触发事件"""
+        print(f"触发热键: {name}")
+        # 可以在这里记录日志或进行其他处理
     
-    def _on_tray_settings_updated(self):
-        """托盘设置更新后的处理"""
-        # 重新读取托盘设置并更新相关组件
-        print("托盘设置已更新，刷新相关组件...")
-        # 可以在这里添加更新托盘行为的代码
-        self.statusBar().showMessage("托盘设置已更新", 3000)
-
-    @Slot()
-    def show_startup_settings_dialog_slot(self):
-        """显示启动设置对话框"""
-        from startup_settings import StartupSettingsDialog
-        dialog = StartupSettingsDialog(self)
-        dialog.exec()
-
-    @Slot()
-    def show_hotkey_settings_dialog_slot(self):
-        """显示热键设置对话框"""
-        try:
-            from hotkey_settings import HotkeySettingsDialog
-            dialog = HotkeySettingsDialog(self)
-            # 连接设置更新信号
-            dialog.hotkey_updated_signal.connect(self._on_hotkey_settings_updated)
-            dialog.exec()
-        except ImportError:
-            QMessageBox.information(self, "热键设置", "热键设置功能暂不可用。")
-    
-    def _on_hotkey_settings_updated(self):
-        """热键设置更新后的处理"""
-        print("热键设置已更新，正在重新加载...")
-        
-        # 如果有热键管理器，重新加载热键设置
-        if hasattr(self, 'hotkey_manager') and self.hotkey_manager:
-            self.hotkey_manager.reload_hotkeys()
-            
-        # 更新托盘菜单中的热键显示
-        try:
-            from dynamic_tray_menu import update_tray_menu_hotkeys
-            # 这里需要获取托盘图标的引用
-            # 由于MainWindow可能没有直接的托盘图标引用，我们稍后在TrayMainWindow中处理
-            pass
-        except ImportError:
-            pass
-            
-        self.statusBar().showMessage("热键设置已更新，重启应用程序后生效", 5000)
+    def _on_hotkey_error(self, error_message):
+        """处理热键错误"""
+        print(f"热键错误: {error_message}")
+        # 可以在这里显示错误通知或记录日志
 
 # --- 文件夹树视图组件 ---
 class FolderTreeWidget(QWidget):
@@ -5241,309 +5367,320 @@ class IndexDirectoriesDialog(QDialog):
         self._load_directories()
 
     def _create_ui(self):
+        """创建设置对话框UI"""
         layout = QVBoxLayout(self)
         
-        # 添加说明标签
-        info_label = QLabel("以下是当前已添加到索引的文件夹。请勾选您希望搜索的文件夹：")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        self.tab_widget = QTabWidget()
+        self.index_tab = self._create_index_tab()
+        self.search_tab = self._create_search_tab()
+        self.interface_tab = self._create_interface_tab()
+        self.general_tab = self._create_general_tab()  # 添加通用设置选项卡
+        self.hotkey_tab = self._create_hotkey_tab()    # 添加热键设置选项卡
         
-        # 创建复选框选项 "全选"
-        self.select_all_checkbox = QCheckBox("全选")
-        self.select_all_checkbox.setChecked(True)  # 默认选中
-        layout.addWidget(self.select_all_checkbox)
+        # 添加选项卡到选项卡控件
+        self.tab_widget.addTab(self.index_tab, "索引设置")
+        self.tab_widget.addTab(self.search_tab, "搜索设置")
+        self.tab_widget.addTab(self.interface_tab, "界面设置")
+        self.tab_widget.addTab(self.general_tab, "通用设置")
+        self.tab_widget.addTab(self.hotkey_tab, "热键设置")
         
-        # 创建列表控件用于显示和选择目录
-        self.dir_list = QListWidget()
-        self.dir_list.setAlternatingRowColors(True)
-        # 确保列表允许复选框选择
-        self.dir_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        layout.addWidget(self.dir_list)
+        # 根据传入的category参数确定显示哪个选项卡
+        if self.category_to_show == 'index':
+            self.tab_widget.setCurrentIndex(0)
+        elif self.category_to_show == 'search':
+            self.tab_widget.setCurrentIndex(1)
+        elif self.category_to_show == 'interface':
+            self.tab_widget.setCurrentIndex(2)
+        elif self.category_to_show == 'general':
+            self.tab_widget.setCurrentIndex(3)
+        elif self.category_to_show == 'hotkey':
+            self.tab_widget.setCurrentIndex(4)
         
-        # 底部按钮
-        button_layout = QHBoxLayout()
-        self.close_button = QPushButton("关闭")
-        self.apply_button = QPushButton("应用选择")
+        layout.addWidget(self.tab_widget)
         
-        button_layout.addStretch(1)
-        button_layout.addWidget(self.apply_button)
-        button_layout.addWidget(self.close_button)
+        # 添加按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
         
-        layout.addLayout(button_layout)
-        
-        
-        # 连接信号 - 无需断开，因为这是新创建的控件
-        self.close_button.clicked.connect(self.reject)
-        self.apply_button.clicked.connect(self._apply_selection)
-        self.select_all_checkbox.stateChanged.connect(self._toggle_all_directories)
-        self.dir_list.itemChanged.connect(self._on_item_changed)
-        
-        # 确保应用按钮一直可用
-        self.apply_button.setEnabled(True)
-    
-    def _load_directories(self):
-        """加载索引目录并设置选择状态"""
-        # 清空列表
-        self.dir_list.clear()
-        
-        # 获取所有索引目录
-        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
-        print(f"加载文件夹，共找到 {len(source_dirs)} 个索引目录")
-        
-        # 获取先前选择的目录
-        self.selected_directories = self.settings.value("search/selectedDirectories", [], type=list)
-        
-        # 如果不存在已选择的目录，则默认选择所有目录
-        if not self.selected_directories:
-            self.selected_directories = source_dirs.copy()
-            is_all_selected = True
-        else:
-            is_all_selected = (len(self.selected_directories) == len(source_dirs) and 
-                              all(d in self.selected_directories for d in source_dirs))
-        
-        # 阻止信号以防止递归触发
-        self.dir_list.blockSignals(True)
-        self.select_all_checkbox.blockSignals(True)
-        
-        # 设置全选复选框状态
-        self.select_all_checkbox.setChecked(is_all_selected)
-        
-        # 添加所有目录到列表并设置勾选状态
-        for directory in source_dirs:
-            item = QListWidgetItem(directory)
-            # 明确设置为可勾选
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            
-            # 设置复选框状态 - 如果全选被选中，则所有项目都应该被选中
-            if is_all_selected:
-                check_state = Qt.Checked
-            else:
-                check_state = Qt.Checked if directory in self.selected_directories else Qt.Unchecked
-                
-            # 直接设置复选框状态
-            item.setCheckState(check_state)
-            self.dir_list.addItem(item)
-            
-            print(f"添加目录: {directory}, 选中状态: {check_state}")
-            
-        # 验证选中的项目数量
-        selected_count = sum(1 for i in range(self.dir_list.count()) 
-                           if self.dir_list.item(i).checkState() == Qt.Checked)
-        print(f"目录加载完成，选中的目录数量: {selected_count}/{len(source_dirs)}")
-        
-        # 恢复信号
-        self.dir_list.blockSignals(False)
-        self.select_all_checkbox.blockSignals(False)
-        
-        # 更新按钮状态确保可用
-        self.apply_button.setEnabled(True)
-    
-    def _toggle_all_directories(self, state):
-        """处理全选复选框状态变更"""
-        print(f"切换全选状态: {'选中' if state == Qt.Checked else '未选中'}")
-        
-        # 准备设置所有目录的选中状态
-        count = self.dir_list.count()
-        print(f"准备设置 {count} 个目录的选中状态")
-        
-        # 阻塞项目变更信号，防止循环触发
-        self.dir_list.blockSignals(True)
-        
-        # 设置状态为Qt.Checked或Qt.Unchecked
-        check_state = Qt.Checked if state == Qt.Checked else Qt.Unchecked
-        
-        # 遍历所有项目并设置其状态
-        for i in range(count):
-            item = self.dir_list.item(i)
-            if item.checkState() != check_state:
-                item.setCheckState(check_state)
-                print(f"目录 {i}: {item.text()}, 状态更改为 {'选中' if check_state == Qt.Checked else '未选中'}")
-            
-        # 解除信号阻塞
-        self.dir_list.blockSignals(False)
-        
-        # 保存当前选择状态
-        self._save_current_selection()
-        
-        print(f"全选操作完成，当前选中的目录数量: {len(self.selected_directories)}/{count}")
-    
-    def _save_current_selection(self):
-        """保存当前列表中勾选的目录"""
-        self.selected_directories = []
-        
-        for i in range(self.dir_list.count()):
-            item = self.dir_list.item(i)
-            if item.checkState() == Qt.Checked:
-                self.selected_directories.append(item.text())
-    
-    def _update_button_states(self):
-        """更新应用按钮状态"""
-        # 应用按钮始终可用，不再检查是否有目录被选中
-        self.apply_button.setEnabled(True)
-    
-    def _apply_selection(self):
-        """应用当前选择的目录"""
-        # 保存当前勾选的目录
-        self._save_current_selection()
-        
-        # 保存选中的目录
-        self.settings.setValue("search/selectedDirectories", self.selected_directories)
-        
-        # 发出信号通知选择已更改
-        self.directoriesSelectionChanged.emit(self.selected_directories)
-        
-        # 显示确认消息
-        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
-        if len(self.selected_directories) == 0 or len(self.selected_directories) == len(source_dirs):
-            msg = "已应用搜索范围：将搜索所有索引目录"
-        else:
-            msg = f"已应用搜索范围：将只搜索所选的 {len(self.selected_directories)} 个目录"
-            
-        if self.parent():
-            self.parent().statusBar().showMessage(msg, 3000)
-        
-        self.accept()
-    
-    def closeEvent(self, event):
-        """保存窗口大小"""
-        self.settings.setValue("indexDirectoriesDialog/geometry", self.saveGeometry())
-        event.accept()
-        super().closeEvent(event)
-    
-    def _on_item_changed(self, item):
-        """当列表项的复选框状态更改时处理"""
-        print(f"项目状态变更: {item.text()}, 状态: {item.checkState()}")
-        
-        # 检查是否所有项都被选中，来更新全选复选框状态
-        all_checked = True
-        any_checked = False
-        
-        for i in range(self.dir_list.count()):
-            current_state = self.dir_list.item(i).checkState()
-            if current_state == Qt.Checked:
-                any_checked = True
-            else:
-                all_checked = False
-                
-        # 保存当前选择状态
-        self._save_current_selection()
-                
-        # 阻塞信号以防止循环触发
-        self.select_all_checkbox.blockSignals(True)
-        self.select_all_checkbox.setChecked(all_checked)
-        self.select_all_checkbox.blockSignals(False)
-        
-        # 确保应用按钮始终可用
-        self.apply_button.setEnabled(True)
-        
-        print(f"全选复选框更新为: {'选中' if all_checked else '未选中'}, 有选择项: {'是' if any_checked else '否'}")
+        # 最后加载设置
+        self._load_settings()
 
-    @Slot()
-    def show_tray_settings_dialog_slot(self):
-        """显示托盘设置对话框"""
-        try:
-            from tray_settings import TraySettingsDialog
-            dialog = TraySettingsDialog(self)
-            dialog.exec()
-        except ImportError:
-            QMessageBox.information(self, "托盘设置", "托盘设置功能暂不可用。")
+    def _create_general_tab(self):
+        """创建通用设置选项卡"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # 托盘设置组
+        tray_group = QGroupBox("系统托盘设置")
+        tray_layout = QVBoxLayout(tray_group)
+        
+        # 最小化到托盘选项
+        self.minimize_to_tray_checkbox = QCheckBox("关闭按钮最小化到托盘而不是退出")
+        self.minimize_to_tray_checkbox.setToolTip("启用后，点击窗口右上角的关闭按钮会将应用最小化到系统托盘而不是完全退出")
+        tray_layout.addWidget(self.minimize_to_tray_checkbox)
+        
+        # 开机自启动选项（Windows平台特有）
+        if sys.platform == "win32":
+            self.autostart_checkbox = QCheckBox("系统启动时自动运行")
+            self.autostart_checkbox.setToolTip("启用后，Windows启动时会自动运行文智搜")
+            tray_layout.addWidget(self.autostart_checkbox)
+            
+            # 开机启动后最小化到托盘选项
+            self.start_minimized_checkbox = QCheckBox("自动启动时最小化到托盘")
+            self.start_minimized_checkbox.setToolTip("启用后，开机自启动文智搜时将在后台运行，不显示主窗口")
+            tray_layout.addWidget(self.start_minimized_checkbox)
+            
+            # 设置依赖关系：只有当启用开机自启动时，最小化到托盘选项才可用
+            self.autostart_checkbox.stateChanged.connect(
+                lambda state: self.start_minimized_checkbox.setEnabled(state == Qt.Checked)
+            )
+        
+        layout.addWidget(tray_group)
+        
+        # 快速搜索设置组（预留，将在阶段二实现）
+        quick_search_group = QGroupBox("快速搜索设置")
+        quick_search_layout = QVBoxLayout(quick_search_group)
+        
+        quick_search_label = QLabel("快速搜索功能即将推出，敬请期待！")
+        quick_search_layout.addWidget(quick_search_label)
+
+    def _create_hotkey_tab(self):
+        """创建热键设置选项卡"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # 快速搜索热键设置组
+        quick_search_group = QGroupBox("快速搜索热键")
+        quick_search_layout = QVBoxLayout(quick_search_group)
+        
+        # 启用快速搜索复选框
+        self.enable_quick_search_checkbox = QCheckBox("启用全局快捷键")
+        self.enable_quick_search_checkbox.setToolTip("启用后，可以在任何应用中使用热键呼出快速搜索")
+        quick_search_layout.addWidget(self.enable_quick_search_checkbox)
+        
+        # 热键选择
+        hotkey_layout = QHBoxLayout()
+        hotkey_label = QLabel("热键:")
+        self.hotkey_edit = QLineEdit()
+        self.hotkey_edit.setPlaceholderText("例如: ctrl+ctrl, alt+space")
+        self.hotkey_edit.setToolTip("输入要使用的热键组合，例如 ctrl+ctrl 表示双击Ctrl键")
+        
+        # 录制按钮
+        self.record_hotkey_button = QPushButton("录制")
+        self.record_hotkey_button.setToolTip("点击后按下您想要使用的热键组合")
+        self.record_hotkey_button.clicked.connect(self._record_hotkey)
+        
+        hotkey_layout.addWidget(hotkey_label)
+        hotkey_layout.addWidget(self.hotkey_edit)
+        hotkey_layout.addWidget(self.record_hotkey_button)
+        quick_search_layout.addLayout(hotkey_layout)
+        
+        # 添加说明文本
+        help_text = QLabel(
+            "提示: 推荐使用不常用的热键组合，避免与其他应用冲突。\n"
+            "例如: alt+space, ctrl+ctrl(双击Ctrl), ctrl+alt+f 等。"
+        )
+        help_text.setWordWrap(True)
+        quick_search_layout.addWidget(help_text)
+        
+        layout.addWidget(quick_search_group)
+        
+        # 其他全局热键设置组（预留）
+        other_hotkeys_group = QGroupBox("其他热键 (即将推出)")
+        other_hotkeys_layout = QVBoxLayout(other_hotkeys_group)
+        
+        coming_soon_label = QLabel("更多热键功能即将推出，敬请期待！")
+        other_hotkeys_layout.addWidget(coming_soon_label)
+        
+        layout.addWidget(other_hotkeys_group)
+        
+        # 热键状态组
+        status_group = QGroupBox("热键状态")
+        status_layout = QVBoxLayout(status_group)
+        
+        self.hotkey_status_label = QLabel("热键服务状态: 未知")
+        status_layout.addWidget(self.hotkey_status_label)
+        
+        restart_hotkey_button = QPushButton("重启热键服务")
+        restart_hotkey_button.clicked.connect(self._restart_hotkey_service)
+        status_layout.addWidget(restart_hotkey_button)
+        
+        layout.addWidget(status_group)
+        
+        # 添加垂直间距
+        layout.addStretch(1)
+        
+        return tab
     
-    @Slot()
-    def show_startup_settings_dialog_slot(self):
-        """显示启动设置对话框"""
-        from startup_settings import StartupSettingsDialog
-        dialog = StartupSettingsDialog(self)
-        dialog.exec()
+    def _record_hotkey(self):
+        """进入热键录制模式"""
+        # 修改按钮文本
+        original_text = self.record_hotkey_button.text()
+        self.record_hotkey_button.setText("正在录制...")
+        self.record_hotkey_button.setEnabled(False)
+        
+        # 创建热键录制对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle("热键录制")
+        dialog.setFixedSize(300, 150)
+        
+        layout = QVBoxLayout(dialog)
+        
+        label = QLabel("请按下您想要使用的热键组合...\n按ESC取消")
+        label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(label)
+        
+        # 创建一个LineEdit用于显示按下的按键
+        key_display = QLineEdit()
+        key_display.setReadOnly(True)
+        key_display.setAlignment(Qt.AlignCenter)
+        key_display.setPlaceholderText("按下按键...")
+        layout.addWidget(key_display)
+        
+        # 记录用户按下的按键
+        recorded_keys = []
+        
+        def keyPressEvent(event):
+            # 记录按键
+            key = event.key()
+            modifiers = event.modifiers()
+            
+            if key == Qt.Key_Escape:
+                # ESC键取消录制
+                dialog.reject()
+                return
+            
+            # 转换按键为文本表示
+            key_text = []
+            
+            # 添加修饰键
+            if modifiers & Qt.ControlModifier:
+                key_text.append("ctrl")
+            if modifiers & Qt.AltModifier:
+                key_text.append("alt")
+            if modifiers & Qt.ShiftModifier:
+                key_text.append("shift")
+            
+            # 添加主键
+            if Qt.Key_A <= key <= Qt.Key_Z:
+                key_text.append(chr(key).lower())
+            elif Qt.Key_0 <= key <= Qt.Key_9:
+                key_text.append(chr(key))
+            elif key == Qt.Key_Space:
+                key_text.append("space")
+            elif key == Qt.Key_Tab:
+                key_text.append("tab")
+            elif key == Qt.Key_Return or key == Qt.Key_Enter:
+                key_text.append("enter")
+            elif key == Qt.Key_F1:
+                key_text.append("f1")
+            elif key == Qt.Key_F2:
+                key_text.append("f2")
+            elif key == Qt.Key_F3:
+                key_text.append("f3")
+            elif key == Qt.Key_F4:
+                key_text.append("f4")
+            elif key == Qt.Key_F5:
+                key_text.append("f5")
+            elif key == Qt.Key_F6:
+                key_text.append("f6")
+            elif key == Qt.Key_F7:
+                key_text.append("f7")
+            elif key == Qt.Key_F8:
+                key_text.append("f8")
+            elif key == Qt.Key_F9:
+                key_text.append("f9")
+            elif key == Qt.Key_F10:
+                key_text.append("f10")
+            elif key == Qt.Key_F11:
+                key_text.append("f11")
+            elif key == Qt.Key_F12:
+                key_text.append("f12")
+            else:
+                # 忽略不支持的按键
+                return
+            
+            # 更新显示
+            hotkey_text = "+".join(key_text)
+            key_display.setText(hotkey_text)
+            
+            # 保存按键组合
+            recorded_keys.clear()
+            recorded_keys.append(hotkey_text)
+            
+            # 延迟接受对话框，给用户看清按键
+            QTimer.singleShot(500, dialog.accept)
+        
+        # 重写对话框的keyPressEvent
+        dialog.keyPressEvent = keyPressEvent
+        
+        # 显示对话框
+        result = dialog.exec()
+        
+        # 恢复按钮状态
+        self.record_hotkey_button.setText(original_text)
+        self.record_hotkey_button.setEnabled(True)
+        
+        # 处理结果
+        if result == QDialog.Accepted and recorded_keys:
+            self.hotkey_edit.setText(recorded_keys[0])
+    
+    def _restart_hotkey_service(self):
+        """重启热键服务"""
+        # 尝试重新启动主窗口的热键管理器
+        if self.parent() and hasattr(self.parent(), 'hotkey_manager'):
+            try:
+                # 停止当前热键服务
+                self.parent().hotkey_manager.stop()
+                
+                # 更新热键设置
+                hotkey = self.hotkey_edit.text()
+                if hotkey:
+                    self.parent().hotkey_manager.update_hotkey("quicksearch", hotkey)
+                
+                # 重新启动热键服务
+                success = self.parent().hotkey_manager.start()
+                
+                if success:
+                    self.hotkey_status_label.setText("热键服务状态: 正在运行")
+                    QMessageBox.information(self, "成功", "热键服务已重新启动")
+    else:
+                    self.hotkey_status_label.setText("热键服务状态: 启动失败")
+                    QMessageBox.warning(self, "失败", "热键服务启动失败")
+            except Exception as e:
+                self.hotkey_status_label.setText(f"热键服务状态: 错误 ({str(e)})")
+                QMessageBox.critical(self, "错误", f"重启热键服务时出错: {str(e)}")
+        else:
+            self.hotkey_status_label.setText("热键服务状态: 未可用")
+            QMessageBox.warning(self, "警告", "无法访问热键服务")
 
     @Slot()
     def show_hotkey_settings_dialog_slot(self):
         """显示热键设置对话框"""
-        try:
-            from hotkey_settings import HotkeySettingsDialog
-            dialog = HotkeySettingsDialog(self)
-            dialog.exec()
-        except ImportError:
-            QMessageBox.information(self, "热键设置", "热键设置功能暂不可用。")
+        self.show_settings_dialog_slot('hotkey')
 
-# --- Main Execution --- 
+# 主程序入口
 if __name__ == "__main__":
-    import multiprocessing
-    multiprocessing.freeze_support()
-
-    import sys
-    import os
-    import datetime
-    import logging # Import logging module
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="文智搜文档检索工具")
+    parser.add_argument("--minimized", action="store_true", help="以最小化到托盘模式启动应用")
+    args = parser.parse_args()
     
-    # --- Redirect stderr AND Configure Root Logger to a log file --- 
-    log_dir = os.path.join(os.path.expanduser('~'), 'Documents', 'DocumentSearchIndexLogs') # Log directory
-    os.makedirs(log_dir, exist_ok=True) # Create directory if it doesn't exist
-    log_file_path = os.path.join(log_dir, f"gui_stderr_{datetime.datetime.now():%Y%m%d_%H%M%S}.log")
-    error_log_file = None # Initialize
+    # 创建应用程序实例
+    app = QApplication(sys.argv)
+    app.setApplicationName(APPLICATION_NAME)
+    app.setOrganizationName(ORGANIZATION_NAME)
     
-    try:
-        # Open the log file
-        error_log_file = open(log_file_path, 'a', encoding='utf-8', buffering=1)
-        
-        # *** Configure the root logger ***
-        logging.basicConfig(level=logging.DEBUG, # Capture DEBUG level messages from libraries
-                            stream=error_log_file, # Send logs to our file stream
-                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        
-        # Redirect stderr to the same file (belt and suspenders)
-        sys.stderr = error_log_file
-        # Optionally redirect stdout (can be noisy)
-        # sys.stdout = error_log_file 
-        
-        print(f"--- GUI Started: stderr and root logger redirected to {log_file_path} ---", file=sys.stderr) # Log start
-        logging.info(f"--- GUI Started: stderr and root logger redirected to {log_file_path} ---") # Also log via logging
-        
-    except Exception as e:
-        # Fallback if redirection/logging config fails
-        print(f"Error configuring logging or redirecting stderr to {log_file_path}: {e}", file=sys.__stderr__) 
-        # Close the file if it was opened before the exception
-        if error_log_file:
-            try:
-                error_log_file.close()
-            except Exception:
-                pass # Ignore errors during cleanup
-    # --- End of logging/stderr redirection --- 
+    # 创建并显示主窗口
+    main_window = MainWindow()
     
-    # Make app aware of HiDPI scaling
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-
-    app = QApplication(sys.argv)  # Create the application instance
-
-    # Setup QSettings before creating MainWindow if it reads settings in __init__
-    QApplication.setOrganizationName(ORGANIZATION_NAME)
-    QApplication.setApplicationName(APPLICATION_NAME)
-
-    window = MainWindow()  # Create the main window
-    window.show()  # Show the window
+    # 根据命令行参数决定是否以最小化模式启动
+    if args.minimized:
+        print("以最小化到托盘模式启动应用")
+    else:
+        main_window.show()
     
-    # 确保应用程序退出前正确清理工作线程
-    exit_code = app.exec()
-    
-    # 执行额外的清理工作
-    if hasattr(window, 'worker_thread') and window.worker_thread:
-        print("应用程序退出，正在等待工作线程结束...")
-        if window.worker_thread.isRunning():
-            # 如果工作线程还在运行，请求它退出
-            if hasattr(window.worker, 'stop_requested'):
-                window.worker.stop_requested = True
-                
-            window.worker_thread.quit()
-            # 给线程一些时间来退出
-            if not window.worker_thread.wait(3000):  # 等待3秒
-                print("工作线程未能及时退出，强制终止...")
-                window.worker_thread.terminate()
-                window.worker_thread.wait(1000)  # 再给1秒确保终止完成
-    
-    # 显式删除窗口实例以触发closeEvent
-    del window
-    
-    # 最后退出应用程序
-    sys.exit(exit_code)
-
+    # 进入事件循环
+    sys.exit(app.exec())
