@@ -11,6 +11,9 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QCheckBox,
                               QRadioButton, QButtonGroup, QSpinBox)
 from PySide6.QtCore import QSettings, Qt, Signal
 
+# 导入主程序的常量
+from search_gui_pyside import ORGANIZATION_NAME, APPLICATION_NAME
+
 
 class TraySettingsDialog(QDialog):
     """托盘设置对话框"""
@@ -27,8 +30,8 @@ class TraySettingsDialog(QDialog):
         self.setMinimumWidth(400)
         self.setMinimumHeight(300)
         
-        # 创建设置对象
-        self.settings = QSettings("WenZhiSou", "DocumentSearch")
+        # 创建设置对象 - 使用与主程序相同的设置路径
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
         # 创建UI
         self._create_ui()

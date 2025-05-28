@@ -1,1 +1,0 @@
-import re; content = open('search_gui_pyside.py', 'r', encoding='utf-8').read(); content = content.replace('                    except Exception as e:', '            except Exception as e:'); open('search_gui_pyside.py', 'w', encoding='utf-8').write(content); print('修复完成！')

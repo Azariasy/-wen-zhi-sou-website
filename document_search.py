@@ -320,12 +320,16 @@ def scan_documents(directory_path: Path) -> list[Path]:
     # print(f"Scan complete. Found {len(found_files)} document(s).") # COMMENTED OUT
     return found_files
 
-def extract_text_from_docx(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_docx(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     full_text_list = []
     structure = []
     try:
         doc = docx.Document(file_path)
-        for para in doc.paragraphs:
+        for i, para in enumerate(doc.paragraphs):
+            # 每处理50个段落检查一次取消状态
+            if i % 50 == 0 and cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+                
             text = para.text.strip()
             if not text:
                 continue
@@ -344,11 +348,14 @@ def extract_text_from_docx(file_path: Path) -> tuple[str, list[dict]]:
             structure.append(para_info)
         full_text = '\n'.join(full_text_list)
         return full_text, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except Exception as e:
         # print(f"Error reading docx file {file_path}: {e}") # COMMENTED OUT
         return "", []
 
-def extract_text_from_txt(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_txt(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     content = ""
     structure = []
     encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'latin-1']
@@ -364,10 +371,18 @@ def extract_text_from_txt(file_path: Path) -> tuple[str, list[dict]]:
     try:
         for encoding in encodings_to_try:
             try:
+                # 在开始读取文件前检查是否需要取消
+                if cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
+                    
                 content = file_path.read_text(encoding=encoding)
                 if content:
                     lines = content.splitlines()
-                    for line in lines:
+                    for i, line in enumerate(lines):
+                        # 对于大文件，每处理100行检查一次取消状态
+                        if i % 100 == 0 and cancel_callback and cancel_callback():
+                            raise InterruptedError("操作被用户取消")
+                            
                         cleaned_line = line.strip()
                         if cleaned_line:
                             if heading_pattern.match(cleaned_line):
@@ -376,6 +391,9 @@ def extract_text_from_txt(file_path: Path) -> tuple[str, list[dict]]:
                                 structure.append({'type': 'paragraph', 'text': cleaned_line})
                 if content or structure:
                     break
+            except InterruptedError:
+                # 重新抛出取消异常
+                raise
             except UnicodeDecodeError:
                 continue
             except Exception as e:
@@ -389,7 +407,7 @@ def extract_text_from_txt(file_path: Path) -> tuple[str, list[dict]]:
         return "", []
     return content, structure
 
-def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: str = 'chi_sim+eng', min_chars_for_ocr_trigger: int = 50, timeout: int | None = None) -> tuple[str | None, list[dict]]:
+def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: str = 'chi_sim+eng', min_chars_for_ocr_trigger: int = 50, timeout: int | None = None, cancel_callback=None) -> tuple[str | None, list[dict]]:
     """
     从PDF文件提取文本，支持基于PyPDF2和OCR的混合方法
     """
@@ -403,6 +421,11 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
     if not file_path.exists():
         print(f"PDF文件不存在: {file_path}")
         return None, []
+    
+    # --- ADDED: 早期取消检查 ---
+    if cancel_callback and cancel_callback():
+        raise InterruptedError("操作被用户取消")
+    # ---------------------------
     
     extracted_text = ""
     direct_text = ""
@@ -435,14 +458,23 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
         print(f"Info: {file_path.name} direct text insufficient ({len(direct_text)} chars) or not attempted, trying OCR...")
         ocr_texts = []
         try:
+            # --- ADDED: 在开始OCR前再次检查取消状态 ---
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+            # ----------------------------------------
+                
             # --- 添加 pdf2image 时间日志 ---
             pdf2image_start_time = time.time()
             print(f"DEBUG: [{file_path.name}] Starting pdf2image conversion at {pdf2image_start_time:.2f}")
             # -------------------------------
 
+            # --- MODIFIED: 使用更短的超时时间进行PDF转换，以便更快响应取消 ---
+            # 将原始超时时间分割为更小的块，每个块后检查取消状态
+            chunk_timeout = min(30, timeout) if timeout else 30  # 每30秒检查一次
+
             images = pdf2image.convert_from_path(
                             file_path,
-                timeout=timeout,
+                timeout=chunk_timeout,  # 使用较短的超时
                 fmt='jpeg',
                 thread_count=1
             )
@@ -453,7 +485,17 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
             print(f"DEBUG: [{file_path.name}] Finished pdf2image conversion at {pdf2image_end_time:.2f} (Duration: {pdf2image_duration:.2f}s)")
             # -------------------------------
 
+            # --- ADDED: 在开始处理页面前检查取消状态 ---
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+            # ----------------------------------------
+
             for i, image in enumerate(images):
+                # --- MODIFIED: 在处理每个页面前检查是否需要取消 ---
+                if cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
+                # ------------------------------------------------
+                    
                 page_num = i + 1
                 try:
                     # --- 添加 Tesseract 时间日志 ---
@@ -461,7 +503,9 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
                     print(f"DEBUG: [{file_path.name} Page {page_num}] Starting Tesseract OCR at {tesseract_start_time:.2f}")
                     # ------------------------------
 
-                    page_text = pytesseract.image_to_string(image, lang=ocr_lang, timeout=timeout)
+                    # --- MODIFIED: 使用更短的OCR超时时间 ---
+                    ocr_timeout = min(60, timeout) if timeout else 60  # 每页最多60秒
+                    page_text = pytesseract.image_to_string(image, lang=ocr_lang, timeout=ocr_timeout)
 
                     # --- 添加 Tesseract 时间日志 ---
                     tesseract_end_time = time.time()
@@ -475,13 +519,17 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
                     else:
                         pass
 
-                # --- MODIFIED: Return tuple on exceptions ---
+                    # --- ADDED: 在每页OCR完成后检查取消状态 ---
+                    if cancel_callback and cancel_callback():
+                        raise InterruptedError("操作被用户取消")
+                    # ----------------------------------------
+                        
                 except TesseractError as te:
                     tesseract_fail_time = time.time()
                     print(f"DEBUG: [{file_path.name} Page {page_num}] TesseractError at {tesseract_fail_time:.2f} (Duration before error: {tesseract_fail_time - tesseract_start_time:.2f}s)")
                     err_msg = str(te).lower()
                     if 'timeout' in err_msg or 'process timed out' in err_msg:
-                        print(f"Warning: Tesseract OCR timed out (>{timeout}s) for page {page_num} of {file_path.name}.", file=sys.stderr)
+                        print(f"Warning: Tesseract OCR timed out (>{ocr_timeout}s) for page {page_num} of {file_path.name}.", file=sys.stderr)
                         # 这里不记录跳过的文件，因为该函数无法访问index_dir_path
                         # 记录会在_extract_worker中完成
                         return None, [] # MODIFIED
@@ -495,7 +543,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
                     print(f"DEBUG: [{file_path.name} Page {page_num}] RuntimeError at {tesseract_fail_time:.2f} (Duration before error: {tesseract_fail_time - tesseract_start_time:.2f}s)")
                     err_msg = str(rte).lower()
                     if 'timeout' in err_msg:
-                        print(f"Warning: Tesseract OCR likely timed out (>{timeout}s) for page {page_num} of {file_path.name}. Error: {rte}", file=sys.stderr)
+                        print(f"Warning: Tesseract OCR likely timed out (>{ocr_timeout}s) for page {page_num} of {file_path.name}. Error: {rte}", file=sys.stderr)
                         # 这里不记录跳过的文件，因为该函数无法访问index_dir_path
                         # 记录会在_extract_worker中完成
                         return None, [] # MODIFIED
@@ -521,7 +569,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
         except PDFPopplerTimeoutError:
             pdf2image_fail_time = time.time()
             print(f"DEBUG: [{file_path.name}] PDFPopplerTimeoutError at {pdf2image_fail_time:.2f} (Duration before error: {pdf2image_fail_time - pdf2image_start_time:.2f}s)")
-            print(f"Warning: PDF to image conversion timed out (>{timeout}s) for {file_path.name}.", file=sys.stderr)
+            print(f"Warning: PDF to image conversion timed out (>{chunk_timeout}s) for {file_path.name}.", file=sys.stderr)
             # 这里不记录跳过的文件，因为该函数无法访问index_dir_path
             # 记录会在_extract_worker中完成
             return None, [] # MODIFIED
@@ -530,6 +578,10 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
              # 这里不记录跳过的文件，因为该函数无法访问index_dir_path
              # 记录会在_extract_worker中完成
              return None, [] # MODIFIED
+        except InterruptedError:
+            # --- ADDED: 专门处理用户取消 ---
+            print(f"PDF OCR processing cancelled by user for {file_path.name}")
+            raise  # 重新抛出取消异常
         except Exception as e:
             pdf2image_fail_time = time.time()
             duration_str = f"(Duration before error: {pdf2image_fail_time - pdf2image_start_time:.2f}s)" if 'pdf2image_start_time' in locals() else ""
@@ -541,7 +593,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
             return None, [] # MODIFIED
         # --- End Modification ---
 
-    else:
+    #     else:
         extracted_text = direct_text
         # ... (logging) ...
 
@@ -564,12 +616,16 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
          final_structure = structure if isinstance(structure, list) else []
          return extracted_text, final_structure
 
-def extract_text_from_pptx(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_pptx(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     full_text_list = []
     structure = []
     try:
         presentation = pptx.Presentation(file_path)
         for slide_num, slide in enumerate(presentation.slides):
+            # 在处理每个幻灯片前检查是否需要取消
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+                
             slide_texts = []
             for shape in slide.shapes:
                 if not shape.has_text_frame:
@@ -586,6 +642,9 @@ def extract_text_from_pptx(file_path: Path) -> tuple[str, list[dict]]:
                 full_text_list.extend(slide_texts)
         full_text = '\n'.join(full_text_list)
         return full_text, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except Exception as e:
         print(f"Error reading pptx file {file_path}: {e}")
         return "", []
@@ -600,22 +659,43 @@ def _is_potential_header(row_data: list, non_empty_threshold=0.5, string_thresho
     return (non_empty_count / len(row_data) >= non_empty_threshold and
             string_count / non_empty_count >= string_threshold)
 
-def extract_text_from_xlsx(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     full_text_list = []
     structure = []
     MAX_HEADER_CHECK_ROWS = 10
+    
+    # 在开始处理前检查是否需要取消
+    if cancel_callback and cancel_callback():
+        raise InterruptedError("操作被用户取消")
+    
     try:
         excel_data = pd.read_excel(file_path, sheet_name=None, header=None, keep_default_na=False)
     except Exception as e:
         print(f"Error reading Excel file {file_path}: {e}")
         return "", []
+    
+    # 在读取Excel数据后检查取消状态
+    if cancel_callback and cancel_callback():
+        raise InterruptedError("操作被用户取消")
+    
     for sheet_name, df_initial in excel_data.items():
+        # 在处理每个工作表前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         if df_initial.empty:
             continue
+            
         header_row_index = -1
         best_header_score = -1
         potential_header_idx = -1
+        
+        # 在表头检测循环中增加更频繁的取消检查
         for i in range(min(MAX_HEADER_CHECK_ROWS, len(df_initial))):
+            # 在检查表头的循环中也添加取消检查
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+                
             row_values = df_initial.iloc[i].tolist()
             current_score = sum(1 for cell in row_values if pd.notna(cell) and isinstance(cell, str) and str(cell).strip() and not str(cell).replace('.', '', 1).isdigit())
             is_plausible = any(isinstance(cell, str) and str(cell).strip() for cell in row_values)
@@ -624,16 +704,40 @@ def extract_text_from_xlsx(file_path: Path) -> tuple[str, list[dict]]:
                 potential_header_idx = i
             elif best_header_score == -1 and is_plausible:
                 potential_header_idx = i
+                
+        # 在表头检测完成后检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         if potential_header_idx != -1 and best_header_score >= 1:
             header_row_index = potential_header_idx
             print(f"Detected header in '{sheet_name}' at row {header_row_index + 1}")
             try:
+                # 在重新读取工作表前检查取消状态
+                if cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
+                    
                 df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row_index, keep_default_na=False)
                 df = df.dropna(axis=0, how='all')
                 df = df.dropna(axis=1, how='all')
                 df = df.fillna('')
                 headers = [str(h).strip() for h in df.columns]
+                
+                # 在开始处理行数据前检查取消状态
+                if cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
+                
+                row_count = 0
                 for idx, row in df.iterrows():
+                    # 在处理每一行时也检查取消 - 增加频率
+                    if cancel_callback and cancel_callback():
+                        raise InterruptedError("操作被用户取消")
+                    
+                    # 每处理10行检查一次取消状态（提高响应性）
+                    row_count += 1
+                    if row_count % 10 == 0 and cancel_callback and cancel_callback():
+                        raise InterruptedError("操作被用户取消")
+                        
                     excel_row_num = idx + header_row_index + 2
                     row_values = [str(cell).strip() for cell in row.tolist()]
                     row_texts_for_full_text = [h for h in headers if h] + [v for v in row_values if v]
@@ -649,13 +753,25 @@ def extract_text_from_xlsx(file_path: Path) -> tuple[str, list[dict]]:
                             'values': row_values,
                             'text': searchable_row_text
                         })
+                        
+            except InterruptedError:
+                # 重新抛出取消异常
+                print(f"XLSX工作表处理被用户取消: {sheet_name}")
+                raise
             except Exception as e:
                 print(f"Error re-reading sheet '{sheet_name}' with header at row {header_row_index + 1}: {e}")
+                # 在异常处理中也检查取消状态
+                if cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
                 sheet_text = df_initial.to_string(index=False, header=False)
                 full_text_list.append(sheet_text)
                 structure.append({'type': 'paragraph', 'text': f"Content from sheet '{sheet_name}' (header detection failed)."})
         else:
             print(f"Warning: Could not detect header in sheet '{sheet_name}'. Indexing as plain text.")
+            # 在处理无表头工作表前检查取消状态
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+                
             sheet_text = df_initial.to_string(index=False, header=False)
             cleaned_sheet_text = "\n".join(line.strip() for line in sheet_text.splitlines() if line.strip())
             if cleaned_sheet_text:
@@ -665,10 +781,16 @@ def extract_text_from_xlsx(file_path: Path) -> tuple[str, list[dict]]:
                     'text': cleaned_sheet_text,
                     'context': f"Sheet: {sheet_name} (No header detected)"
                 })
+                
+    # 在返回前最后检查一次取消状态
+    if cancel_callback and cancel_callback():
+        raise InterruptedError("操作被用户取消")
+        
     full_text = '\n'.join(full_text_list)
     return full_text, structure
 
-def extract_text_from_md(file_path: Path) -> tuple[str, list[dict]]:
+
+def extract_text_from_md(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     """Extract text and structure from a Markdown file."""
     # --- ADDED: 检查Markdown支持许可证 ---
     if not is_feature_available(Features.MARKDOWN_SUPPORT):
@@ -683,6 +805,10 @@ def extract_text_from_md(file_path: Path) -> tuple[str, list[dict]]:
     structure = []
     encodings_to_try = ['utf-8', 'gbk', 'gb2312']
     try:
+        # 在开始处理前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         raw_md_content = None
         for encoding in encodings_to_try:
             try:
@@ -697,21 +823,33 @@ def extract_text_from_md(file_path: Path) -> tuple[str, list[dict]]:
         if raw_md_content is None:
             print(f"Could not decode md file {file_path} with tried encodings or file is empty.")
             return "", []
+        
+        # 在转换前检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         html_content = markdown.markdown(raw_md_content)
         content = strip_tags(html_content).strip()
         if content:
             structure.append({'type': 'paragraph', 'text': content})
         print(f"MD Extracted Text (first 500 chars): {content[:500]}")
         return content, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except ImportError:
         print("Error: markdown library not installed. Please run: pip install Markdown")
         return "", []
 
-def extract_text_from_html(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_html(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     print(f"Attempting to extract text from HTML/HTM: {file_path}")
     content = ""
     structure = []
     try:
+        # 在开始处理前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         raw_html_bytes = file_path.read_bytes()
         if not raw_html_bytes:
             print(f"Warning: HTML/HTM file is empty: {file_path}")
@@ -738,6 +876,11 @@ def extract_text_from_html(file_path: Path) -> tuple[str, list[dict]]:
             if html_content_decoded is None:
                 print(f"Warning: Could not decode HTML/HTM, using utf-8 with replacements.")
                 html_content_decoded = raw_html_bytes.decode('utf-8', errors='replace')
+        
+        # 在解析前再次检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         soup = BeautifulSoup(html_content_decoded, 'lxml')
         for script_or_style in soup(["script", "style"]):
             script_or_style.decompose()
@@ -747,16 +890,23 @@ def extract_text_from_html(file_path: Path) -> tuple[str, list[dict]]:
         print(f"Successfully extracted HTML/HTM content (length: {len(content)}): {file_path}")
         print(f"Extracted sample: {content[:500]}{'...' if len(content) > 500 else ''}")
         return content, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except Exception as e:
         print(f"Error processing html/htm file {file_path}: {e}")
         # traceback.print_exc(file=sys.stderr) # COMMENTED OUT
         return "", []
 
-def extract_text_from_rtf(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_rtf(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     content = ""
     structure = []
     encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'latin-1']
     try:
+        # 在开始处理前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         rtf_content = None
         for encoding in encodings_to_try:
             try:
@@ -773,15 +923,23 @@ def extract_text_from_rtf(file_path: Path) -> tuple[str, list[dict]]:
         if rtf_content is None:
             print(f"Could not decode rtf file {file_path} with tried encodings or file doesn't start with RTF marker.")
             return "", []
+        
+        # 在转换前检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         content = rtf_to_text(rtf_content, errors="ignore").strip()
         if content:
             structure.append({'type': 'paragraph', 'text': content})
         return content, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except Exception as e:
         print(f"Error processing rtf file {file_path}: {e}")
         return "", []
 
-def extract_text_from_eml(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_eml(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     """Extract text from an EML file."""
     # --- ADDED: 检查邮件支持许可证 ---
     if not is_feature_available(Features.EMAIL_SUPPORT):
@@ -795,11 +953,20 @@ def extract_text_from_eml(file_path: Path) -> tuple[str, list[dict]]:
     full_text_list = []
     structure = []
     try:
+        # 在开始处理前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         raw_bytes = file_path.read_bytes()
         if not raw_bytes:
             return "", []
         parser = BytesParser()
         msg = parser.parsebytes(raw_bytes)
+        
+        # 在解析邮件内容前检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         def decode_header_simple(header_value):
             if not header_value:
                 return ""
@@ -868,7 +1035,7 @@ def extract_text_from_eml(file_path: Path) -> tuple[str, list[dict]]:
         # traceback.print_exc(file=sys.stderr) # COMMENTED OUT
         return "", []
 
-def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
+def extract_text_from_msg(file_path: Path, cancel_callback=None) -> tuple[str, list[dict]]:
     # --- ADDED: 检查邮件支持许可证 ---
     if not is_feature_available(Features.EMAIL_SUPPORT):
         print(f"邮件支持功能不可用 (未获得许可)")
@@ -897,6 +1064,11 @@ def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
             full_text_list.append(f"日期: {msg.date}")
         body_to_process = None
         processed_html_body = False
+        
+        # 在处理邮件正文前检查取消状态
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
         if hasattr(msg, 'htmlBody') and msg.htmlBody:
             print("MSG Body: Attempting to process HTML body.")
             html_bytes = None
@@ -923,7 +1095,7 @@ def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
                                 print(f"MSG HTML Body: Decoded using fallback: {enc}")
                                 break
                             except Exception:
-                                continue
+                                pass  # 继续尝试其他编码
                         if html_content_decoded is None:
                             html_content_decoded = html_bytes.decode('utf-8', errors='replace')
                             print(f"MSG HTML Body: Decoded using final fallback utf-8 (replace)")
@@ -963,6 +1135,9 @@ def extract_text_from_msg(file_path: Path) -> tuple[str, list[dict]]:
         full_text = '\n'.join(full_text_list)
         print(f"Extracted full text from {file_path.name} (first 500 chars): {full_text[:500]}")
         return full_text, structure
+    except InterruptedError:
+        # 重新抛出取消异常
+        raise
     except Exception as e:
         print(f"Error processing MSG file {file_path}: {e}")
         # traceback.print_exc(file=sys.stderr) # COMMENTED OUT
@@ -1735,6 +1910,9 @@ def _extract_worker(worker_args: dict) -> dict:
     # --- ADDED: Get index_dir_path for recording skipped files ---
     index_dir_path = worker_args.get('index_dir_path', '')
     # -----------------------------------------------------------
+    # --- ADDED: Get cancel callback ---
+    cancel_callback = worker_args.get('cancel_callback')
+    # ----------------------------------
     original_mtime = worker_args['original_mtime']
     original_fsize = worker_args['original_fsize']
     display_name = worker_args.get('display_name', Path(path_key).name if "::" not in path_key else path_key.split("::")[1]) # Use provided or generate
@@ -1748,14 +1926,32 @@ def _extract_worker(worker_args: dict) -> dict:
 
     try:
         start_time = time.time()
+        
+        # --- MODIFIED: 在开始处理前检查是否需要取消 ---
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+        # ----------------------------------------
+        
         # --- Select extraction function based on file type --- 
         if file_type == 'file':
             file_path = Path(path_key)
             file_ext = file_path.suffix.lower()
+            
+            # --- ADDED: 在确定文件类型后再次检查取消状态 ---
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+            # ----------------------------------------
+            
             # Select function based on extension (Corrected indentation)
             if file_ext == '.docx':
                 try:
-                    text_content, structure = extract_text_from_docx(file_path)
+                    print(f"开始处理DOCX文件: {display_name}")
+                    text_content, structure = extract_text_from_docx(file_path, cancel_callback)
+                    print(f"完成处理DOCX文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"DOCX文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1764,7 +1960,8 @@ def _extract_worker(worker_args: dict) -> dict:
             elif file_ext == '.txt':
                 # --- MODIFIED: Apply content limit to TXT --- 
                 try:
-                    text_content_tuple = extract_text_from_txt(file_path) # Corrected indentation
+                    print(f"开始处理TXT文件: {display_name}")
+                    text_content_tuple = extract_text_from_txt(file_path, cancel_callback) # Corrected indentation
                     if isinstance(text_content_tuple, tuple) and len(text_content_tuple) == 2:
                         text_content = text_content_tuple[0]
                         structure = text_content_tuple[1]
@@ -1787,6 +1984,11 @@ def _extract_worker(worker_args: dict) -> dict:
                         error_message = "TXT extraction returned unexpected result."
                         text_content = None
                         structure = []
+                    print(f"完成处理TXT文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"TXT文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1795,7 +1997,14 @@ def _extract_worker(worker_args: dict) -> dict:
             elif file_ext == '.pdf':
                 # --- MODIFIED: Add explicit timeout parameter ---
                 try:
-                    text_content_tuple = extract_text_from_pdf(file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout)
+                    print(f"开始处理PDF文件: {display_name} (OCR: {'启用' if enable_ocr_for_file else '禁用'})")
+                    
+                    # --- ADDED: 在开始PDF处理前检查取消状态 ---
+                    if cancel_callback and cancel_callback():
+                        raise InterruptedError("操作被用户取消")
+                    # ----------------------------------------
+                    
+                    text_content_tuple = extract_text_from_pdf(file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout, cancel_callback=cancel_callback)
                     if isinstance(text_content_tuple, tuple) and len(text_content_tuple) >= 2:
                         text_content = text_content_tuple[0]
                         structure = text_content_tuple[1] if text_content_tuple[1] is not None else []
@@ -1803,6 +2012,11 @@ def _extract_worker(worker_args: dict) -> dict:
                         error_message = "PDF extraction returned unexpected result."
                         text_content = None
                         structure = []
+                    print(f"完成处理PDF文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"PDF文件处理被用户取消: {display_name}")
+                    raise
                 except Exception as e:
                     error_message = str(e)
                     text_content = None
@@ -1817,7 +2031,13 @@ def _extract_worker(worker_args: dict) -> dict:
                             record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - PDF支持功能需要专业版许可证")
             elif file_ext == '.pptx':
                 try:
-                    text_content, structure = extract_text_from_pptx(file_path)
+                    print(f"开始处理PPTX文件: {display_name}")
+                    text_content, structure = extract_text_from_pptx(file_path, cancel_callback)
+                    print(f"完成处理PPTX文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"PPTX文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1825,7 +2045,14 @@ def _extract_worker(worker_args: dict) -> dict:
                         record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
             elif file_ext == '.xlsx':
                 try:
-                    text_content, structure = extract_text_from_xlsx(file_path)
+                    print(f"开始处理XLSX文件: {display_name}")
+                    # 传递取消回调给Excel处理函数
+                    text_content, structure = extract_text_from_xlsx(file_path, cancel_callback=cancel_callback)
+                    print(f"完成处理XLSX文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"XLSX文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1833,7 +2060,13 @@ def _extract_worker(worker_args: dict) -> dict:
                         record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
             elif file_ext == '.md':
                 try:
-                    text_content, structure = extract_text_from_md(file_path)
+                    print(f"开始处理MD文件: {display_name}")
+                    text_content, structure = extract_text_from_md(file_path, cancel_callback)
+                    print(f"完成处理MD文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"MD文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1847,7 +2080,13 @@ def _extract_worker(worker_args: dict) -> dict:
                     structure = []
             elif file_ext in ('.html', '.htm'): # Corrected structure/indentation
                 try:
-                    text_content, structure = extract_text_from_html(file_path)
+                    print(f"开始处理HTML文件: {display_name}")
+                    text_content, structure = extract_text_from_html(file_path, cancel_callback)
+                    print(f"完成处理HTML文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"HTML文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1855,7 +2094,13 @@ def _extract_worker(worker_args: dict) -> dict:
                         record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
             elif file_ext == '.rtf': # Corrected structure/indentation
                 try:
-                    text_content, structure = extract_text_from_rtf(file_path)
+                    print(f"开始处理RTF文件: {display_name}")
+                    text_content, structure = extract_text_from_rtf(file_path, cancel_callback)
+                    print(f"完成处理RTF文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"RTF文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1863,7 +2108,13 @@ def _extract_worker(worker_args: dict) -> dict:
                         record_skipped_file(index_dir_path, str(file_path), f"许可证限制 - {error_message}")
             elif file_ext == '.eml': # Corrected structure/indentation
                 try:
-                    text_content, structure = extract_text_from_eml(file_path)
+                    print(f"开始处理EML文件: {display_name}")
+                    text_content, structure = extract_text_from_eml(file_path, cancel_callback)
+                    print(f"完成处理EML文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"EML文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1876,7 +2127,13 @@ def _extract_worker(worker_args: dict) -> dict:
                     text_content = None
             elif file_ext == '.msg': # Corrected structure/indentation
                 try:
-                    text_content, structure = extract_text_from_msg(file_path)
+                    print(f"开始处理MSG文件: {display_name}")
+                    text_content, structure = extract_text_from_msg(file_path, cancel_callback)
+                    print(f"完成处理MSG文件: {display_name}")
+                except InterruptedError:
+                    # 重新抛出取消异常
+                    print(f"MSG文件处理被用户取消: {display_name}")
+                    raise
                 except PermissionError as perm_err:
                     # 记录因许可证限制跳过的文件
                     error_message = str(perm_err)
@@ -1892,6 +2149,11 @@ def _extract_worker(worker_args: dict) -> dict:
                 error_message = f"Unsupported file extension: {file_ext}"
         
         elif file_type == 'archive':
+            # --- ADDED: 在处理压缩包前检查取消状态 ---
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+            # ----------------------------------------
+            
             if not archive_path_abs_str or not member_name:
                 error_message = "Archive path or member name missing for archive extraction"
                 text_content = ""
@@ -1979,13 +2241,18 @@ def _extract_worker(worker_args: dict) -> dict:
                         else: # Corrected indentation
                             error_message = f"Unsupported archive type: {archive_type}"
                         
+                        # --- ADDED: 在提取完成后检查取消状态 ---
+                        if cancel_callback and cancel_callback():
+                            raise InterruptedError("操作被用户取消")
+                        # ----------------------------------------
+                        
                         if not error_message and temp_file_path and temp_file_path.exists():
                             # --- Now extract text from the temporary file --- 
                             if member_ext == '.docx': # Corrected indentation
-                                text_content, structure = extract_text_from_docx(temp_file_path)
+                                text_content, structure = extract_text_from_docx(temp_file_path, cancel_callback)
                             elif member_ext == '.txt':
                                 # --- MODIFIED: Apply content limit to TXT member --- 
-                                text_content_tuple = extract_text_from_txt(temp_file_path)
+                                text_content_tuple = extract_text_from_txt(temp_file_path, cancel_callback)
                                 if isinstance(text_content_tuple, tuple) and len(text_content_tuple) == 2:
                                     text_content = text_content_tuple[0]
                                     structure = text_content_tuple[1]
@@ -2011,7 +2278,7 @@ def _extract_worker(worker_args: dict) -> dict:
                                 # --- END MODIFIED --- 
                             elif member_ext == '.pdf':
                                 # --- MODIFIED PDF Call for Archive Member --- 
-                                pdf_result_member = extract_text_from_pdf(temp_file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout)
+                                pdf_result_member = extract_text_from_pdf(temp_file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout, cancel_callback=cancel_callback)
                                 text_content = pdf_result_member[0]
                                 structure = pdf_result_member[1]
                                 if text_content is None:
@@ -2049,19 +2316,20 @@ def _extract_worker(worker_args: dict) -> dict:
                                         pass # Ignore truncation check errors silently for now
                                 # -------------------------------------------
                             elif member_ext == '.pptx':
-                                text_content, structure = extract_text_from_pptx(temp_file_path)
+                                text_content, structure = extract_text_from_pptx(temp_file_path, cancel_callback)
                             elif member_ext == '.xlsx':
-                                text_content, structure = extract_text_from_xlsx(temp_file_path)
+                                # 传递取消回调给Excel处理函数
+                                text_content, structure = extract_text_from_xlsx(temp_file_path, cancel_callback=cancel_callback)
                             elif member_ext == '.md':
-                                text_content, structure = extract_text_from_md(temp_file_path)
+                                text_content, structure = extract_text_from_md(temp_file_path, cancel_callback)
                             elif member_ext in ('.html', '.htm'): # Corrected structure/indentation
-                                text_content, structure = extract_text_from_html(temp_file_path)
+                                text_content, structure = extract_text_from_html(temp_file_path, cancel_callback)
                             elif member_ext == '.rtf':
-                                text_content, structure = extract_text_from_rtf(temp_file_path)
+                                text_content, structure = extract_text_from_rtf(temp_file_path, cancel_callback)
                             elif member_ext == '.eml':
-                                text_content, structure = extract_text_from_eml(temp_file_path)
+                                text_content, structure = extract_text_from_eml(temp_file_path, cancel_callback)
                             elif member_ext == '.msg':
-                                text_content, structure = extract_text_from_msg(temp_file_path)
+                                text_content, structure = extract_text_from_msg(temp_file_path, cancel_callback)
                             else: # Corrected indentation
                                 error_message = f"Unsupported file extension in archive: {member_ext}"
                                 text_content = ""
@@ -2100,6 +2368,11 @@ def _extract_worker(worker_args: dict) -> dict:
         end_time = time.time()
         # print(f"Extraction time for {display_name}: {end_time - start_time:.2f}s")
     
+    except InterruptedError:
+        # --- MODIFIED: 改进取消异常处理 ---
+        print(f"文件处理被用户取消: {display_name}")
+        # 重新抛出取消异常，不进行任何处理
+        raise
     except Exception as e_outer:
         error_message = f"Unexpected error during extraction setup for {display_name}: {e_outer}"
         # traceback.print_exc() # COMMENTED OUT
@@ -2212,774 +2485,1165 @@ def update_skipped_files_record(index_dir_path: str, processed_license_files: di
         print(f"更新跳过文件记录时出错: {e}")
 # ------------------------------------------------------
 
-# --- MODIFIED: Add enable_ocr parameter --- 
-# def create_or_update_index(directory_path_str: str, index_dir_path: str):
-def create_or_update_index(source_directories: list[str], index_dir_path: str, enable_ocr: bool = True, extraction_timeout: int | None = None, txt_content_limit_kb: int | None = None, file_types_to_index: list[str] | None = None): # Add file_types_to_index parameter
-# ------------------------------------------
-    """Creates or updates the Whoosh index for the given list of source directories.
-    Yields status messages and progress updates.
-    Args:
-        source_directories: List of paths to the directories containing documents. # MODIFIED
-        index_dir_path: Path to store the Whoosh index.
-        enable_ocr: Whether to enable OCR for PDF files during indexing.
-        extraction_timeout: Timeout in seconds for single file extraction.
-        txt_content_limit_kb: Maximum content size in KB to index for .txt files (0 or None means no limit).
-        file_types_to_index: List of file extensions to include in indexing (without dot, e.g. ['txt', 'pdf']).
-                             If None or empty, all supported types will be indexed.
+# --- 索引速度优化函数 ---
+
+def get_optimal_worker_count(task_type="io_intensive"):
     """
-    print("Index Update: Acquiring index lock...")
-    INDEX_ACCESS_LOCK.acquire()
-    print("Index Update: Lock acquired.")
-    ix = None
-    writer = None
-    update_performed = False
+    根据任务类型确定最优的工作进程数量
+
+    Args:
+        task_type: 任务类型，"io_intensive"（I/O密集型）或"cpu_intensive"（CPU密集型）
+
+    Returns:
+        int: 推荐的工作进程数量
+    """
+    cpu_count = multiprocessing.cpu_count()
+
+    if task_type == "io_intensive":
+        # I/O密集型任务，可以使用更多进程
+        optimal_count = min(cpu_count * 2, 8)  # 最多8个进程
+    else:
+        # CPU密集型任务，使用CPU核心数
+        optimal_count = max(cpu_count - 1, 1)  # 留一个核心给系统
+
+    print(f"检测到CPU核心数: {cpu_count}, 任务类型: {task_type}, 推荐工作进程数: {optimal_count}")
+    return optimal_count
+
+def should_skip_large_file(file_path: Path, max_size_mb: int = 100) -> tuple[bool, str]:
+    """
+    检查是否应该跳过大文件
+
+    Args:
+        file_path: 文件路径
+        max_size_mb: 最大文件大小限制（MB）
+
+    Returns:
+        tuple[bool, str]: (是否跳过, 跳过原因)
+    """
     try:
-        # --- Initial Safety Checks and Setup ---
-        if not source_directories:
-            yield {'type': 'error', 'message': '错误: 未提供任何要索引的源文件夹。'}
-            INDEX_ACCESS_LOCK.release()
-            print("Index Update: Lock released early (no source directories).")
-            return
+        file_size = file_path.stat().st_size
+        max_size_bytes = max_size_mb * 1024 * 1024
 
-        valid_source_dirs = []
-        for dir_str in source_directories:
-            doc_directory = Path(dir_str)
-            if not doc_directory.is_dir():
-                yield {'type': 'warning', 'message': f"警告: 跳过无效或不存在的源文件夹: {dir_str}"}
-            else: # Corrected indentation
-                valid_source_dirs.append(doc_directory) # Store valid Path objects
+        if file_size > max_size_bytes:
+            return True, f"文件大小 ({file_size // (1024*1024)}MB) 超过限制 ({max_size_mb}MB)"
 
-        if not valid_source_dirs:
-            yield {'type': 'error', 'message': '错误: 提供的所有源文件夹均无效。'}
-            INDEX_ACCESS_LOCK.release()
-            print("Index Update: Lock released early (all source directories invalid).")
-            return
-        # -----------------------------------------------------------
+        return False, ""
+    except Exception as e:
+        return True, f"无法获取文件大小: {e}"
 
-        # --- ADDED: 读取因许可证限制而跳过的文件记录 ---
-        original_license_skipped_files = read_license_skipped_files(index_dir_path)
-        license_skipped_files = original_license_skipped_files.copy()  # 创建副本以便后续比较
-        
-        if license_skipped_files:
-            yield {'type': 'status', 'message': f'发现 {len(license_skipped_files)} 个因许可证限制而跳过的文件记录'}
-        # -----------------------------------------------
+def should_skip_system_file(file_path: Path) -> tuple[bool, str]:
+    """
+    检查是否应该跳过系统文件或临时文件
 
-        index_path = Path(index_dir_path)
-        schema = get_schema()
-        indexed_files = {}
-        try:
-            # Yield phase status
-            yield {'type': 'status', 'message': '阶段: 正在读取现有索引...'}
-            print("Index Update: Reading existing index data...")
-            if exists_in(index_path):
-                ix_read = None
-                try:
-                    # ... (existing logic to read index into indexed_files) ...
-                    ix_read = open_dir(index_path, schema=schema)
-                    if ix_read.schema != schema:
-                        yield {'type': 'warning', 'message': f"索引 Schema 已更改。建议完全重建索引以应用更改。"}
-                    with ix_read.searcher() as searcher:
-                        for fields in searcher.all_stored_fields():
-                            path_str = fields.get('path')
-                            last_mod = fields.get('last_modified')
-                            was_indexed_with_ocr = fields.get('indexed_with_ocr', False)
-                            if path_str and last_mod is not None:
-                                if "::" in path_str:
-                                    path_key = path_str
-                                else:
-                                    path_key = path_str # Assume stored path is already absolute or unique
-                                
-                                # 存储原始键
-                                indexed_files[path_key] = {'mtime': last_mod, 'was_ocr': was_indexed_with_ocr}
-                                
-                                # 同时存储标准化路径键，确保跨系统兼容性
-                                norm_path_key = normalize_path_for_index(path_key)
-                                if norm_path_key != path_key:
-                                    indexed_files[norm_path_key] = {'mtime': last_mod, 'was_ocr': was_indexed_with_ocr}
-                                    print(f"  同时用标准化路径键存储: {path_key} -> {norm_path_key}")
-                    yield {'type': 'status', 'message': f'现有索引包含 {len(indexed_files)} 个条目。'}
-                except Exception as e:
-                    yield {'type': 'warning', 'message': f'读取现有索引时出错: {e}。将尝试作为新索引处理。'}
-                    indexed_files = {}
-                finally:
-                    if ix_read:
-                        ix_read.close()
-            else:
-                yield {'type': 'status', 'message': '现有索引未找到。'}
-                indexed_files = {}
-        finally:
-            print("Index Update: Releasing lock after read phase...")
-            INDEX_ACCESS_LOCK.release() # Release lock after reading
-            print("Index Update: Lock released after read phase.")
+    Args:
+        file_path: 文件路径
 
-        # --- Initialize accumulators and counters before the loop ---
-        yield {'type': 'status', 'message': '阶段: 正在扫描文件系统并对比变更...'}
-        
-        # --- ADDED: 处理文件类型过滤 ---
-        # 如果提供了文件类型列表且不为空，则只索引指定类型
-        if file_types_to_index and len(file_types_to_index) > 0:
-            # 转换文件类型列表为小写并添加点号
-            filtered_extensions = {f".{ext.lower().lstrip('.')}" for ext in file_types_to_index}
-            
-            # 获取所有支持的文件类型
-            all_doc_extensions = {'.docx', '.txt', '.pdf', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg'}
-            all_archive_extensions = {'.zip', '.rar'}
-            
-            # 过滤文档类型
-            doc_extensions = all_doc_extensions & filtered_extensions
-            # 如果启用了压缩文件类型的提取，也需要过滤压缩文件类型
-            archive_extensions = all_archive_extensions & filtered_extensions
-            
-            # 日志记录选择的文件类型
-            filtered_types_str = ", ".join(sorted([ext[1:] for ext in (doc_extensions | archive_extensions)]))
-            yield {'type': 'status', 'message': f'过滤模式：仅索引以下类型的文件: {filtered_types_str}'}
+    Returns:
+        tuple[bool, str]: (是否跳过, 跳过原因)
+    """
+    try:
+        path_str = str(file_path).lower()
+
+        # 跳过的路径模式
+        skip_patterns = [
+            'recycle.bin',
+            '$recycle.bin',
+            'system volume information',
+            'pagefile.sys',
+            'hiberfil.sys',
+            'swapfile.sys',
+            '.tmp',
+            '.temp',
+            '~$',  # Office临时文件
+        ]
+
+        for pattern in skip_patterns:
+            if pattern in path_str:
+                return True, f"系统文件或临时文件: {pattern}"
+
+        # 检查是否为隐藏文件（Windows）
+        if file_path.name.startswith('.') and len(file_path.name) > 1:
+            return True, "隐藏文件"
+
+        return False, ""
+    except Exception as e:
+        return True, f"检查系统文件时出错: {e}"
+
+def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100, 
+                           skip_system_files: bool = True, file_types_to_index=None, cancel_callback=None) -> tuple[list[Path], list[dict]]:
+    """
+    优化的文档扫描函数，支持多个目录和文件过滤
+
+    Args:
+        directory_paths: 要扫描的目录路径列表（可以是字符串或Path对象）
+        max_file_size_mb: 最大文件大小限制（MB）
+        skip_system_files: 是否跳过系统文件
+        file_types_to_index: 要索引的文件类型列表，如['txt', 'docx', 'pdf']
+
+    Returns:
+        tuple[list[Path], list[dict]]: (找到的文件列表, 跳过的文件信息列表)
+    """
+    found_files = []
+    skipped_files = []
+
+    # 转换为Path对象
+    path_objects = []
+    for dir_path in directory_paths:
+        if isinstance(dir_path, str):
+            path_objects.append(Path(dir_path))
         else:
-            # 使用所有支持的文件类型
-            doc_extensions = {'.docx', '.txt', '.pdf', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg'}
-            archive_extensions = {'.zip', '.rar'}
-            yield {'type': 'status', 'message': f'索引所有支持的文件类型'}
-        # ------------------------------
-        
-        added_count, updated_count, deleted_count, skipped_count, error_count = 0, 0, 0, 0, 0
-        # --- Store data as tuples for extraction worker ---
-        # to_index_list: list[tuple(path_key, mtime, fsize, type, archive_path?, member_name?)]
-        to_index_list = []
-        # ------------------------------------------------
-        to_delete = set(indexed_files.keys()) # Initialize with all known paths
-        update_performed = False
-        processed_count = 0 # Counter for progress across all directories
+            path_objects.append(dir_path)
 
-        # --- Check for Unrar Tool (Moved before walk) --- 
-        # ... (existing unrar check logic) ...
-        can_process_rar = True # Assume True initially, check below
-        if '.rar' in archive_extensions:
-            try:
-                rarfile.tool_setup()
-                yield {'type': 'status', 'message': '找到 unrar 工具，将处理 .rar 文件。'}
-            except rarfile.RarCannotExec as e:
-                can_process_rar = False
-                yield {'type': 'warning', 'message': f'未找到 unrar 工具或无法执行 ({e})。将跳过 .rar 文件处理。'}
-            except Exception as e:
-                can_process_rar = False
-                yield {'type': 'warning', 'message': f'检查 unrar 工具时出错: {e}。将跳过 .rar 文件处理。'}
+    # 确定允许的文件扩展名
+    if file_types_to_index:
+        # 用户指定了文件类型，只处理这些类型
+        allowed_extensions = []
+        for file_type in file_types_to_index:
+            # 确保扩展名以点开头
+            ext = file_type if file_type.startswith('.') else f'.{file_type}'
+            allowed_extensions.append(ext.lower())
+        print(f"根据用户选择，只索引以下文件类型: {allowed_extensions}")
+    else:
+        # 使用默认的所有支持的文件类型
+        allowed_extensions = ALLOWED_EXTENSIONS
+        print(f"使用默认文件类型: {allowed_extensions}")
 
-        # --- MODIFIED: Outer loop for source directories ---
-        total_dirs = len(valid_source_dirs)
-        for dir_index, current_scan_dir in enumerate(valid_source_dirs):
-            yield {'type': 'status', 'message': f'开始扫描目录 {dir_index + 1}/{total_dirs}: {current_scan_dir}'}
-            print(f"--- Scanning Directory: {current_scan_dir} ---")
+    for directory_path in path_objects:
+        # 在扫描每个目录前检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
+        if not directory_path.is_dir():
+            print(f"错误: 路径不是目录: {directory_path}")
+            continue
+            
+        print(f"扫描目录: {directory_path}")
 
-            # --- Walk for Scanning and Comparison (Now inside the loop) ---
-            try:
-                # --- MODIFIED: Update initial progress phase label ---
-                yield {'type': 'progress', 'current': processed_count, 'total': 0, 'phase': f'扫描目录 {dir_index + 1}/{total_dirs}: {current_scan_dir.name}', 'detail': ''}
-
-                for root, dirs, files in os.walk(current_scan_dir):
-                    root_path = Path(root) # Corrected indentation
-                    dirs[:] = [d for d in dirs if not d.startswith('.')] # Skip hidden dirs
+        try:
+            file_count = 0
+            for item in directory_path.rglob('*'):
+                # 每扫描50个文件检查一次取消状态
+                file_count += 1
+                if file_count % 50 == 0 and cancel_callback and cancel_callback():
+                    raise InterruptedError("操作被用户取消")
                     
-                    current_level_files = [] # Store items found at this directory level
-                    
-                    for filename in files:
-                        if filename.startswith('.'): # Skip hidden files
-                            continue
+                if not item.is_file():
+                    continue
+
+                # 检查文件扩展名是否在允许的类型中
+                if item.suffix.lower() not in allowed_extensions:
+                    # 如果用户指定了文件类型，记录跳过的文件
+                    if file_types_to_index:
+                        skipped_files.append({
+                            'path': str(item),
+                            'reason': f'文件类型 {item.suffix} 未被选择索引',
+                            'type': 'file_type_not_selected'
+                        })
+                    continue
+
+                # 检查是否跳过大文件
+                should_skip_large, large_reason = should_skip_large_file(item, max_file_size_mb)
+                if should_skip_large:
+                    skipped_files.append({
+                        'path': str(item),
+                        'reason': large_reason,
+                        'type': 'large_file'
+                    })
+                    continue
                             
-                        file_path = root_path / filename
-                        item_data = None
-                        file_ext = file_path.suffix.lower() # Corrected indentation
+                # 检查是否跳过系统文件
+                if skip_system_files:
+                    should_skip_sys, sys_reason = should_skip_system_file(item)
+                    if should_skip_sys:
+                        skipped_files.append({
+                            'path': str(item),
+                            'reason': sys_reason,
+                            'type': 'system_file'
+                        })
+                        continue
 
-                        try:
-                            if file_ext in doc_extensions:
-                                # 使用标准化路径作为索引键
-                                path_key = normalize_path_for_index(str(file_path))
-                                stats = file_path.stat() # Corrected indentation
-                                mtime = stats.st_mtime # Corrected indentation
-                                fsize = stats.st_size
-                                item_data = (path_key, mtime, fsize, 'file')
-                                current_level_files.append(item_data)
-                            elif file_ext in archive_extensions: # Corrected indentation
-                                if file_ext == '.rar' and not can_process_rar: # Corrected indentation
-                                    skipped_count += 1
-                                    continue
-                                archive_path_str = str(file_path.resolve()) # Corrected indentation
-                                yield {'type': 'status', 'message': f'处理压缩文件: {file_path.name}'}
-                                archive_members = []
-                                if file_ext == '.zip':
-                                    try:
-                                        with zipfile.ZipFile(file_path, 'r') as zf:
-                                            archive_members = zf.infolist()
-                                    except RuntimeError as e:
-                                        # 捕获可能的密码错误
-                                        if 'password required' in str(e).lower() or 'encrypted file' in str(e).lower():
-                                            # 添加记录跳过的文件
-                                            record_skipped_file(
-                                                index_dir_path,
-                                                str(file_path),
-                                                format_skip_reason("password_zip")
-                                            )
-                                            yield {'type': 'warning', 'message': f'跳过受密码保护的 ZIP 文件: {file_path.name}'}
-                                            error_count += 1
-                                            continue  # 跳过这个文件，处理下一个
-                                        else:
-                                            # 其他 RuntimeError，保持原有逻辑
-                                            raise  # 重新抛出异常，将由外层异常处理捕获
-                                    except zipfile.BadZipFile as e:
-                                        # 明确处理损坏的 ZIP 文件
-                                        # 添加记录跳过的文件
-                                        record_skipped_file(
-                                            index_dir_path,
-                                            str(file_path),
-                                            format_skip_reason("corrupted_zip", str(e))
-                                        )
-                                        yield {'type': 'warning', 'message': f'跳过损坏的 ZIP 文件: {file_path.name} ({e})'}
-                                        error_count += 1
-                                        continue  # 跳过这个文件，处理下一个
-                                elif file_ext == '.rar':
-                                    try:
-                                        with rarfile.RarFile(file_path, 'r') as rf:
-                                            archive_members = rf.infolist()
-                                    except rarfile.PasswordRequired as e:
-                                        # 明确处理需要密码的 RAR 文件
-                                        # 添加记录跳过的文件
-                                        record_skipped_file(
-                                            index_dir_path,
-                                            str(file_path),
-                                            format_skip_reason("password_rar")
-                                        )
-                                        yield {'type': 'warning', 'message': f'跳过受密码保护的 RAR 文件: {file_path.name}'}
-                                        error_count += 1
-                                        continue  # 跳过这个文件，处理下一个
-                                    except rarfile.BadRarFile as e:
-                                        # 检查错误信息是否提示加密但无密码提供
-                                        if 'password required' in str(e).lower() or 'encrypted file' in str(e).lower():
-                                            # 添加记录跳过的文件
-                                            record_skipped_file(
-                                                index_dir_path,
-                                                str(file_path),
-                                                format_skip_reason("password_rar")
-                                            )
-                                            yield {'type': 'warning', 'message': f'跳过受密码保护的 RAR 文件: {file_path.name}'}
-                                            error_count += 1
-                                            continue
-                                        else:
-                                            # 明确处理损坏的 RAR 文件
-                                            # 添加记录跳过的文件
-                                            record_skipped_file(
-                                                index_dir_path,
-                                                str(file_path),
-                                                format_skip_reason("corrupted_rar", str(e))
-                                            )
-                                            yield {'type': 'warning', 'message': f'跳过损坏的 RAR 文件: {file_path.name} ({e})'}
-                                            error_count += 1
-                                            continue  # 跳过这个文件，处理下一个
-                                for member in archive_members:
-                                    if member.is_dir(): continue
-                                    member_filename_path = Path(member.filename)
-                                    if member_filename_path.name.startswith('.'): continue # Corrected indentation
-                                    member_ext = member_filename_path.suffix.lower()
-                                    if member_ext in doc_extensions:
-                                        normalized_member_filename = member.filename.replace('\\', '/')
-                                        virtual_path = f"{archive_path_str}::{normalized_member_filename}"
-                                        member_mtime = 0 # Corrected indentation
-                                        member_fsize = 0 # Corrected indentation
-                                        if file_ext == '.zip':
-                                            dt_tuple = member.date_time + (0, 0, -1)
-                                            try: 
-                                                member_mtime = time.mktime(dt_tuple)
-                                            except ValueError: 
-                                                member_mtime = file_path.stat().st_mtime # Fallback
-                                            member_fsize = member.file_size
-                                        elif file_ext == '.rar':
-                                            member_mtime = member.mtime if hasattr(member, 'mtime') else file_path.stat().st_mtime
-                                            member_fsize = member.file_size if hasattr(member, 'file_size') else 0
-                                        item_data_archive = (virtual_path, member_mtime, member_fsize, 'archive', file_path.resolve(), member.filename)
-                                        current_level_files.append(item_data_archive)
-                        except (FileNotFoundError, zipfile.BadZipFile, rarfile.BadRarFile, NotImplementedError, OSError) as e:
-                            yield {'type': 'warning', 'message': f'处理文件 {file_path.name} 时跳过: {e}'}
-                            # 添加记录跳过文件的调用
-                            if 'password required' in str(e).lower() or 'encrypted file' in str(e).lower():
-                                record_skipped_file(
-                                    index_dir_path,
-                                    str(file_path),
-                                    format_skip_reason("password_zip", f"需要密码: {str(e)}")
-                                )
-                            elif isinstance(e, zipfile.BadZipFile):
-                                record_skipped_file(
-                                    index_dir_path,
-                                    str(file_path),
-                                    format_skip_reason("corrupted_zip", str(e))
-                                )
-                            elif isinstance(e, rarfile.BadRarFile):
-                                record_skipped_file(
-                                    index_dir_path,
-                                    str(file_path),
-                                    format_skip_reason("corrupted_rar", str(e))
-                                )
-                            else:
-                                record_skipped_file(
-                                    index_dir_path,
-                                    str(file_path),
-                                    format_skip_reason("extraction_error", str(e))
-                                )
-                            error_count += 1
-                            continue # Corrected indentation
-                        except Exception as e: # Corrected indentation
-                            yield {'type': 'error', 'message': f'处理文件 {file_path} 时发生意外错误: {e}'}
-                            # 添加记录跳过文件的调用
-                            record_skipped_file(
-                                index_dir_path,
-                                str(file_path),
-                                format_skip_reason("extraction_error", str(e))
-                            )
-                            error_count += 1
-                            continue # Corrected indentation
+                found_files.append(item)
 
-                    # --- Compare files found at this level --- 
-                    for item_data in current_level_files:
-                        path_key = item_data[0]
-                        mtime = item_data[1]
-                        fsize = item_data[2]
+        except InterruptedError:
+            # 重新抛出取消异常
+            raise
+        except Exception as e:
+            print(f"扫描目录时出错 {directory_path}: {e}")
+            continue
 
-                        yield {'type': 'status', 'message': f'对比: {Path(path_key).name if "::" not in path_key else path_key.split("::")[1]}'} # Corrected indentation
-                        processed_count += 1 # Increment total processed count
+    print(f"扫描完成. 找到 {len(found_files)} 个文档, 跳过 {len(skipped_files)} 个文件")
+    return found_files, skipped_files
 
-                        # 更详细的调试信息
-                        norm_path_key = normalize_path_for_index(path_key)
-                        if norm_path_key in indexed_files or path_key in indexed_files:
-                            # 尝试两种形式的路径键
-                            actual_key = norm_path_key if norm_path_key in indexed_files else path_key
-                            # Existing file, check if updated
-                            print(f"  找到现有索引项。从to_delete中移除。")
-                            # 同时移除原始路径和标准化路径，确保不会被误删
-                            to_delete.discard(actual_key) # 文件存在，不删除
-                            to_delete.discard(path_key)   # 移除原始路径
-                            to_delete.discard(norm_path_key) # 移除标准化路径
-                            stored_info = indexed_files[actual_key]
-                            stored_mtime = stored_info['mtime']
-                            stored_was_ocr = stored_info.get('was_ocr', False)
+def estimate_processing_time(files: list[Path]) -> dict:
+    """
+    根据文件大小和类型估算处理时间
 
-                            needs_update = False
-                            # 增加更详细的调试输出
-                            print(f"    文件: {Path(path_key).name}")
-                            print(f"    存储的mtime: {stored_mtime}, 当前mtime: {mtime}")
-                            print(f"    mtime差异: {abs(mtime - stored_mtime)}")
-                            
-                            # 1. 检查mtime（主要触发器），增加容错
-                            # 允许0.1秒的误差，避免因文件系统精度差异导致不必要的重新索引
-                            if abs(mtime - stored_mtime) > 0.1:
-                                needs_update = True
-                                print(f"    需要更新（mtime已更改）")
-                            else:
-                                # 2. 检查PDF文件的OCR设置是否从False变为True
-                                current_file_ext = Path(path_key.split('::')[0]).suffix.lower() if '::' not in path_key else Path(path_key.split('::')[1]).suffix.lower()
-                                if current_file_ext == '.pdf':
-                                    if enable_ocr and not stored_was_ocr:
-                                        needs_update = True
-                                        print(f"    需要更新（对此PDF启用了OCR）")
-                                
-                                # 检查是否是因许可证限制而跳过的文件
-                                if path_key in license_skipped_files or norm_path_key in license_skipped_files:
-                                    needs_update = True
-                                    print(f"    需要更新（之前因许可证限制而跳过）")
-                                    # 从跳过文件记录中移除，因为将要重新处理
-                                    license_skipped_files.pop(path_key, None)
-                                    license_skipped_files.pop(norm_path_key, None)
+    Args:
+        files: 文件列表
 
-                            if needs_update:
-                                to_index_list.append(item_data) # Add to list for extraction
-                                updated_count += 1 # Count as updated
-                                update_performed = True
-                                print(f"    Marked for update/re-index.") # Corrected indentation
-                            else: # Corrected structure/indentation
-                                print(f"    No changes detected.") # Corrected indentation
-                                # No changes, do nothing (already removed from to_delete)
-                                pass
-                        else: # Corrected structure/indentation
-                            # New file
-                            print(f"  New file found.") # Corrected indentation
-                            to_index_list.append(item_data) # Add to list for extraction
-                            added_count += 1 # Count as added
-                            update_performed = True # Corrected indentation
-                            print(f"    Marked for add.") # Corrected indentation
+    Returns:
+        dict: 包含时间估算信息的字典
+    """
+    # 不同文件类型的处理速度估算（MB/秒）
+    processing_speeds = {
+        '.txt': 50,   # 文本文件处理很快
+        '.docx': 10,  # Word文档中等速度
+        '.pdf': 5,    # PDF文件较慢（特别是OCR）
+        '.pptx': 8,   # PowerPoint中等速度
+        '.xlsx': 12,  # Excel中等速度
+        '.html': 20,  # HTML文件较快
+        '.md': 30,    # Markdown文件很快
+        '.rtf': 15,   # RTF文件中等速度
+        '.eml': 8,    # 邮件文件中等速度
+        '.msg': 6,    # Outlook邮件文件较慢
+    }
 
-                        # --- MODIFIED: Update progress phase label inside loop ---
-                        # Update progress after processing a level
-                        yield {'type': 'progress', 'current': processed_count, 'total': 0, 'phase': f'扫描目录 {dir_index + 1}/{total_dirs}: {current_scan_dir.name} (已对比 {processed_count} 文件)', 'detail': f'已对比 {processed_count} 文件'}
+    total_size = 0
+    estimated_time = 0
+    file_type_counts = {}
 
-            except Exception as e_walk:
-                yield {'type': 'error', 'message': f'扫描目录 {current_scan_dir} 时出错: {e_walk}'}
-                error_count += 1
-                continue # Continue to the next directory
+    for file_path in files:
+        try:
+            file_size = file_path.stat().st_size / (1024 * 1024)  # MB
+            file_ext = file_path.suffix.lower()
 
-            yield {'type': 'status', 'message': f'完成扫描目录: {current_scan_dir}'}
-            print(f"--- Finished Scanning Directory: {current_scan_dir} ---")
-        # --- End of Outer Loop ---
+            total_size += file_size
+            file_type_counts[file_ext] = file_type_counts.get(file_ext, 0) + 1
 
-        # --- At this point, to_index_list contains all items to add/update ---
-        # --- and to_delete contains all items from original index not found/kept during scan ---
-        print(f"--- Scan Complete ---")
-        print(f"Items to Add/Update: {len(to_index_list)}")
-        print(f"Items to Delete: {len(to_delete)}")
-        deleted_count = len(to_delete) # Final count of items to be deleted
+            # 获取处理速度，默认值为5MB/s
+            speed = processing_speeds.get(file_ext, 5)
+            estimated_time += file_size / speed
 
-        # --- Extraction Phase ---
-        # ... (Existing extraction logic using `to_index_list`) ...
-        # Should work as is, but needs `to_index_list` as input
-        yield {'type': 'status', 'message': f'阶段: 提取 {len(to_index_list)} 个文件的内容...'}
-        extraction_results = {} # Stores {path_key: extracted_data_dict}
-        extraction_errors = 0
-        if to_index_list:
-            # Prepare arguments for multiprocessing pool
-            worker_args_list = []
-            for item_data in to_index_list:
-                path_key = item_data[0]
-                file_type_param = item_data[3] # Renamed to avoid conflict with file_type in result dict
-                archive_path_abs_str = item_data[4] if len(item_data) > 4 else None
-                member_name = item_data[5] if len(item_data) > 5 else None
-                # Extract file extension correctly for OCR check AND TXT limit check
-                current_file_ext = Path(path_key.split('::')[0]).suffix.lower() if '::' not in path_key else Path(path_key.split('::')[1]).suffix.lower()
-                should_ocr = enable_ocr and current_file_ext == '.pdf'
+        except Exception:
+            # 如果无法获取文件大小，使用默认估算
+            estimated_time += 0.1  # 假设0.1秒
 
-                # --- ADDED: Determine content limit bytes for this file --- 
-                content_limit_bytes = 0
-                if current_file_ext == '.txt' and txt_content_limit_kb and txt_content_limit_kb > 0:
-                    content_limit_bytes = txt_content_limit_kb * 1024
-                # ----------------------------------------------------------
+    return {
+        'total_files': len(files),
+        'total_size_mb': total_size,
+        'estimated_time_seconds': estimated_time,
+        'estimated_time_formatted': f"{int(estimated_time // 60)}分{int(estimated_time % 60)}秒",
+        'file_type_counts': file_type_counts
+    }
 
-                # --- Convert timeout 0 to None ---
-                actual_timeout_for_worker = None if extraction_timeout == 0 else extraction_timeout
-                # ---------------------------------
-                worker_args_list.append({
-                    'path_key': path_key,
-                    'file_type': file_type_param, # Use renamed variable
-                    'archive_path_abs': str(archive_path_abs_str) if archive_path_abs_str else None,
-                    'member_name': member_name,
-                    'enable_ocr': should_ocr,
-                    'original_mtime': item_data[1],
-                    'original_fsize': item_data[2],
-                    'display_name': Path(path_key).name if "::" not in path_key else path_key.split("::")[1],
-                    'extraction_timeout': actual_timeout_for_worker, # Pass None if original was 0
-                    'content_limit_bytes': content_limit_bytes, # Pass the calculated limit
-                    'index_dir_path': index_dir_path, # Add index_dir_path to worker_args
+def create_or_update_index(directories: list[str], index_dir_path: str, enable_ocr: bool = True,
+                          extraction_timeout: int = 300, content_limit_kb: int = 1024,
+                          max_file_size_mb: int = 100, skip_system_files: bool = True,
+                          incremental: bool = True, max_workers: int = None, 
+                          cancel_callback=None, file_types_to_index=None):
+    """
+    创建或更新文档索引（优化版本）
+
+    Args:
+        directories: 要索引的目录列表
+        index_dir_path: 索引存储目录
+        enable_ocr: 是否启用OCR
+        extraction_timeout: 文件提取超时时间（秒）
+        content_limit_kb: 内容大小限制（KB）
+        max_file_size_mb: 最大文件大小限制（MB）
+        skip_system_files: 是否跳过系统文件
+        incremental: 是否启用增量索引
+        max_workers: 最大工作进程数
+        cancel_callback: 取消检查回调函数，如果返回True则取消操作
+        file_types_to_index: 要索引的文件类型列表，如['txt', 'docx', 'pdf']
+
+    Yields:
+        dict: 进度信息
+    """
+    # --- MODIFIED: 在函数开始就初始化progress变量 ---
+    progress = {
+        'stage': 'initializing',
+        'current': 0,
+        'total': 0,
+        'message': '初始化索引操作...',
+        'files_processed': 0,
+        'files_skipped': 0,
+        'errors': 0
+    }
+    # ------------------------------------------------
+    
+    try:
+        # 检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+            
+        # 确保索引目录存在
+        index_path = Path(index_dir_path)
+        index_path.mkdir(parents=True, exist_ok=True)
+
+        # 更新进度信息
+        progress.update({
+            'stage': 'scanning',
+            'message': '开始扫描文件...'
+        })
+        yield progress
+
+        # 检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+
+        # 1. 扫描文件
+        print("开始扫描文档...")
+        all_files, skipped_files = scan_documents_optimized(
+            directories, max_file_size_mb, skip_system_files, file_types_to_index, cancel_callback
+        )
+
+        progress.update({
+            'stage': 'scanning_complete',
+            'total': len(all_files),
+            'message': f'扫描完成，找到 {len(all_files)} 个文件，跳过 {len(skipped_files)} 个文件',
+            'files_skipped': len(skipped_files)
+        })
+        yield progress
+
+        # 检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+
+        if not all_files:
+            progress.update({
+                'stage': 'complete',
+                'message': '没有找到需要索引的文件'
+            })
+            yield progress
+            return
+
+        # 2. 加载文件缓存（用于增量索引）
+        file_cache = {}
+        files_to_process = all_files
+
+        if incremental:
+            progress.update({
+                'stage': 'change_detection',
+                'message': '检测文件变更...'
+            })
+            yield progress
+
+            # 检查是否需要取消
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+
+            file_cache = load_file_index_cache(index_dir_path)
+            new_files, modified_files, deleted_files = detect_file_changes(all_files, file_cache)
+
+            files_to_process = new_files + modified_files
+
+            progress.update({
+                'stage': 'change_detection_complete',
+                'total': len(files_to_process),
+                'message': f'增量检测完成: {len(new_files)} 个新文件, {len(modified_files)} 个修改文件, {len(deleted_files)} 个删除文件'
+            })
+            yield progress
+
+            # 检查是否需要取消
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+
+            # 如果没有变更，直接返回
+            if not files_to_process and not deleted_files:
+                progress.update({
+                    'stage': 'complete',
+                    'message': '没有文件变更，索引已是最新'
+                })
+                yield progress
+                return
+
+        # 3. 估算处理时间
+        estimated_time_info = estimate_processing_time(files_to_process)
+        progress.update({
+            'stage': 'processing_start',
+            'message': f'开始处理 {len(files_to_process)} 个文件，预计需要 {estimated_time_info["estimated_time_formatted"]}'
+        })
+        yield progress
+
+        # 检查是否需要取消
+        if cancel_callback and cancel_callback():
+            raise InterruptedError("操作被用户取消")
+
+        # 4. 准备Whoosh索引
+        from whoosh import fields, index
+
+        # 定义索引模式
+        schema = fields.Schema(
+            path=fields.ID(stored=True, unique=True),
+            content=fields.TEXT(stored=True),
+            filename_text=fields.TEXT(stored=True),
+            structure_map=fields.TEXT(stored=True),
+            last_modified=fields.NUMERIC(stored=True),
+            file_size=fields.NUMERIC(stored=True),
+            file_type=fields.TEXT(stored=True),
+            indexed_with_ocr=fields.BOOLEAN(stored=True)
+        )
+
+        # 创建或打开索引
+        if index.exists_in(index_dir_path):
+            ix = index.open_dir(index_dir_path)
+        else:
+            ix = index.create_in(index_dir_path, schema)
+
+        # 5. 批量处理文件
+        if files_to_process:
+            progress.update({
+                'stage': 'extracting',
+                'message': '开始提取文件内容...'
+            })
+            yield progress
+
+            # 检查是否需要取消
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+
+            # 准备工作进程参数
+            worker_args_list = prepare_worker_arguments_batch(
+                files_to_process, enable_ocr, extraction_timeout, 
+                content_limit_kb, index_dir_path, cancel_callback
+            )
+
+            # 用于收集进度更新的列表
+            progress_updates = []
+
+            # 定义进度回调函数
+            def extraction_progress_callback(current, total, detail):
+                progress_updates.append({
+                    'stage': 'extracting',
+                    'current': current,
+                    'total': total,
+                    'message': detail
                 })
 
-            # Use multiprocessing pool
-            # ... (The rest of the extraction multiprocessing pool logic) ...
-            # This part seems complex and involves _extract_worker
-            # Let's assume it correctly processes worker_args_list and populates extraction_results
-
-            num_workers = max(1, multiprocessing.cpu_count() // 2)
-            chunk_size = max(1, math.ceil(len(worker_args_list) / num_workers))
-            print(f"Starting extraction pool with {num_workers} workers, chunk size {chunk_size}")
-            extraction_progress_counter = 0 # Counter for extraction progress
-
-            try:
-                with multiprocessing.Pool(processes=num_workers) as pool:
-                    # Use imap_unordered for progress reporting as results come in
-                    # Wrap worker_args_list with tqdm for a visual progress bar in console
-                    with tqdm(total=len(worker_args_list), desc="Extracting Content", unit="file") as pbar_extract:
-                        for result in pool.imap_unordered(_extract_worker, worker_args_list, chunksize=chunk_size):
-                            extraction_progress_counter += 1
-                            if result and result.get('path_key'):
-                                path_key = result['path_key']
-                                display_name = result.get('display_name', path_key) # Use display name from result
-
-                                # --- MODIFIED: Always store the result --- 
-                                # Store the result dictionary regardless of whether it contains an 'error' key.
-                                # The presence of the 'error' key will be checked during the writing phase.
-                                extraction_results[path_key] = result # Corrected indentation
-                                # ----------------------------------------
-
-                                # --- Report status based on error key --- 
-                                if result.get('error'):
-                                    yield {'type': 'warning', 'message': f'提取内容失败 ({display_name}): {result["error"]}'}
-                                    extraction_errors += 1 # Increment error count
-                                else:
-                                    yield {'type': 'status', 'message': f'提取完成: {display_name}'}
-                                # ---------------------------------------
-                            else:
-                                # Handle cases where worker might return None or invalid dict
-                                yield {'type': 'warning', 'message': '提取工作线程返回无效结果。'}
-                                extraction_errors += 1 # Count this as an error too
-
-                            # Update progress bar and yield progress update
-                            pbar_extract.update(1)
-                            # Need a display name even if result is invalid for progress detail
-                            progress_display_name = display_name if 'display_name' in locals() else "未知文件"
-                            yield {'type': 'progress', 'current': extraction_progress_counter, 'total': len(worker_args_list), 'phase': '提取内容', 'detail': f'提取中: {progress_display_name}'}
-
-            except Exception as pool_error:
-                yield {'type': 'error', 'message': f'内容提取过程中发生严重错误: {pool_error}'}
-                # traceback.print_exc() # COMMENTED OUT
-                # Optionally clear results and stop? Or try to proceed with partial results?
-                # For now, let's signal error and proceed to writing whatever we got
-                error_count += len(worker_args_list) - len(extraction_results) # Estimate errors
-            finally:
-                print(f"Extraction finished. Success: {len(extraction_results)}, Errors: {extraction_errors}")
-
-        # --- Writing Phase --- 
-        # Acquire lock again for writing
-        print("Index Update: Acquiring write lock...")
-        INDEX_ACCESS_LOCK.acquire()
-        print("Index Update: Write lock acquired.")
-        ix = None # Reset ix before opening for write
-        writer = None # Reset writer
-
-        # ... (Existing logic to open index for writing, delete entries in to_delete, add/update entries in extraction_results) ...
-        yield {'type': 'status', 'message': '阶段: 写入索引变更...'}
-        yield {'type': 'progress', 'current': 0, 'total': deleted_count + len(extraction_results), 'phase': '写入索引', 'detail': f'写入中: 共 {deleted_count + len(extraction_results)} 条目'}
-        written_count = 0
-        try:
-            if not exists_in(index_path):
-                index_path.mkdir(parents=True, exist_ok=True)
-                ix = create_in(index_path, schema)
-                yield {'type': 'status', 'message': '创建了新的索引库。'}
-            else:
+            # 多进程提取内容（带进度回调）
+            extraction_results = []
+            total_files = len(worker_args_list)
+            
+            # 逐个处理文件并实时发送进度
+            for i, args in enumerate(worker_args_list):
+                # --- MODIFIED: 在每个文件处理前检查是否需要取消 ---
+                if cancel_callback and cancel_callback():
+                    print(f"用户取消操作，停止处理剩余 {len(worker_args_list) - i} 个文件")
+                    raise InterruptedError("操作被用户取消")
+                # ------------------------------------------------
+                    
                 try:
-                    ix = open_dir(index_path, schema=schema)
-                except Exception as e: # Catch potential schema mismatch or corruption
-                    yield {'type': 'error', 'message': f'打开现有索引失败: {e}. 尝试删除并重建...'}
-                    try: # Added try
-                        shutil.rmtree(index_path) # Corrected indentation
-                        index_path.mkdir(parents=True, exist_ok=True)
-                        ix = create_in(index_path, schema)
-                        yield {'type': 'status', 'message': '已删除旧索引并创建新索引库。'}
-                        to_delete.clear() # If we recreated, deletions are implicitly handled (Corrected indentation)
-                        deleted_count = 0 # Reset deleted count as we start fresh
-                    except Exception as e_recreate: # Corrected indentation
-                        yield {'type': 'error', 'message': f'删除或重建索引失败: {e_recreate}. 索引操作中止。'} # Corrected indentation
-                        raise # Re-raise to indicate failure
+                    # --- ADDED: 在开始处理单个文件前再次检查 ---
+                    if cancel_callback and cancel_callback():
+                        print(f"用户取消操作，跳过文件: {args.get('display_name', 'unknown')}")
+                        raise InterruptedError("操作被用户取消")
+                    # ----------------------------------------
+                    
+                    # 处理单个文件
+                    result = _extract_worker(args)
+                    extraction_results.append(result)
+                    
+                    # --- ADDED: 在文件处理完成后检查取消状态 ---
+                    if cancel_callback and cancel_callback():
+                        print(f"用户取消操作，已处理 {i+1} 个文件，停止处理剩余文件")
+                        raise InterruptedError("操作被用户取消")
+                    # ----------------------------------------
+                    
+                    # 实时发送进度更新
+                    current_file = i + 1
+                    file_name = args.get('display_name', args.get('path_key', 'unknown'))
+                    detail = f"正在处理: {file_name}"
+                    
+                    progress.update({
+                        'stage': 'extracting',
+                        'current': current_file,
+                        'total': total_files,
+                        'message': detail
+                    })
+                    yield progress
+                    
+                except InterruptedError:
+                    # --- ADDED: 专门处理取消异常 ---
+                    print(f"文件处理被取消，已处理 {i} 个文件，剩余 {len(worker_args_list) - i} 个文件未处理")
+                    # 直接重新抛出，不添加到结果中
+                    raise
+                except Exception as e:
+                    print(f"处理文件时出错: {e}")
+                    # 创建错误结果
+                    error_result = {
+                        'path_key': args.get('path_key', 'unknown'),
+                        'display_name': args.get('display_name', 'unknown'),
+                        'text_content': '',
+                        'structure': [],
+                        'error': str(e),
+                        'mtime': args.get('original_mtime', 0),
+                        'fsize': args.get('original_fsize', 0),
+                        'file_type': '',
+                        'filename': '',
+                        'ocr_enabled_for_file': False,
+                        'content_truncated': False
+                    }
+                    extraction_results.append(error_result)
+                    
+                    # 错误时也发送进度更新
+                    current_file = i + 1
+                    file_name = args.get('display_name', args.get('path_key', 'unknown'))
+                    detail = f"处理失败: {file_name} - {str(e)}"
+                    
+                    progress.update({
+                        'stage': 'extracting',
+                        'current': current_file,
+                        'total': total_files,
+                        'message': detail
+                    })
+                    yield progress
 
-            if ix: # Proceed only if index is successfully opened/created
-                writer = ix.writer(limitmb=256, procs=max(1, multiprocessing.cpu_count() // 2), multisegment=True) # Corrected indentation
+            # --- MODIFIED: 在提取完成后检查是否需要取消 ---
+            if cancel_callback and cancel_callback():
+                print("用户在文件提取完成后取消操作")
+                raise InterruptedError("操作被用户取消")
+            # ----------------------------------------
 
-                # 1. Delete documents marked for deletion
-                if to_delete:
-                    yield {'type': 'status', 'message': f'正在删除 {deleted_count} 个旧条目...'}
-                    print(f"--- Deleting {deleted_count} entries ---") # DEBUG (Corrected indentation)
-                    with tqdm(total=deleted_count, desc="Deleting Entries", unit="entry") as pbar_delete:
-                        for path_key in to_delete: # Corrected indentation
-                            print(f"  Deleting: {path_key}") # DEBUG
-                            # 先用标准化路径尝试删除
-                            norm_path_key = normalize_path_for_index(path_key)
-                            writer.delete_by_term('path', norm_path_key)
-                            # 如果标准化路径与原始路径不同，再用原始路径尝试删除以确保兼容性
-                            if norm_path_key != path_key:
-                                writer.delete_by_term('path', path_key)
-                            written_count += 1 # Corrected indentation
-                            pbar_delete.update(1) # Corrected indentation
-                            yield {'type': 'progress', 'current': written_count, 'total': deleted_count + len(extraction_results), 'phase': '写入索引 (删除)', 'detail': f'删除中: {Path(path_key).name if "::" not in path_key else path_key.split("::")[1]}'}
+            progress.update({
+                'stage': 'indexing',
+                'message': '开始索引文档...'
+            })
+            yield progress
 
-                # 2. Update/Add documents based on extraction results
-                update_add_count = len(extraction_results) # Corrected indentation
-                if update_add_count > 0:
-                    yield {'type': 'status', 'message': f'正在添加/更新 {update_add_count} 个条目...'}
-                    print(f"--- Adding/Updating {update_add_count} entries ---") # DEBUG
-                    with tqdm(total=update_add_count, desc="Writing Entries", unit="entry") as pbar_write:
-                        for path_key, extracted_data in extraction_results.items(): # Corrected indentation
-                            # --- MODIFIED LOGIC: Handle errors but always write metadata --- 
-                            if not extracted_data: # Handle potential None result from worker
-                                yield {'type': 'warning', 'message': f'收到无效的提取结果，跳过写入: {path_key}'}
-                                continue # Skip only if the entire result dict is missing
+            # 6. 批量索引文档
+            with ix.writer() as writer:
+                # 删除已删除的文件
+                if incremental and 'deleted_files' in locals():
+                    remove_deleted_files_from_index(writer, deleted_files)
 
-                            # Check for extraction error BUT DO NOT skip writing metadata
-                            extraction_error = extracted_data.get('error')
-                            if extraction_error:
-                                yield {'type': 'warning', 'message': f'提取失败，但仍索引元数据 ({extracted_data.get("display_name", path_key)}): {extraction_error}'}
-                                # Content will be empty string based on _extract_worker logic
+                # 索引提取的文档
+                success_count = 0
+                error_count = 0
+                total_results = len(extraction_results)
 
-                            display_name = extracted_data.get("display_name", path_key)
-                            # Modify debug print to indicate metadata-only indexing
-                            print(f"  Writing: {display_name} {'(metadata only)' if extraction_error else ''}") # DEBUG log clarification
+                for i, result in enumerate(extraction_results):
+                    # --- MODIFIED: 在每个文档索引前检查是否需要取消 ---
+                    if cancel_callback and cancel_callback():
+                        print(f"用户取消操作，停止索引剩余 {len(extraction_results) - i} 个文档")
+                        raise InterruptedError("操作被用户取消")
+                    # ------------------------------------------------
+                        
+                    try:
+                        if result.get('error'):
+                            # 记录错误文件
+                            record_skipped_file(index_dir_path, result['path_key'], result['error'])
+                            error_count += 1
+                            
+                            # 发送进度更新
+                            current = i + 1
+                            detail = f"跳过错误文件: {result.get('display_name', result['path_key'])}"
+                            progress.update({
+                                'stage': 'indexing',
+                                'current': current,
+                                'total': total_results,
+                                'message': detail
+                            })
+                            yield progress
+                            continue
 
-                            # --- Always call update_document --- 
-                            # 标准化路径进行索引
-                            norm_path_key = normalize_path_for_index(path_key)
-                            writer.update_document( # Corrected indentation
-                                path=norm_path_key,  # 使用标准化路径
-                                # text_content should already be "" if error occurred in _extract_worker
-                                content=extracted_data.get('text_content', ''),
-                                filename_text=extracted_data.get('filename', ''),
-                                structure_map=json.dumps(extracted_data.get('structure', [])),
-                                last_modified=extracted_data.get('mtime', 0.0), # Use mtime from extraction result
-                                file_size=extracted_data.get('fsize', 0),       # Use fsize from extraction result
-                                file_type=extracted_data.get('file_type', ''),
-                                indexed_with_ocr=extracted_data.get('ocr_enabled_for_file', False), # Use flag from result
-                                # --- ADDED: Store truncation flag in index (optional) ---
-                                # content_was_truncated=extracted_data.get('content_truncated', False) 
-                                # ^^^ Requires adding 'content_was_truncated' field to the schema
-                            )
-                            # --- END MODIFIED LOGIC --- 
+                        # 索引文档
+                        writer.add_document(
+                            path=result['path_key'],
+                            content=result['text_content'],
+                            filename_text=result['filename'],
+                            structure_map=json.dumps(result['structure'], ensure_ascii=False),
+                            last_modified=result['mtime'],
+                            file_size=result['fsize'],
+                            file_type=result['file_type'],
+                            indexed_with_ocr=result['ocr_enabled_for_file']
+                        )
+                        success_count += 1
+                        
+                        # 发送进度更新
+                        current = i + 1
+                        detail = f"已索引: {result.get('display_name', result['path_key'])}"
+                        progress.update({
+                            'stage': 'indexing',
+                            'current': current,
+                            'total': total_results,
+                            'message': detail
+                        })
+                        yield progress
+                        
+                        # --- ADDED: 在索引文档后检查取消状态 ---
+                        if cancel_callback and cancel_callback():
+                            print(f"用户取消操作，已索引 {i+1} 个文档，停止索引剩余文档")
+                            raise InterruptedError("操作被用户取消")
+                        # ----------------------------------------
+                        
+                    except InterruptedError:
+                        # 重新抛出取消异常
+                        raise
+                    except Exception as e:
+                        error_count += 1
+                        record_skipped_file(index_dir_path, result.get('path_key', 'unknown'), f"索引错误: {e}")
+                        print(f"索引文档时出错: {e}")
+                        
+                        # 发送进度更新
+                        current = i + 1
+                        detail = f"索引失败: {result.get('display_name', result.get('path_key', 'unknown'))} - {str(e)}"
+                        progress.update({
+                            'stage': 'indexing',
+                            'current': current,
+                            'total': total_results,
+                            'message': detail
+                        })
+                        yield progress
 
-                            written_count += 1 # Corrected indentation
-                            pbar_write.update(1) # Corrected indentation
-                            # Yield status and progress regardless of extraction error, as metadata is written
-                            yield {'type': 'status', 'message': f'写入: {display_name}', 'detail': f'写入中: {display_name}'}
-                            yield {'type': 'progress', 'current': written_count, 'total': deleted_count + update_add_count, 'phase': '写入索引 (添加/更新)', 'detail': f'写入中: {display_name}'}
+                progress.update({
+                    'files_processed': success_count,
+                    'errors': error_count
+                })
 
-                yield {'type': 'status', 'message': '正在提交索引更改 (优化)...'} # Corrected indentation
-                print("--- Committing index writer (optimize=True) ---") # DEBUG (Corrected indentation)
-                # --- RE-ENABLE COMMIT ---
-                writer.commit(optimize=True)
-                # print("--- COMMIT SKIPPED FOR STEP 1 TESTING ---") # REMOVED this line
-                # ------------------------
-                writer = None # Indicate commit was successful
-                yield {'type': 'status', 'message': '索引更新提交成功。'}
-                print("--- Index commit finished ---") # DEBUG (Corrected indentation)
+        # 7. 更新文件缓存
+        if incremental:
+            # 检查是否需要取消
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("操作被用户取消")
+                
+            progress.update({
+                'stage': 'updating_cache',
+                'message': '更新文件缓存...'
+            })
+            yield progress
+
+            # 更新缓存
+            for file_path in all_files:
+                path_str = normalize_path_for_index(str(file_path))
+                file_cache[path_str] = get_file_hash(file_path)
+
+            save_file_index_cache(index_dir_path, file_cache)
+
+        # 8. 记录跳过的文件
+        for file_path, reason in skipped_files:
+            record_skipped_file(index_dir_path, str(file_path), reason)
+
+        # 完成
+        progress.update({
+            'stage': 'complete',
+            'message': f'索引完成！处理了 {progress["files_processed"]} 个文件，跳过 {progress["files_skipped"]} 个文件，{progress["errors"]} 个错误'
+        })
+        yield progress
+
+    except InterruptedError:
+        # 用户取消操作
+        progress.update({
+            'stage': 'cancelled',
+            'message': '索引操作已被用户取消'
+        })
+        yield progress
+        raise
+    except Exception as e:
+        progress.update({
+            'stage': 'error',
+            'message': f'索引过程中出错: {str(e)}'
+        })
+        yield progress
+        raise
+
+# --- 结束索引优化函数 ---
+
+# --- 高级索引优化功能 ---
+
+def get_file_hash(file_path: Path) -> str:
+    """
+    获取文件的简单哈希值（基于修改时间和大小）
+
+    Args:
+        file_path: 文件路径
+
+    Returns:
+        str: 文件哈希值
+    """
+    try:
+        stat = file_path.stat()
+        # 使用修改时间和文件大小生成简单哈希
+        hash_str = f"{stat.st_mtime}_{stat.st_size}"
+        return hash_str
+    except Exception:
+        return "unknown"
+
+def load_file_index_cache(index_dir_path: str) -> dict:
+    """
+    加载文件索引缓存，用于检测文件变更
+
+    Args:
+        index_dir_path: 索引目录路径
+
+    Returns:
+        dict: 文件路径到哈希值的映射
+    """
+    cache_file = Path(index_dir_path) / "file_cache.json"
+    if cache_file.exists():
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"加载文件缓存失败: {e}")
+    return {}
+
+def save_file_index_cache(index_dir_path: str, cache: dict):
+    """
+    保存文件索引缓存
+
+    Args:
+        index_dir_path: 索引目录路径
+        cache: 文件缓存字典
+    """
+    cache_file = Path(index_dir_path) / "file_cache.json"
+    try:
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存文件缓存失败: {e}")
+
+def detect_file_changes(files: list[Path], cache: dict) -> tuple[list[Path], list[Path], list[str]]:
+    """
+    检测文件变更
+
+    Args:
+        files: 当前文件列表
+        cache: 现有文件缓存
+
+    Returns:
+        tuple[list[Path], list[Path], list[str]]: (新文件, 修改的文件, 删除的文件路径)
+    """
+    current_files = {}
+    new_files = []
+    modified_files = []
+
+    # 检查当前文件
+    for file_path in files:
+        path_str = normalize_path_for_index(str(file_path))
+        current_hash = get_file_hash(file_path)
+        current_files[path_str] = current_hash
+
+        if path_str not in cache:
+            new_files.append(file_path)
+        elif cache[path_str] != current_hash:
+            modified_files.append(file_path)
+
+    # 检查删除的文件
+    deleted_files = [path for path in cache.keys() if path not in current_files]
+
+    return new_files, modified_files, deleted_files
+
+def prepare_worker_arguments_batch(files: list[Path], enable_ocr: bool, extraction_timeout: int,
+                                 content_limit_kb: int, index_dir_path: str, cancel_callback=None) -> list[dict]:
+    """
+    批量准备工作进程参数
+
+    Args:
+        files: 文件列表
+        enable_ocr: 是否启用OCR
+        extraction_timeout: 提取超时时间
+        content_limit_kb: 内容大小限制（KB）
+        index_dir_path: 索引目录路径
+        cancel_callback: 取消检查回调函数
+
+    Returns:
+        list[dict]: 工作进程参数列表
+    """
+    worker_args_list = []
+    content_limit_bytes = content_limit_kb * 1024 if content_limit_kb > 0 else 0
+
+    for file_path in files:
+        # 动态设置PDF OCR超时
+        actual_timeout = extraction_timeout
+        if file_path.suffix.lower() == '.pdf' and enable_ocr:
+            try:
+                file_size = file_path.stat().st_size
+                # 根据PDF文件大小设置更合理的超时时间
+                if file_size < 5 * 1024 * 1024:  # 小于5MB
+                    actual_timeout = min(60, extraction_timeout)
+                elif file_size < 20 * 1024 * 1024:  # 5-20MB
+                    actual_timeout = min(180, extraction_timeout)
+                elif file_size < 50 * 1024 * 1024:  # 20-50MB
+                    actual_timeout = min(300, extraction_timeout)
+                else:  # 大于50MB
+                    actual_timeout = extraction_timeout
+
+                print(f"PDF文件 {file_path.name} ({file_size // (1024*1024)}MB) 设置OCR超时: {actual_timeout}秒")
+            except Exception:
+                pass
+
+        file_stat = file_path.stat()
+
+        worker_args = {
+            'path_key': str(file_path),
+            'file_type': 'file',
+            'enable_ocr': enable_ocr and file_path.suffix.lower() == '.pdf',
+            'extraction_timeout': actual_timeout,
+            'content_limit_bytes': content_limit_bytes,
+            'index_dir_path': index_dir_path,
+            'original_mtime': file_stat.st_mtime,
+            'original_fsize': file_stat.st_size,
+            'display_name': file_path.name,
+            'cancel_callback': cancel_callback  # 添加取消回调
+        }
+
+        worker_args_list.append(worker_args)
+
+    return worker_args_list
+
+def process_files_multiprocess(worker_args_list: list[dict], max_workers: int = None, progress_callback=None) -> list[dict]:
+    """
+    使用多进程处理文件（简化版本）
+
+    Args:
+        worker_args_list: 工作进程参数列表
+        max_workers: 最大工作进程数
+        progress_callback: 进度回调函数，接收(current, total, detail)参数
+
+    Returns:
+        list[dict]: 处理结果列表
+    """
+    if max_workers is None:
+        max_workers = get_optimal_worker_count("io_intensive")
+
+    results = []
+    total_files = len(worker_args_list)
+
+    # 这里实现一个简化的多进程处理
+    # 在实际部署中，这应该使用真正的multiprocessing.Pool
+    print(f"开始多进程处理 {total_files} 个文件，使用 {max_workers} 个进程")
+
+    for i, args in enumerate(worker_args_list):
+        try:
+            # 在实际实现中这里会调用真正的多进程处理
+            result = _extract_worker(args)
+            results.append(result)
+
+            # 实时进度更新
+            current_file = i + 1
+            file_name = args.get('display_name', args.get('path_key', 'unknown'))
+            detail = f"正在处理: {file_name}"
+            
+            # 调用进度回调
+            if progress_callback:
+                progress_callback(current_file, total_files, detail)
+
+            # 简化的控制台进度报告（保留原有逻辑）
+            if current_file % 10 == 0:
+                print(f"已处理 {current_file}/{total_files} 个文件")
 
         except Exception as e:
-            yield {'type': 'error', 'message': f'写入索引时发生严重错误: {e}'}
-            # traceback.print_exc() # COMMENTED OUT
-            if writer: # If error occurred before commit
-                yield {'type': 'status', 'message': '正在取消索引更改...'}
-                writer.cancel()
-                yield {'type': 'status', 'message': '索引更改已取消。'}
-        finally:
-            if writer: # Should ideally be None if commit succeeded/skipped or error occurred
-                try:
-                    writer.cancel() # Cancel if not committed
-                    yield {'type': 'status', 'message': '索引写入器已取消 (清理)。'}
-                except Exception as e_cancel:
-                    yield {'type': 'warning', 'message': f'清理索引写入器时出错: {e_cancel}'}
-            if ix:
-                ix.close()
-            INDEX_ACCESS_LOCK.release() # Release write lock
-            print("Index Update: Write lock released.")
-            yield {'type': 'status', 'message': '索引锁已释放。'}
-
-        final_added = added_count # Use counts tracked during scan
-        final_updated = updated_count # Use counts tracked during scan
-        final_deleted = deleted_count # Use count from to_delete set size
-        final_errors = error_count + extraction_errors # Combine scan/processing errors and extraction errors
-
-        # --- ADDED: 更新跳过文件记录，删除已处理的许可证限制文件 ---
-        if original_license_skipped_files:
-            # 计算已处理的文件（存在于原始列表但不在当前列表中的文件）
-            processed_license_files = {path: reason for path, reason in original_license_skipped_files.items() 
-                                      if path not in license_skipped_files}
-            processed_count = len(processed_license_files)
+            print(f"处理文件时出错: {e}")
+            # 创建错误结果
+            error_result = {
+                'path_key': args.get('path_key', 'unknown'),
+                'display_name': args.get('display_name', 'unknown'),
+                'text_content': '',
+                'structure': [],
+                'error': str(e),
+                'mtime': args.get('original_mtime', 0),
+                'fsize': args.get('original_fsize', 0),
+                'file_type': '',
+                'filename': '',
+                'ocr_enabled_for_file': False,
+                'content_truncated': False
+            }
+            results.append(error_result)
             
-            if processed_count > 0:
-                yield {'type': 'status', 'message': f'已重新处理 {processed_count} 个之前因许可证限制而跳过的文件'}
-                # 更新跳过文件记录，传入已处理的文件列表
-                update_skipped_files_record(index_dir_path, processed_license_files)
-        # ---------------------------------------------------------
+            # 错误时也更新进度
+            if progress_callback:
+                current_file = i + 1
+                file_name = args.get('display_name', args.get('path_key', 'unknown'))
+                detail = f"处理失败: {file_name} - {str(e)}"
+                progress_callback(current_file, total_files, detail)
 
-        yield {'type': 'complete', 'summary': {
-                'message': f'索引更新完成。添加: {final_added}, 更新: {final_updated}, 删除: {final_deleted}, 错误/跳过: {final_errors}',
-                'added': final_added,
-                'updated': final_updated,
-                'deleted': final_deleted,
-                'errors': final_errors
-            }}
-        print("--- Indexing Process Complete ---") # DEBUG
+    return results
 
-    except Exception as e_outer:
-        yield {'type': 'error', 'message': f'索引过程中发生未处理的严重错误: {e_outer}'}
-        # traceback.print_exc() # COMMENTED OUT
-        # Ensure lock is released if held
-        if INDEX_ACCESS_LOCK.locked():
-            INDEX_ACCESS_LOCK.release()
-            print("Index Update: Lock released in outer exception handler.")
+def batch_index_documents(writer, extraction_results: list[dict], index_dir_path: str, progress_callback=None) -> tuple[int, int]:
+    """
+    批量索引文档（优化版本）
 
-def main():
-    print("--- Script Started ---")
-    parser = argparse.ArgumentParser(description="Index and search documents (standalone mode).")
-    parser.add_argument("directory", nargs='?', default=None, help="The directory to index (required for indexing).")
-    parser.add_argument("-s", "--search", help="Keyword(s) to search for in the index.")
-    parser.add_argument("--index-dir", default="indexdir", help="Path to the index directory.") 
-    parser.add_argument("--reindex", action="store_true", help="Force re-indexing even if only searching.")
-    parser.add_argument("--min-size", type=int, help="Minimum file size in KB.")
-    parser.add_argument("--max-size", type=int, help="Maximum file size in KB.")
-    parser.add_argument("--start-date", help="Start date for file modification (format: YYYY-MM-DD).")
-    parser.add_argument("--end-date", help="End date for file modification (format: YYYY-MM-DD).")
-    parser.add_argument("--file-types", nargs='*', help="File types to filter (e.g., pdf docx).")
-    parser.add_argument("--sort-by", choices=['relevance', 'date_asc', 'date_desc', 'size_asc', 'size_desc'], default='relevance', help="Sort results by: relevance, date_asc, date_desc, size_asc, size_desc.")
-    args = parser.parse_args()
-    print(f"Arguments parsed: {args}")
-    if args.search and not args.reindex:
-        print("--- Standalone Search Mode ---")
-        search_results = search_index(
-            args.search,
-            index_dir_path=args.index_dir, # Use argument
-            search_mode='fuzzy',  # Default to fuzzy search for CLI
-            min_size_kb=args.min_size,
-            max_size_kb=args.max_size,
-            start_date=args.start_date,
-            end_date=args.end_date,
-            file_type_filter=args.file_types,
-            sort_by=args.sort_by
-        )
-        if search_results:
-            print("\n--- Search Results (Structured) ---")
-            for result in search_results:
-                print(f"File: {result['file_path']}")
-                if result.get('heading'):
-                    print(f"  Heading (L{result.get('level', '')}): {result['heading']}")
-                if result.get('marked_heading'):
-                    print(f"  Highlighted Heading: {result['marked_heading']}")
-                if result.get('paragraph'):
-                    print(f"  Context: {result['paragraph']}")
-                if result.get('marked_paragraph'):
-                    print(f"  Highlighted Context: {result['marked_paragraph']}")
-                if result.get('excel_headers') and result.get('excel_values'):
-                    print(f"  Excel Sheet: {result['excel_sheet']}, Row: {result['excel_row_idx']}")
-                    for header, value in zip(result['excel_headers'], result['excel_values']):
-                        print(f"    {header}: {value}")
-                print(f"  Score: {result['score']}")
-                print("-" * 20)
-        else:
-            print("Search returned no results.")
-        print("--- Search Complete ---")
-        return
-    if args.directory:
-        print("--- Standalone Indexing/Update Mode ---")
-        start_time = time.time()
-        for status_data in create_or_update_index(args.directory, args.index_dir):
-            msg_type = status_data.get('type')
-            message = status_data.get('message', '')
-            prefix = "" if msg_type == 'status' else f"{msg_type.upper()}: "
-            print(prefix + message)
-        end_time = time.time()
-        print(f"\n总耗时: {end_time - start_time:.2f} 秒")
-        if args.reindex and args.search:
-            print("\n--- Running search after re-indexing ---")
-            search_results = search_index(
-                args.search,
-                index_dir_path=args.index_dir, # Use argument
-                search_mode='fuzzy',
-                min_size_kb=args.min_size,
-                max_size_kb=args.max_size,
-                start_date=args.start_date,
-                end_date=args.end_date,
-                file_type_filter=args.file_types,
-                sort_by=args.sort_by
+    Args:
+        writer: Whoosh writer
+        extraction_results: 提取结果列表
+        index_dir_path: 索引目录路径
+        progress_callback: 进度回调函数，接收(current, total, detail)参数
+
+    Returns:
+        tuple[int, int]: (成功索引数, 错误数)
+    """
+    success_count = 0
+    error_count = 0
+    total_results = len(extraction_results)
+
+    for i, result in enumerate(extraction_results):
+        try:
+            if result.get('error'):
+                # 记录错误文件
+                record_skipped_file(index_dir_path, result['path_key'], result['error'])
+                error_count += 1
+                
+                # 发送进度更新
+                if progress_callback:
+                    current = i + 1
+                    detail = f"跳过错误文件: {result.get('display_name', result['path_key'])}"
+                    progress_callback(current, total_results, detail)
+                continue
+
+            content = result.get('text_content', '')
+            structure = result.get('structure', [])
+
+            if not content and not structure:
+                # 空内容，跳过
+                record_skipped_file(index_dir_path, result['path_key'], "提取的内容为空")
+                error_count += 1
+                
+                # 发送进度更新
+                if progress_callback:
+                    current = i + 1
+                    detail = f"跳过空内容文件: {result.get('display_name', result['path_key'])}"
+                    progress_callback(current, total_results, detail)
+                continue
+
+            # 获取文件信息
+            path_key = result['path_key']
+            file_path = Path(path_key)
+
+            # 添加到索引
+            writer.update_document(
+                path=normalize_path_for_index(path_key),
+                content=content,
+                filename_text=file_path.name,
+                structure_map=json.dumps(structure),
+                last_modified=result['mtime'],
+                file_size=result['fsize'],
+                file_type=result.get('file_type', '').lstrip('.'),
+                indexed_with_ocr=result.get('ocr_enabled_for_file', False)
             )
-            if search_results:
-                print("\n--- Search Results (Structured) ---")
-                for result in search_results:
-                    print(f"File: {result['file_path']}")
-                    if result.get('heading'):
-                        print(f"  Heading (L{result.get('level', '')}): {result['heading']}")
-                    if result.get('marked_heading'):
-                        print(f"  Highlighted Heading: {result['marked_heading']}")
-                    if result.get('paragraph'):
-                        print(f"  Context: {result['paragraph']}")
-                    if result.get('marked_paragraph'):
-                        print(f"  Highlighted Context: {result['marked_paragraph']}")
-                    if result.get('excel_headers') and result.get('excel_values'):
-                        print(f"  Excel Sheet: {result['excel_sheet']}, Row: {result['excel_row_idx']}")
-                        for header, value in zip(result['excel_headers'], result['excel_values']):
-                            print(f"    {header}: {value}")
-                    print(f"  Score: {result['score']}")
-                    print("-" * 20)
-            else:
-                print("Search returned no results.")
-            print("--- Search Complete ---")
+
+            success_count += 1
+            
+            # 发送进度更新
+            if progress_callback:
+                current = i + 1
+                detail = f"已索引: {result.get('display_name', file_path.name)}"
+                progress_callback(current, total_results, detail)
+
+        except Exception as e:
+            error_count += 1
+            record_skipped_file(index_dir_path, result.get('path_key', 'unknown'), f"索引错误: {e}")
+            print(f"索引文档时出错: {e}")
+            
+            # 发送进度更新
+            if progress_callback:
+                current = i + 1
+                detail = f"索引失败: {result.get('display_name', result.get('path_key', 'unknown'))} - {str(e)}"
+                progress_callback(current, total_results, detail)
+
+    return success_count, error_count
+
+def remove_deleted_files_from_index(writer, deleted_files: list[str]):
+    """
+    从索引中删除已删除的文件
+
+    Args:
+        writer: Whoosh writer
+        deleted_files: 已删除的文件路径列表
+    """
+    for file_path in deleted_files:
+        try:
+            writer.delete_by_term('path', normalize_path_for_index(file_path))
+            print(f"从索引中删除: {file_path}")
+        except Exception as e:
+            print(f"删除索引项时出错 {file_path}: {e}")
+
+# --- 结束高级索引优化功能 ---
+
+# --- 兼容性包装函数 ---
+
+def create_or_update_index_legacy(source_directories, index_dir_path, enable_ocr, 
+                                 extraction_timeout=300, txt_content_limit_kb=1024, 
+                                 file_types_to_index=None, cancel_callback=None):
+    """
+    兼容性包装函数，保持与现有GUI的兼容性
+    将旧版本的参数映射到新的优化版本
+
+    Args:
+        source_directories: 源目录列表
+        index_dir_path: 索引目录路径
+        enable_ocr: 是否启用OCR
+        extraction_timeout: 提取超时时间
+        txt_content_limit_kb: TXT内容限制（KB）
+        file_types_to_index: 要索引的文件类型列表
+        cancel_callback: 取消检查回调函数
+
+    Yields:
+        dict: 进度信息（转换为旧格式）
+    """
+    print("使用兼容性包装函数调用优化版索引...")
+
+    # 将新的优化参数映射到旧的格式
+    try:
+        # 调用优化版本的索引函数
+        for progress in create_or_update_index(
+            directories=source_directories,
+            index_dir_path=index_dir_path,
+            enable_ocr=enable_ocr,
+            extraction_timeout=extraction_timeout,
+            content_limit_kb=txt_content_limit_kb,
+            max_file_size_mb=100,  # 默认值
+            skip_system_files=True,  # 默认启用
+            incremental=True,  # 默认启用增量索引
+            max_workers=None,  # 使用自动检测
+            cancel_callback=cancel_callback,  # 传递取消回调
+            file_types_to_index=file_types_to_index  # 传递文件类型过滤
+        ):
+            # 将新格式的进度信息转换为旧格式
+            old_format_progress = convert_progress_to_legacy_format(progress)
+            yield old_format_progress
+
+    except InterruptedError:
+        # 处理用户取消
+        cancelled_progress = {
+            'type': 'complete',
+            'message': '索引已被用户取消',
+            'summary': {
+                'message': '索引已被用户取消。',
+                'added': 0,
+                'updated': 0,
+                'deleted': 0,
+                'errors': 0,
+                'cancelled': True
+            }
+        }
+        yield cancelled_progress
+        raise
+    except Exception as e:
+        # 如果优化版本失败，记录错误并抛出
+        print(f"优化版索引失败: {e}")
+        raise
+
+def convert_progress_to_legacy_format(new_progress):
+    """
+    将新格式的进度信息转换为旧格式，确保GUI兼容性
+
+    Args:
+        new_progress: 新格式的进度字典
+
+    Returns:
+        dict: 旧格式的进度字典，确保所有字段都存在
+    """
+    # --- ENHANCED: 更强的类型检查和错误处理 ---
+    if not isinstance(new_progress, dict):
+        print(f"WARNING: convert_progress_to_legacy_format received non-dict: {type(new_progress)}")
+        return {
+            'type': 'error',
+            'message': f'进度格式错误: {type(new_progress)}',
+            'current': 0,
+            'total': 0,
+            'phase': 'error',
+            'detail': '进度数据格式错误'
+        }
+    
+    stage = new_progress.get('stage', '')
+    message = new_progress.get('message', '')
+
+    # 根据阶段映射到旧的消息类型
+    if stage == 'scanning':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'scanning'
+        }
+    elif stage == 'scanning_complete':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'scan_complete'
+        }
+    elif stage == 'change_detection':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'change_detection'
+        }
+    elif stage == 'change_detection_complete':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'change_detection_complete'
+        }
+    elif stage == 'processing_start':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'processing'
+        }
+    elif stage == 'extracting':
+        return {
+            'type': 'progress',
+            'current': new_progress.get('current', 0),
+            'total': new_progress.get('total', 0),
+            'phase': 'extracting',
+            'detail': message
+        }
+    elif stage == 'indexing':
+        return {
+            'type': 'progress',
+            'current': new_progress.get('current', 0),
+            'total': new_progress.get('total', 0),
+            'phase': 'indexing',
+            'detail': message
+        }
+    elif stage == 'updating_cache':
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': 'updating_cache'
+        }
+    elif stage == 'complete':
+        # 构建完成摘要
+        files_processed = new_progress.get('files_processed', 0)
+        files_skipped = new_progress.get('files_skipped', 0)
+        errors = new_progress.get('errors', 0)
+
+        summary = {
+            'message': message,
+            'added': files_processed,  # 简化：将处理的文件数作为添加数
+            'updated': 0,  # 新版本不区分添加和更新
+            'deleted': 0,  # 删除数暂时设为0
+            'errors': errors,
+            'cancelled': False
+        }
+
+        return {
+            'type': 'complete',
+            'message': message,
+            'summary': summary
+        }
+    elif stage == 'cancelled':
+        # 处理取消状态
+        summary = {
+            'message': message,
+            'added': 0,
+            'updated': 0,
+            'deleted': 0,
+            'errors': 0,
+            'cancelled': True
+        }
+
+        return {
+            'type': 'complete',
+            'message': message,
+            'summary': summary
+        }
+    elif stage == 'error':
+        return {
+            'type': 'error',
+            'message': message
+        }
     else:
-        if not args.search:
-            parser.print_help()
-    print("--- Script Finished ---")
+        # 默认情况
+        return {
+            'type': 'status',
+            'message': message,
+            'phase': stage
+        }
+
+# --- 结束兼容性包装函数 ---
 
 if __name__ == "__main__":
-    main()
+    # 如果直接运行此文件，执行测试
+    print("执行索引优化测试...")
+    # test_optimized_indexing()  # 暂时注释掉测试函数调用

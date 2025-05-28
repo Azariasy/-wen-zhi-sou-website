@@ -14,10 +14,13 @@ import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, 
                              QListWidget, QListWidgetItem, QLabel, QPushButton, 
                              QGraphicsDropShadowEffect, QApplication, QWidget, QMenu,
-                             QProgressBar, QSizePolicy, QFrame)
+                             QProgressBar, QSizePolicy, QFrame, QMessageBox)
 from PySide6.QtCore import Qt, QSize, QEvent, QPoint, QSettings, Signal, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QIcon, QColor, QFont, QPalette, QKeyEvent, QDesktopServices, QAction, QPainter, QPixmap
+from PySide6.QtGui import QIcon, QColor, QFont, QPalette, QKeyEvent, QDesktopServices, QAction, QPainter, QPixmap, QClipboard, QFontMetrics
 from pathlib import Path
+
+# 导入主程序的常量
+from search_gui_pyside import ORGANIZATION_NAME, APPLICATION_NAME
 
 class SearchResultItem(QListWidgetItem):
     """现代化搜索结果列表项"""
@@ -91,7 +94,7 @@ class QuickSearchDialog(QDialog):
         super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         
         # 设置窗口基本属性
-        self.setWindowTitle("快速搜索")
+        self.setWindowTitle("文智搜 - 快速搜索")
         self.setMinimumSize(600, 450)
         self.setMaximumSize(800, 700)
         self.resize(650, 500)
@@ -106,7 +109,7 @@ class QuickSearchDialog(QDialog):
         self.search_timer.timeout.connect(self._perform_search)
         
         # 加载设置
-        self.settings = QSettings("WenZhiSou", "DocumentSearch")
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
         # 初始化UI
         self._setup_ui()

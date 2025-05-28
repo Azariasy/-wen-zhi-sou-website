@@ -4,25 +4,18 @@
 本模块提供系统托盘功能，包括托盘图标、托盘菜单和命令行参数解析。
 """
 
-import os
 import sys
+import os
 import argparse
 from pathlib import Path
-
-from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+from PySide6.QtCore import QSettings, Signal, QObject, QTimer
 from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Signal, QObject, QSettings
+import subprocess
+import webbrowser
 
-def get_resource_path(relative_path):
-    """获取资源文件的绝对路径，适用于开发环境和打包后的环境"""
-    try:
-        # PyInstaller创建临时文件夹，将路径存储在_MEIPASS中
-        base_path = sys._MEIPASS
-    except Exception:
-        # 如果不是通过PyInstaller打包，则使用当前文件夹
-        base_path = os.path.abspath(".")
-    
-    return os.path.join(base_path, relative_path)
+# 导入资源路径解析器
+from search_gui_pyside import get_resource_path, ORGANIZATION_NAME, APPLICATION_NAME
 
 class TrayIcon(QSystemTrayIcon):
     """系统托盘图标类"""
@@ -36,33 +29,33 @@ class TrayIcon(QSystemTrayIcon):
     
     def __init__(self, parent=None):
         """初始化托盘图标"""
-        # 加载图标
+        super().__init__(parent)
+        
+        # 设置托盘图标
         icon_path = get_resource_path("app_icon.ico")
-        if not os.path.exists(icon_path):
-            # 尝试使用PNG作为备选
-            icon_path = get_resource_path("app_icon.png")
-            if not os.path.exists(icon_path):
-                # 如果都找不到，使用系统默认图标
-                super().__init__(parent)
-                return
+        if os.path.exists(icon_path):
+            self.setIcon(QIcon(icon_path))
+        else:
+            # 如果图标文件不存在，使用默认图标
+            print(f"警告：托盘图标文件不存在: {icon_path}")
+            from PySide6.QtWidgets import QStyle
+            default_icon = self.style().standardIcon(QStyle.SP_ComputerIcon)
+            self.setIcon(default_icon)
         
-        icon = QIcon(icon_path)
-        super().__init__(icon, parent)
+        # 设置提示文本
+        self.setToolTip("文智搜 - 文档搜索工具")
         
-        # 设置工具提示
-        self.setToolTip("文智搜")
-        
-        # 热键管理器引用（将由外部设置）
-        self.hotkey_manager = None
-        
-        # 创建托盘菜单
+        # 设置菜单
         self.setup_menu()
+        
+        # 热键管理器引用（后续会设置）
+        self.hotkey_manager = None
         
         # 连接信号
         self.activated.connect(self._on_activated)
         
-        # 加载设置
-        self.settings = QSettings("WenZhiSou", "DocumentSearch")
+        # 加载设置 - 使用与主程序相同的设置路径
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
         # 最近搜索列表
         self.recent_searches = []

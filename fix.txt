@@ -1,3 +1,0 @@
-                else:
-                    # 基础版功能
-                    type_filter_layout.addWidget(checkbox)

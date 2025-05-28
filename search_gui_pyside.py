@@ -136,6 +136,8 @@ class Worker(QObject):
     
     def __init__(self):
         super().__init__()
+        # 防止重复发送完成信号的标志
+        self._indexing_completed = False
         # 添加一个标志位，用于指示是否请求停止操作
         self.stop_requested = False
         
@@ -149,8 +151,11 @@ class Worker(QObject):
     def run_indexing(self, source_directories, index_dir_path, enable_ocr, extraction_timeout, txt_content_limit_kb, file_types_to_index=None):
         """Runs the indexing process in the background for multiple source directories."""
         try:
-            # 重置停止标志位
+            # 重置完成标志，防止重复发送信号
+            self._indexing_completed = False
+            # 重置停止标志位（用于索引操作）
             self.stop_requested = False
+            print("🔄 开始索引操作，取消标志已重置")
             
             # --- Clear search cache before indexing ---
             self.clear_search_cache()
@@ -164,18 +169,32 @@ class Worker(QObject):
             # ------------------------------------------------------
 
             # --- RESTORED Actual Backend Call and Generator Processing ---
-            generator = document_search.create_or_update_index(
+            # 创建取消回调函数
+            def cancel_check():
+                # --- FIXED: 添加调试信息和更频繁的检查 ---
+                if self.stop_requested:
+                    print("🚨 检测到取消请求 - 停止索引操作")
+                    return True
+                return False
+            
+            generator = document_search.create_or_update_index_legacy(
                 source_directories,
                 index_dir_path,
                 enable_ocr,
                 extraction_timeout=extraction_timeout, # Pass timeout here
                 txt_content_limit_kb=txt_content_limit_kb, # Pass txt limit here
-                file_types_to_index=file_types_to_index # Pass file types to index
+                file_types_to_index=file_types_to_index, # Pass file types to index
+                cancel_callback=cancel_check  # Pass cancel callback
             )
 
             for update in generator:
                 # 检查是否请求了停止
                 self._check_stop_requested()
+                
+                # 添加更强的类型检查
+                if not isinstance(update, dict):
+                    print(f"WARNING: Received non-dict update: {type(update)}")
+                    continue
                 
                 msg_type = update.get('type')
                 message = update.get('message', '')
@@ -192,7 +211,28 @@ class Worker(QObject):
                     # --- ADDED: Get detail text from update ---
                     detail = update.get('detail', '') # Get detail, default to empty
                     # --- MODIFIED: Emit progressUpdated with detail ---
-                    self.progressUpdated.emit(current, total, phase, detail)
+                    # --- FIXED: 添加参数验证 ---
+                    try:
+                        # 确保参数类型正确
+                        current = int(current) if current is not None else 0
+                        total = int(total) if total is not None else 0
+                        phase = str(phase) if phase is not None else "处理中"
+                        detail = str(detail) if detail is not None else ""
+                        
+                        # 确保参数类型正确并处理可能的解包错误
+                        try:
+                            current = int(current) if current is not None else 0
+                            total = int(total) if total is not None else 0
+                            phase = str(phase) if phase is not None else "处理中"
+                            detail = str(detail) if detail is not None else ""
+                            self.progressUpdated.emit(current, total, phase, detail)
+                        except (ValueError, TypeError) as e:
+                            print(f"Progress emit error: {e}, using defaults")
+                            self.progressUpdated.emit(0, 100, "处理中", "")
+                    except Exception as e:
+                        print(f"Error emitting progress: {e}")
+                        # 发射安全的默认值
+                        self.progressUpdated.emit(0, 100, "处理中", "")
                     # --------------------------------------------------
                 elif msg_type == 'warning':
                     self.statusChanged.emit(f"[警告] {message}")  # Warnings can also be status messages
@@ -200,7 +240,9 @@ class Worker(QObject):
                     self.errorOccurred.emit(f"索引错误: {message}")
                 elif msg_type == 'complete': # Check for 'complete' type
                     summary_dict = update.get('summary', {}) # Get the summary dict
-                    self.indexingComplete.emit(summary_dict) # Emit the summary dict
+                    if not self._indexing_completed:
+                        self._indexing_completed = True
+                        self.indexingComplete.emit(summary_dict) # Emit the summary dict
             # -------------------------------------------------------------
 
         except InterruptedError as e:
@@ -214,7 +256,9 @@ class Worker(QObject):
                 'errors': 0,
                 'cancelled': True
             }
-            self.indexingComplete.emit(summary_dict)
+            if not self._indexing_completed:
+                self._indexing_completed = True
+                self.indexingComplete.emit(summary_dict)
         except Exception as e:
             # Catch any unexpected errors during the backend call itself
             tb = traceback.format_exc()
@@ -225,8 +269,9 @@ class Worker(QObject):
     def run_search(self, query_str, search_mode, min_size, max_size, start_date, end_date, file_type_filter, index_dir_path, case_sensitive, search_scope, search_dirs):
         """Runs the search process in the background with optional filters, using cache."""
         try:
-            # 重置停止标志位
+            # 重置停止标志位（仅用于搜索操作）
             self.stop_requested = False
+            print("🔄 开始搜索操作，取消标志已重置")
             
             # --- Convert arguments to hashable types for caching --- 
             # Dates are already QDate, convert to string or None (hashable)
@@ -1936,6 +1981,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.index_button.setToolTip("创建或更新文档索引")
         self.index_button.setMinimumWidth(100)  # 设置最小宽度确保按钮足够宽
         
+        # --- ADDED: 创建取消索引按钮 ---
+        self.cancel_index_button = QPushButton("取消索引")
+        self.cancel_index_button.setObjectName("cancel_button")
+        self.cancel_index_button.setToolTip("取消正在进行的索引操作")
+        self.cancel_index_button.setMinimumWidth(100)
+        self.cancel_index_button.setVisible(False)  # 初始时隐藏
+        # --------------------------------
+        
         # 查看跳过的文件按钮
         self.view_skipped_button = QPushButton("查看跳过文件")
         self.view_skipped_button.setToolTip("查看在创建索引过程中被跳过的文件")
@@ -1947,6 +2000,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # 将按钮添加到布局
         action_layout.addWidget(self.index_button)
+        action_layout.addWidget(self.cancel_index_button)  # 添加取消按钮
         action_layout.addWidget(self.view_skipped_button)
         action_layout.addStretch(1)
         
@@ -2002,7 +2056,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.worker.statusChanged.connect(self.update_status_label_slot)
             self.worker.progressUpdated.connect(self.update_progress_bar_slot)
             self.worker.resultsReady.connect(self._handle_new_search_results_slot)
-            self.worker.indexingComplete.connect(self.indexing_finished_slot)
+            
             self.worker.errorOccurred.connect(self.handle_error_slot)
             
             # --- ADDED: Connect update check signals ---
@@ -2052,6 +2106,19 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
         # --- 添加索引按钮的信号连接 ---
         self.index_button.clicked.connect(self.start_indexing_slot)
+        # 测试取消按钮连接
+        print("🔧 正在连接取消按钮信号...")
+        self.cancel_index_button.clicked.connect(self.cancel_indexing_slot)
+        print("✅ 取消按钮信号连接完成")
+        
+        # 添加测试连接
+        def test_cancel_button():
+            print("🧪 测试取消按钮点击")
+            print("🧪 测试取消按钮点击")
+            print("🧪 测试取消按钮点击")
+        
+        # 连接测试函数
+        self.cancel_index_button.clicked.connect(test_cancel_button)  # 添加取消按钮连接
         self.view_skipped_button.clicked.connect(self.show_skipped_files_dialog_slot)
         # --------------------------------
         
@@ -2749,7 +2816,17 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # ---------------------------------------
 
     @Slot(int, int, str, str)
+    @Slot(object, object, object, object)  # 添加通用对象类型支持
     def update_progress_bar_slot(self, current, total, phase, detail):
+        # 添加参数类型验证和转换
+        try:
+            current = int(current) if current is not None else 0
+            total = int(total) if total is not None else 0
+            phase = str(phase) if phase is not None else "处理中"
+            detail = str(detail) if detail is not None else ""
+        except (ValueError, TypeError) as e:
+            print(f"Progress slot parameter error: {e}, using defaults")
+            current, total, phase, detail = 0, 100, "处理中", ""
         if total > 0:
             self.progress_bar.setMaximum(total)
             self.progress_bar.setValue(current)
@@ -3103,7 +3180,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
         # Note: set_busy_state(False) is called within display_search_results_slot's finally block
-
+    
     # --- NEW Slot for Sorting (Called by sort controls) ---
     @Slot()
     def _sort_and_redisplay_results_slot(self):
@@ -3411,6 +3488,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         interface_settings_action.triggered.connect(self.show_interface_settings_dialog_slot)
         settings_menu.addAction(interface_settings_action)
 
+        # 添加索引优化设置菜单项
+        optimization_settings_action = QAction("索引优化设置(&O)...", self)
+        optimization_settings_action.triggered.connect(self.show_optimization_settings_dialog_slot)
+        settings_menu.addAction(optimization_settings_action)
+
         # 添加托盘设置菜单项
         tray_settings_action = QAction("托盘设置(&R)...", self)
         tray_settings_action.triggered.connect(self.show_tray_settings_dialog_slot)
@@ -3589,6 +3671,23 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.search_button.setEnabled(not is_busy)
         if hasattr(self, 'index_button'):
             self.index_button.setEnabled(not is_busy)
+            # --- ADDED: 控制索引按钮的显示/隐藏 ---
+            self.index_button.setVisible(not is_busy)
+        if hasattr(self, 'cancel_index_button'):
+            # --- MODIFIED: 改进取消按钮状态管理 ---
+            if is_busy:
+                # 开始忙碌状态：显示并启用取消按钮
+                print("🔧 显示取消按钮...")
+                self.cancel_index_button.setVisible(True)
+                print(f"🔧 取消按钮可见性: {self.cancel_index_button.isVisible()}")
+                self.cancel_index_button.setEnabled(True)
+                self.cancel_index_button.setText("取消索引")
+            else:
+                # 结束忙碌状态：隐藏取消按钮并重置状态
+                self.cancel_index_button.setVisible(False)
+                self.cancel_index_button.setEnabled(False)
+                self.cancel_index_button.setText("取消索引")  # 重置文本
+            # ------------------------------------------------
         if hasattr(self, 'clear_search_button'):
             self.clear_search_button.setEnabled(not is_busy)
         if hasattr(self, 'clear_results_button'):
@@ -3597,6 +3696,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 显示或隐藏进度条
         if hasattr(self, 'progress_bar'):
             self.progress_bar.setVisible(is_busy)
+        
+        # --- ADDED: 显示或隐藏进度相关的标签 ---
+        if hasattr(self, 'phase_label'):
+            self.phase_label.setVisible(is_busy)
+        if hasattr(self, 'detail_label'):
+            self.detail_label.setVisible(is_busy)
 
 
     def _update_feature_availability(self):
@@ -5025,6 +5130,130 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             pass
             
         self.statusBar().showMessage("热键设置已更新，重启应用程序后生效", 5000)
+
+    @Slot()
+    def show_optimization_settings_dialog_slot(self):
+        """显示索引优化设置对话框"""
+        try:
+            from gui_optimization_settings import OptimizationSettingsDialog
+            dialog = OptimizationSettingsDialog(self)
+            dialog.exec()
+        except ImportError as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "索引优化设置", f"索引优化设置功能暂不可用:\n{str(e)}")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "错误", f"打开索引优化设置时出现错误:\n{str(e)}")
+
+    # --- ADDED: 取消索引的槽函数 ---
+    @Slot()
+    def cancel_indexing_slot(self):
+        """取消正在进行的索引操作 - 完全借鉴closeEvent的线程中断机制"""
+        print("🚨🚨🚨 CANCEL BUTTON CLICKED! 🚨🚨🚨")
+        print("🚨🚨🚨 CANCEL BUTTON CLICKED! 🚨🚨🚨")
+        print("🚨🚨🚨 CANCEL BUTTON CLICKED! 🚨🚨🚨")
+        
+        # 强制刷新控制台输出
+        import sys
+        import time
+        sys.stdout.flush()
+        sys.stderr.flush()
+        
+        print(f"is_busy: {self.is_busy}")
+        print(f"has worker: {hasattr(self, 'worker')}")
+        print(f"worker is not None: {self.worker is not None if hasattr(self, 'worker') else False}")
+        print(f"worker_thread running: {self.worker_thread.isRunning() if hasattr(self, 'worker_thread') and self.worker_thread else False}")
+        
+        if not self.is_busy:
+            print("⚠️ 当前没有正在进行的操作")
+            return
+        
+        # 立即更新UI状态，让用户知道取消请求已收到
+        self.statusBar().showMessage("🚨 正在强制取消索引操作，请稍候...", 0)
+        if hasattr(self, 'cancel_index_button'):
+            self.cancel_index_button.setEnabled(False)
+            self.cancel_index_button.setText("🚨 正在强制取消...")
+        
+        # 强制刷新UI
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
+        print("🚨 开始借鉴closeEvent的完整线程中断机制...")
+        
+        # === 完全借鉴closeEvent的机制 ===
+        if self.worker_thread and self.worker_thread.isRunning():
+            print("✅ 发现工作线程正在运行，开始强制中断流程...")
+            
+            # 1. 首先设置停止标志
+            if self.worker:
+                print("✅ 设置停止标志...")
+                if hasattr(self.worker, 'stop_requested'):
+                    self.worker.stop_requested = True
+                    print(f"🚨 已设置取消标志: stop_requested = {self.worker.stop_requested}")
+                
+                # 2. 给工作线程一些时间来响应停止请求（借鉴closeEvent）
+                print("⏳ 给工作线程时间响应停止请求...")
+                time.sleep(0.2)
+                QApplication.processEvents()
+            
+            # 3. 检查线程是否仍在运行
+            if self.worker_thread.isRunning():
+                print("⚠️ 线程仍在运行，开始强制中断...")
+                
+                # 4. 请求线程退出（借鉴closeEvent）
+                print("🔧 请求线程退出...")
+                self.worker_thread.quit()  # 请求事件循环退出
+                
+                # 5. 等待线程退出，使用较短的超时（因为是用户主动取消）
+                timeout_ms = 2000  # 等待2秒
+                print(f"⏳ 等待线程退出（最多{timeout_ms/1000}秒）...")
+                
+                if not self.worker_thread.wait(timeout_ms):
+                    print(f"⚠️ 线程未能在{timeout_ms/1000}秒内退出，执行强制终止...")
+                    
+                    # 6. 强制终止线程（借鉴closeEvent）
+                    if self.worker_thread.isRunning():
+                        print("🔨 执行强制终止...")
+                        self.worker_thread.terminate()  # 强制终止线程
+                        
+                        # 再等待一小段时间确保终止完成
+                        if not self.worker_thread.wait(1000): 
+                            print("❌ 严重警告: 即使在强制终止后，线程仍未停止!")
+                        else:
+                            print("✅ 线程已成功强制终止")
+                    else:
+                        print("✅ 线程现在已停止运行")
+                else:
+                    print("✅ 线程成功正常退出")
+                
+                # 7. 重新创建工作线程（因为被终止的线程不能重用）
+                print("🔧 重新创建工作线程...")
+                self._setup_worker_thread()
+                print("✅ 工作线程已重新创建")
+            else:
+                print("✅ 线程已停止运行")
+        else:
+            print("⚠️ 工作线程未运行或已停止")
+        
+        # 8. 重置UI状态
+        print("🔧 重置UI状态...")
+        self.set_busy_state(False)
+        self.statusBar().showMessage("索引操作已被用户强制取消", 5000)
+        
+        # 9. 显示取消确认
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self, 
+            "操作已取消", 
+            "索引操作已被成功取消。\n\n已处理的文件将保留在索引中。"
+        )
+        
+        print("✅ 取消操作完成")
+        
+        # 强制刷新控制台输出
+        sys.stdout.flush()
+        sys.stderr.flush()
+    # ----------------------------------------
 
 # --- 文件夹树视图组件 ---
 class FolderTreeWidget(QWidget):

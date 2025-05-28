@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QMainWindow, QSystemTrayIcon, QMessageBox, QMenu, 
 from PySide6.QtGui import QCloseEvent, QIcon, QAction
 import os
 
-from search_gui_pyside import MainWindow
+from search_gui_pyside import MainWindow, ORGANIZATION_NAME, APPLICATION_NAME
 from quick_search_controller import QuickSearchController
 
 class TrayMainWindow(MainWindow):
@@ -22,8 +22,8 @@ class TrayMainWindow(MainWindow):
         # 是否直接退出（不最小化到托盘）
         self.force_quit = False
         
-        # 用户首选项设置
-        self.settings = QSettings("WenZhiSou", "DocumentSearch")
+        # 用户首选项设置 - 使用与主程序相同的设置路径
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
         # 设置窗口标题
         self.setWindowTitle("文智搜 (支持托盘)")
