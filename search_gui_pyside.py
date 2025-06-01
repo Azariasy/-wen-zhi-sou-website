@@ -125,7 +125,7 @@ class Worker(QObject):
     # --- MODIFIED: Added detail parameter to progressUpdated signal ---
     progressUpdated = Signal(int, int, str, str) # current, total, phase, detail
     # -----------------------------------------------------------------
-    resultsReady = Signal(list)       # Search results list[dict]
+    resultsReady = Signal(object)     # Search results dict with pagination info
     indexingComplete = Signal(dict)   # Summary dict from backend
     errorOccurred = Signal(str)       # Error message
     # --- ADDED: Signals for update check --- 
@@ -265,8 +265,8 @@ class Worker(QObject):
             print(f"WORKER EXCEPTION in run_indexing: {e}\n{tb}", file=sys.stderr)
             self.errorOccurred.emit(f"启动或执行索引时发生意外错误: {e}")
 
-    @Slot(str, str, object, object, object, object, object, str, bool, str, object)
-    def run_search(self, query_str, search_mode, min_size, max_size, start_date, end_date, file_type_filter, index_dir_path, case_sensitive, search_scope, search_dirs):
+    @Slot(str, str, object, object, object, object, object, str, bool, str, object, int, int)
+    def run_search(self, query_str, search_mode, min_size, max_size, start_date, end_date, file_type_filter, index_dir_path, case_sensitive, search_scope, search_dirs, page_number=1, page_size=50):
         """Runs the search process in the background with optional filters, using cache."""
         try:
             # 重置停止标志位（仅用于搜索操作）
@@ -329,7 +329,9 @@ class Worker(QObject):
                 index_dir_path,
                 case_sensitive,
                 search_scope, # Pass scope here
-                search_dirs_tuple # Pass the tuple version instead of the list
+                search_dirs_tuple, # Pass the tuple version instead of the list
+                page_number,
+                page_size
             )
             # -------------------------------------------
             
@@ -348,10 +350,11 @@ class Worker(QObject):
 
     # --- NEW: Cached Search Function ---
     @functools.lru_cache(maxsize=128) # Cache up to 128 recent search results
-    def _perform_search_with_cache(self, query_str, search_mode, min_size, max_size, start_date_str, end_date_str, file_type_filter_tuple, index_dir_path, case_sensitive, search_scope, search_dirs_tuple):
+    def _perform_search_with_cache(self, query_str, search_mode, min_size, max_size, start_date_str, end_date_str, file_type_filter_tuple, index_dir_path, case_sensitive, search_scope, search_dirs_tuple, page_number=1, page_size=50):
         """Internal method that performs the actual search and caches results.
            Args must be hashable, hence file_type_filter_tuple.
         """
+
         print(f"--- Cache MISS: Performing backend search for: '{query_str}' (Scope: {search_scope}) ---") # Debug with scope
         # Convert tuple back to list for backend function if needed (check backend signature)
         file_type_filter_list = list(file_type_filter_tuple) if file_type_filter_tuple else None
@@ -362,13 +365,12 @@ class Worker(QObject):
             print(f"--- Search will be filtered to {len(search_dirs_list)} directories ---")
         
         # Call the actual backend search function, passing scope
-        # 注意：只有当后端实际支持search_dirs参数时才传递
         try:
             import inspect
             backend_params = inspect.signature(document_search.search_index).parameters
             if 'search_dirs' in backend_params:
                 # 后端支持search_dirs参数
-                results = document_search.search_index(
+                search_result = document_search.search_index(
                     query_str=query_str, 
                     index_dir_path=index_dir_path, 
                     search_mode=search_mode,
@@ -379,11 +381,14 @@ class Worker(QObject):
                     end_date=end_date_str, 
                     file_type_filter=file_type_filter_list,
                     case_sensitive=case_sensitive,
-                    search_dirs=search_dirs_list
+                    search_dirs=search_dirs_list,
+                    page_size=page_size,
+                    page_number=page_number,
+                    return_total=(page_number == 1)
                 )
             else:
                 # 后端不支持search_dirs参数
-                results = document_search.search_index(
+                search_result = document_search.search_index(
                     query_str=query_str, 
                     index_dir_path=index_dir_path, 
                     search_mode=search_mode,
@@ -393,18 +398,39 @@ class Worker(QObject):
                     start_date=start_date_str, 
                     end_date=end_date_str, 
                     file_type_filter=file_type_filter_list,
-                    case_sensitive=case_sensitive
+                    case_sensitive=case_sensitive,
+                    page_size=page_size,
+                    page_number=page_number,
+                    return_total=(page_number == 1)
                 )
         except TypeError:
             # 如果后端不支持某些参数，使用最基本的参数调用
-            results = document_search.search_index(
+            search_result = document_search.search_index(
                 query_str=query_str, 
                 index_dir_path=index_dir_path, 
-                search_mode=search_mode
+                search_mode=search_mode,
+                page_size=page_size,
+                page_number=page_number,
+                return_total=(page_number == 1)
             )
         
+        # 处理搜索结果格式（新增：处理分页格式）
+        if isinstance(search_result, dict) and 'results' in search_result:
+            # 新的分页格式：{'results': [...], 'pagination': {...}}
+            results_list = search_result['results']  # 临时变量：结果列表
+            pagination_info = search_result.get('pagination', {})
+            print(f"使用分页格式：获得 {len(results_list)} 条结果，分页信息：{pagination_info}")
+            # 保持完整的分页格式对象
+            results = search_result  # 保持完整的分页格式
+            is_paginated_format = True
+        else:
+            # 旧格式：直接返回列表
+            results = search_result if isinstance(search_result, list) else []
+            print(f"使用传统格式：获得 {len(results)} 条结果")
+            is_paginated_format = False
+        
         # 如果搜索目录不为None但后端不支持，则手动过滤结果
-        if search_dirs_list and results:
+        if search_dirs_list and (results_list if is_paginated_format else results):
             try:
                 # 创建过滤后的结果列表
                 filtered_results = []
@@ -414,7 +440,7 @@ class Worker(QObject):
                 normalized_search_dirs = [os.path.normpath(d) for d in search_dirs_list]
                 
                 # 遍历结果进行过滤
-                for result in results:
+                for result in (results_list if is_paginated_format else results):
                     file_path = result.get('file_path', '')
                     if not file_path:
                         continue
@@ -445,17 +471,32 @@ class Worker(QObject):
                     if is_in_selected_dir:
                         filtered_results.append(result)
                 
-                print(f"--- Filtered {len(results)} results to {len(filtered_results)} results based on selected directories ---")
-                results = filtered_results
+                print(f"--- Filtered {len(results_list if is_paginated_format else results)} results to {len(filtered_results)} results based on selected directories ---")
+                if is_paginated_format:
+                    # 更新分页格式中的结果列表
+                    results['results'] = filtered_results
+                    # 更新分页信息中的总数
+                    if 'pagination' in results:
+                        results['pagination']['total_count'] = len(filtered_results)
+                        # 重新计算总页数
+                        page_size = results['pagination'].get('page_size', 50)
+                        results['pagination']['total_pages'] = max(1, (len(filtered_results) + page_size - 1) // page_size)
+                else:
+                    results = filtered_results
             except Exception as e:
                 print(f"Error filtering results by directory: {e}")
                 # 如果过滤出错，保留原始结果
                 import traceback
                 traceback.print_exc()
         
-        return results
+        # 确保返回完整的分页格式（保持分页信息）
+        if is_paginated_format:
+            # 分页格式：返回完整的分页对象
+            return results
+        else:
+            # 传统格式：返回列表
+            return results if isinstance(results, list) else []
 
-    # --- NEW: Cache Clearing Method --- (Step 5)
     def clear_search_cache(self):
         """Clears the LRU search cache."""
         cache_info = self._perform_search_with_cache.cache_info()
@@ -1158,7 +1199,7 @@ class SettingsDialog(QDialog):
         # 设置复选框状态
         enabled_checkboxes_count = 0
         checked_enabled_count = 0
-        for type_key, checkbox in self.file_type_checkboxes.items():
+        for checkbox, type_value in self.file_type_checkboxes.items():
             if checkbox.isEnabled():  # 只处理可用的复选框
                 enabled_checkboxes_count += 1
                 is_checked = type_key in selected_file_types
@@ -1376,7 +1417,7 @@ class SettingsDialog(QDialog):
         """处理全选复选框状态变更"""
         # 获取当前状态 - 注意：这里要使用传入的state参数，而不是直接获取复选框状态
         # Qt.Checked = 2, Qt.Unchecked = 0, Qt.PartiallyChecked = 1
-        # 直接使用状态值进行判断，当state为2时表示选中
+        # 直接使用数值2表示选中状态
         is_checked = (state == 2)  # 明确使用数值2表示选中状态
         
         print(f"DEBUG: 全选复选框状态变更: 设置所有复选框为 {is_checked} (状态值: {state})")
@@ -1387,7 +1428,7 @@ class SettingsDialog(QDialog):
         enabled_count = 0
         checked_count = 0
         # 遍历所有文件类型复选框
-        for type_key, checkbox in self.file_type_checkboxes.items():
+        for checkbox, type_value in self.file_type_checkboxes.items():
             # 只处理启用的复选框（即可用的文件类型）
             if checkbox.isEnabled():
                 enabled_count += 1
@@ -1404,7 +1445,7 @@ class SettingsDialog(QDialog):
         if is_checked:
             # 如果是全选，直接创建所有可用类型的列表
             selected_types = []
-            for type_key, checkbox in self.file_type_checkboxes.items():
+            for checkbox, type_value in self.file_type_checkboxes.items():
                 if checkbox.isEnabled():
                     selected_types.append(type_key)
             self.selected_file_types = selected_types
@@ -1420,7 +1461,7 @@ class SettingsDialog(QDialog):
     def _save_current_file_types(self):
         """收集当前勾选的文件类型并返回列表"""
         selected_types = []
-        for type_key, checkbox in self.file_type_checkboxes.items():
+        for checkbox, type_value in self.file_type_checkboxes.items():
             if checkbox.isChecked():
                 selected_types.append(type_key)
                 print(f"DEBUG: 复选框 {type_key} 被选中")
@@ -1443,7 +1484,7 @@ class SettingsDialog(QDialog):
         if len(self.selected_file_types) == 0:
             # 如果没有选择任何文件类型，恢复为默认全部可用文件类型
             enabled_types = []
-            for type_key, checkbox in self.file_type_checkboxes.items():
+            for checkbox, type_value in self.file_type_checkboxes.items():
                 if checkbox.isEnabled():
                     enabled_types.append(type_key)
             
@@ -1456,7 +1497,7 @@ class SettingsDialog(QDialog):
                 self.select_all_types_checkbox.blockSignals(True)
                 
                 # 更新复选框状态，逐个设置为选中
-                for type_key, checkbox in self.file_type_checkboxes.items():
+                for checkbox, type_value in self.file_type_checkboxes.items():
                     if checkbox.isEnabled():
                         checkbox.blockSignals(True)
                         checkbox.setChecked(True)
@@ -1530,7 +1571,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     startIndexingSignal = Signal(list, str, bool, int, int, object) # source_dirs, index_dir, enable_ocr, timeout, txt_limit_kb, file_types_to_index
     # ---------------------------------------------------------
     # Signal to trigger search in the worker thread (add types for size, date, file type, and case sensitivity)
-    startSearchSignal = Signal(str, str, object, object, object, object, object, str, bool, str, object) # Added object for search_dirs
+    startSearchSignal = Signal(str, str, object, object, object, object, object, str, bool, str, object, int, int) # Added page_number and page_size parameters
     # --- ADDED: Signal for update check --- 
     startUpdateCheckSignal = Signal(str, str) # current_version, update_url
     # ----------------------------------------
@@ -1578,6 +1619,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_directories = []  # 存储用户选择的搜索目录
         self.index_directories_dialog = None  # 索引目录对话框
         # ---------------------------
+        
+        # --- 添加分页相关属性 ---
+        self.current_page = 1
+        self.page_size = 50
+        self.total_pages = 0
+        self.total_count = 0
+        self.current_search_params = {}
+        self.pagination_enabled = True  # 是否启用分页功能
+        # -------------------------
 
         # --- Central Widget and Main Layout ---
         central_widget = QWidget()
@@ -1647,8 +1697,57 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.results_text.setOpenLinks(False)
         self.results_text.setStyleSheet("border: 1px solid #D0D0D0;")
         
+        # --- 创建分页控件 ---
+        self.pagination_frame = QFrame()
+        self.pagination_frame.setStyleSheet("background-color: #F8F8F8; border-top: 1px solid #D0D0D0;")
+        pagination_layout = QHBoxLayout(self.pagination_frame)
+        pagination_layout.setContentsMargins(10, 5, 10, 5)
+        
+        # 上一页按钮
+        self.prev_button = QPushButton("上一页")
+        self.prev_button.setEnabled(False)
+        self.prev_button.clicked.connect(self._go_to_prev_page)
+        
+        # 页码信息标签
+        self.page_info_label = QLabel("第 1 页，共 1 页")
+        self.page_info_label.setAlignment(Qt.AlignCenter)
+        
+        # 下一页按钮
+        self.next_button = QPushButton("下一页")
+        self.next_button.setEnabled(False)
+        self.next_button.clicked.connect(self._go_to_next_page)
+        
+        # 每页条数选择
+        page_size_label = QLabel("每页显示:")
+        self.page_size_combo = QComboBox()
+        self.page_size_combo.addItems(["25", "50", "100", "200"])
+        self.page_size_combo.setCurrentText("50")
+        self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
+        
+        # 跳转到页
+        goto_label = QLabel("跳转到:")
+        self.goto_page_edit = QLineEdit()
+        self.goto_page_edit.setPlaceholderText("页码")
+        self.goto_page_edit.setMaximumWidth(60)
+        self.goto_page_edit.returnPressed.connect(self._goto_page)
+        
+        # 布局分页控件
+        pagination_layout.addWidget(self.prev_button)
+        pagination_layout.addWidget(self.page_info_label)
+        pagination_layout.addWidget(self.next_button)
+        pagination_layout.addStretch()
+        pagination_layout.addWidget(page_size_label)
+        pagination_layout.addWidget(self.page_size_combo)
+        pagination_layout.addWidget(goto_label)
+        pagination_layout.addWidget(self.goto_page_edit)
+        
+        # 默认隐藏分页控件
+        self.pagination_frame.setVisible(False)
+        # -------------------------
+        
         right_layout.addWidget(right_title)
         right_layout.addWidget(self.results_text)
+        right_layout.addWidget(self.pagination_frame)
         
         # 将两个容器添加到分隔器
         self.main_splitter.addWidget(left_container)
@@ -2153,7 +2252,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # --------------------------------
         
         # --- File type filter change and sorting ---
-        for checkbox in self.file_type_checkboxes:  # Assume these checkboxes setup earlier
+        for checkbox, type_value in self.file_type_checkboxes.items():  # 正确遍历字典的键值对
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
             
         # --- Sort option changes trigger redisplay ---
@@ -2224,7 +2323,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 QTimer.singleShot(8000, warning_dialog.close)  # 8秒后自动关闭
         # --- 添加结束 ---
         
+        # 保存完整的后端结果（包括分页信息）
+        self.backend_search_result = backend_results
+        
+        # 保存完整的后端结果（包括分页信息）用于后续筛选
+        # 这样筛选时可以保持分页格式
         self.original_search_results = backend_results
+        print(f"🎯 DEBUG: 设置 original_search_results，类型: {type(backend_results)}")
+        if isinstance(backend_results, dict):
+            print(f"🎯 DEBUG: 字典键: {backend_results.keys()}")
         self.collapse_states = {}  # Reset collapse states on new search
         
         # 重置文件夹过滤状态
@@ -2234,8 +2341,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 检查文件夹树功能是否可用
         folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
         if folder_tree_available:
+            # 提取结果列表用于文件夹树构建
+            if isinstance(backend_results, dict) and 'results' in backend_results:
+                results_for_tree = backend_results['results']
+            else:
+                results_for_tree = backend_results if isinstance(backend_results, list) else []
+            
             # 仅当文件夹树功能可用时构建文件夹树
-            self.folder_tree.build_folder_tree_from_results(backend_results)
+            self.folder_tree.build_folder_tree_from_results(results_for_tree)
         else:
             # 如果功能不可用，确保文件夹树是空的
             self.folder_tree.clear()
@@ -2305,108 +2418,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 打印调试信息
         print(f"搜索范围变更为: {'文件名' if scope_index == 1 else '全文'}, " 
               f"模糊搜索选项{'已禁用' if scope_index == 1 else '已启用'}")
-    def _filter_results_by_type_slot(self):
-        """Filters the original search results based on checked file types and updates display."""
-        print("DEBUG: _filter_results_by_type_slot triggered")  # DEBUG
-        
-        # 检查是否处于过滤更新阻断状态
-        if self.blocking_filter_update:
-            print("DEBUG: Filter update is currently blocked")  # DEBUG
-            return
-        
-        # 检查是否有已选的文件类型
-        checked_types = []
-        for checkbox, type_value in self.file_type_checkboxes.items():
-            # 只添加被选中且可用的文件类型（专业版功能在未激活时为灰色不可选）
-            if checkbox.isChecked() and checkbox.isEnabled():
-                checked_types.append(type_value)
-        
-        print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
-        
-        # 如果没有选择文件类型，使用所有原始结果
-        if not checked_types:
-            print("DEBUG: No file types checked, using all original results")  # DEBUG
-            # 重要修复：必须创建原始结果的副本，而不是直接引用
-            filtered_results = self.original_search_results.copy()
-        else:
-            # 根据所选文件类型过滤原始结果
-            print("DEBUG: Filtering original results based on checked types...")  # DEBUG
-            filtered_results = []
-            for result in self.original_search_results:
-                file_path = result.get('file_path', '')
-                file_type = None
-                
-                # 提取文件扩展名
-                if file_path:
-                    lower_path = file_path.lower()
-                    for ext in ['.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md']:
-                        if lower_path.endswith(ext):
-                            file_type = ext[1:]  # 移除前导点
-                            # .htm特殊情况，处理为html
-                            if file_type == 'htm':
-                                file_type = 'html'
-                            break
-                
-                # 如果文件类型匹配所选类型，添加结果
-                if file_type and file_type in checked_types:
-                    filtered_results.append(result)
-            
-            print(f"DEBUG: Filtered results count after type filtering: {len(filtered_results)}")  # DEBUG
-        
-        # 应用文件夹过滤
-        if self.filtered_by_folder and self.current_filter_folder:
-            folder_filtered_results = []
-            for result in filtered_results:
-                file_path = result.get('file_path', '')
-                if not file_path:
-                    continue
-                    
-                # 处理存档文件中的项目
-                if '::' in file_path:
-                    archive_path = file_path.split('::', 1)[0]
-                    folder_path = str(Path(archive_path).parent)
-                else:
-                    folder_path = str(Path(file_path).parent)
-                    
-                # 检查文件路径是否属于所选文件夹
-                # 特殊处理根目录情况
-                is_match = False
-                if self.current_filter_folder.endswith(':\\'):  # 根目录情况
-                    # 对于D:\这样的根目录，直接检查文件路径是否以此开头
-                    is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
-                else:
-                    # 非根目录的正常情况
-                    is_match = (folder_path == self.current_filter_folder or 
-                               folder_path.startswith(self.current_filter_folder + os.path.sep))
-                
-                if is_match:
-                    folder_filtered_results.append(result)
-                    
-            # 更新过滤后的结果
-            filtered_results = folder_filtered_results
-        
-        # 保存过滤后的结果
-        self.search_results = filtered_results
-        
-        # 检查是否处于过滤更新阻断状态
-        if self.blocking_filter_update:
-            print("DEBUG: Filter update is currently blocked")  # DEBUG
-            return
-        
-        # 检查是否是轻量级搜索模式
-        if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
-            print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
-            # 在轻量级搜索模式下，直接使用所有原始结果
-            filtered_results = self.original_search_results.copy()
-            # 保存过滤后的结果
-            self.search_results = filtered_results
-            # 直接调用display_search_results_slot
-            self.display_search_results_slot(filtered_results)
-            return
-        
-        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
-        # 避免递归调用
-        self.display_search_results_slot(filtered_results)
     
     @Slot()
     def _sort_and_redisplay_results_slot(self):
@@ -2758,9 +2769,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
         # --- Get File Type Filters --- 
         selected_file_types = []
-        for checkbox, file_type in self.file_type_checkboxes.items():
+        for checkbox, type_value in self.file_type_checkboxes.items():
             if checkbox.isChecked():
-                selected_file_types.append(file_type)
+                selected_file_types.append(type_key)
         
         # --- Get Case Sensitivity Setting --- 
         settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME) # Re-get settings here
@@ -2771,7 +2782,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
         search_dirs_param = selected_dirs if selected_dirs and len(selected_dirs) < len(source_dirs) else None
         
-        # --- MODIFIED: Emit Signal to Worker with scope ---
+        # --- ADDED: 保存搜索参数以便分页使用 ---
+        self.current_search_params = {
+            "query_str": query,
+            "search_mode": mode,
+            "min_size": min_size_kb,
+            "max_size": max_size_kb,
+            "start_date": start_date_obj,
+            "end_date": end_date_obj,
+            "selected_file_types": selected_file_types,
+            "index_dir": index_dir,
+            "case_sensitive": case_sensitive,
+            "search_scope": search_scope,
+            "search_dirs_param": search_dirs_param
+        }
+        
+        # 重置分页状态为第一页
+        self.current_page = 1
+        
+        # --- MODIFIED: Emit Signal to Worker with scope and pagination ---
         self.startSearchSignal.emit(query,
                                     mode,
                                     min_size_kb,
@@ -2782,7 +2811,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                     index_dir, # Pass the index_dir_path
                                     case_sensitive,
                                     search_scope, # Pass search scope
-                                    search_dirs_param) # Pass selected directories for filtering
+                                    search_dirs_param, # Pass selected directories for filtering
+                                    self.current_page, # Page number
+                                    self.page_size) # Page size
         # -------------------------------------------------
 
         # --- ADDED: Store the current search scope --- 
@@ -2849,17 +2880,57 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.detail_label.setText(detail) # Show detail even for indeterminate phase
             self.detail_label.setVisible(True)
 
-    @Slot(list)
-    def display_search_results_slot(self, results):
+    @Slot(object)
+    def display_search_results_slot(self, search_result):
+        print(f"\n🎯 DISPLAY_SEARCH_RESULTS_SLOT 被调用")
+        print(f"   🔍 search_result type: {type(search_result)}")
+        if isinstance(search_result, dict):
+            print(f"   🔍 search_result keys: {search_result.keys()}")
+            if 'pagination' in search_result:
+                print(f"   🔍 pagination info: {search_result['pagination']}")
+                print(f"   🔍 results count: {len(search_result.get('results', []))}")
+        elif isinstance(search_result, list):
+            print(f"   🔍 list length: {len(search_result)}")
+        
+        """Displays search results, adapting format based on search scope."""
+        """Displays search results, adapting format based on search scope."""
+        """Displays search results, adapting format based on search scope."""
         """Displays search results, adapting format based on search scope."""
         scrollbar = self.results_text.verticalScrollBar()
         scroll_position = scrollbar.value()
+        
+        # 处理分页格式的搜索结果
+        if isinstance(search_result, dict) and 'results' in search_result:
+            # 新的分页格式
+            results = search_result['results']
+            pagination_info = search_result.get('pagination', {})
+            
+            # 更新分页控件
+            self._update_pagination_controls(pagination_info)
+            
+            # 显示分页控件
+            self.pagination_frame.setVisible(True)
+            
+        else:
+            # 传统格式或空结果
+            results = search_result if isinstance(search_result, list) else []
+            
+            # 隐藏分页控件
+            self.pagination_frame.setVisible(False)
+        
         try:
             self.results_text.clear()
             if not results:
                 self.results_text.setText("未找到匹配结果。")
                 self.statusBar().showMessage("未找到结果", 5000)
                 return
+            
+            # 安全阀：限制显示的结果数量，避免界面卡死
+            max_display_results = 100  # 最多显示100条结果
+            if len(results) > max_display_results:
+                print(f"警告: 结果过多({len(results)}条)，只显示前{max_display_results}条")
+                results = results[:max_display_results]
+                self.statusBar().showMessage(f"结果过多，只显示前 {max_display_results} 条", 0)
 
             # --- Determine highlight and link colors based on theme --- MODIFIED
             current_theme = self.settings.value("ui/theme", "现代蓝")
@@ -3090,7 +3161,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         
                     # --- Status update (Corrected Indentation) ---
                     if result_count > 0:
-                        self.statusBar().showMessage(f"找到 {result_count} 条结果", 0)
+                        self.statusBar().showMessage(f"显示第1页结果: {result_count} 条 (后端分页已启用)", 0)
                         
                 except Exception as render_err: # Inner exception handling
                     # (This block needs correct indentation relative to the inner try)
@@ -3161,7 +3232,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _handle_new_search_results_slot(self, backend_results):
         """Receives results from the backend worker, stores them, and triggers filtering/display."""
         print("Received new results from backend.")  # DEBUG
+        # 保存完整的后端结果（包括分页信息）
+        self.backend_search_result = backend_results
+        
+        # 保存完整的后端结果（包括分页信息）用于后续筛选
+        # 这样筛选时可以保持分页格式
         self.original_search_results = backend_results
+        print(f"🎯 DEBUG: 设置 original_search_results，类型: {type(backend_results)}")
+        if isinstance(backend_results, dict):
+            print(f"🎯 DEBUG: 字典键: {backend_results.keys()}")
         self.collapse_states = {}  # Reset collapse states on new search
         
         # 重置文件夹过滤状态
@@ -3171,8 +3250,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 检查文件夹树功能是否可用
         folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
         if folder_tree_available:
+            # 提取结果列表用于文件夹树构建
+            if isinstance(backend_results, dict) and 'results' in backend_results:
+                results_for_tree = backend_results['results']
+            else:
+                results_for_tree = backend_results if isinstance(backend_results, list) else []
+            
             # 仅当文件夹树功能可用时构建文件夹树
-            self.folder_tree.build_folder_tree_from_results(backend_results)
+            self.folder_tree.build_folder_tree_from_results(results_for_tree)
         else:
             # 如果功能不可用，确保文件夹树是空的
             self.folder_tree.clear()
@@ -3212,21 +3297,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
         # --- Sort Original Results --- 
         try:
-            # For score, already handled negation in key function, so always sort ascending based on key
-            if sort_field == "相关度":
-                 self.original_search_results.sort(key=get_sort_key, reverse=not reverse_sort) # Negate reverse for score
-            else:
-                 self.original_search_results.sort(key=get_sort_key, reverse=reverse_sort)
+            # 处理分页格式的排序
+            if isinstance(self.original_search_results, dict) and 'results' in self.original_search_results:
+                # 分页格式：只排序结果列表，保持分页信息
+                results_to_sort = self.original_search_results['results']
+                if sort_field == "相关度":
+                    sorted_results = sorted(results_to_sort, key=get_sort_key, reverse=not reverse_sort)
+                else:
+                    sorted_results = sorted(results_to_sort, key=get_sort_key, reverse=reverse_sort)
+                
+                # 更新分页格式中的结果列表
+                self.original_search_results['results'] = sorted_results
+            elif isinstance(self.original_search_results, list):
+                # 传统格式：直接排序列表
+                if sort_field == "相关度":
+                    self.original_search_results.sort(key=get_sort_key, reverse=not reverse_sort)
+                else:
+                    self.original_search_results.sort(key=get_sort_key, reverse=reverse_sort)
         except Exception as sort_err:
             print(f"Error during sorting: {sort_err}")
             QMessageBox.warning(self, "排序错误", f"对结果进行排序时出错: {sort_err}")
             return # Stop if sorting fails
 
         # --- Trigger Redisplay (which applies file type filter) --- 
-        self._filter_results_by_type_slot() 
+        self._filter_results_by_type_slot()
 
-    # --- Slot for Live File Type Filtering (Modified) --- 
-    @Slot()
+    # --- Slot for Live File Type Filtering (Modified) ---    @Slot()
     def _filter_results_by_type_slot(self):
         """Filters the original search results based on checked file types and updates display."""
         print("DEBUG: _filter_results_by_type_slot triggered")  # DEBUG
@@ -3248,13 +3344,23 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 如果没有选择文件类型，使用所有原始结果
         if not checked_types:
             print("DEBUG: No file types checked, using all original results")  # DEBUG
-            # 重要修复：必须创建原始结果的副本，而不是直接引用
-            filtered_results = self.original_search_results.copy()
+            # 检查是否有分页格式的原始结果
+            if isinstance(self.original_search_results, dict) and 'results' in self.original_search_results:
+                filtered_results = self.original_search_results['results'].copy()
+            else:
+                filtered_results = self.original_search_results.copy() if isinstance(self.original_search_results, list) else []
         else:
             # 根据所选文件类型过滤原始结果
             print("DEBUG: Filtering original results based on checked types...")  # DEBUG
             filtered_results = []
-            for result in self.original_search_results:
+            
+            # 确保 original_search_results 是列表格式
+            if isinstance(self.original_search_results, dict) and 'results' in self.original_search_results:
+                results_to_filter = self.original_search_results['results']
+            else:
+                results_to_filter = self.original_search_results if isinstance(self.original_search_results, list) else []
+            
+            for result in results_to_filter:
                 file_path = result.get('file_path', '')
                 file_type = None
                 
@@ -3310,28 +3416,22 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 保存过滤后的结果
         self.search_results = filtered_results
         
-        # 检查是否处于过滤更新阻断状态
-        if self.blocking_filter_update:
-            print("DEBUG: Filter update is currently blocked")  # DEBUG
-            return
-        
-        # 检查是否是轻量级搜索模式
-        if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
-            print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
-            # 在轻量级搜索模式下，直接使用所有原始结果
-            filtered_results = self.original_search_results.copy()
-            # 保存过滤后的结果
-            self.search_results = filtered_results
-            # 直接调用display_search_results_slot
+        # 检查原始搜索结果是否是分页格式
+        if isinstance(self.original_search_results, dict) and 'pagination' in self.original_search_results:
+            # 如果是分页格式，构造相应的过滤后分页结果
+            pagination_info = self.original_search_results['pagination'].copy()
+            # 更新分页信息以反映过滤后的结果
+            pagination_info['total_count'] = len(filtered_results)
+            pagination_info['total_pages'] = max(1, (len(filtered_results) + pagination_info.get('page_size', 50) - 1) // pagination_info.get('page_size', 50))
+            
+            filtered_paginated_result = {
+                'results': filtered_results,
+                'pagination': pagination_info
+            }
+            self.display_search_results_slot(filtered_paginated_result)
+        else:
+            # 如果不是分页格式，直接传递过滤后的列表
             self.display_search_results_slot(filtered_results)
-            return
-        
-        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
-        # 避免递归调用
-        self.display_search_results_slot(filtered_results)
-
-    # --- Link Handling Slot ---
-    @Slot(QUrl)
     def handle_link_clicked_slot(self, url):
         """Handles clicks on file, folder, and toggle links in the results text area."""
         scheme = url.scheme()
@@ -5255,6 +5355,96 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         sys.stderr.flush()
     # ----------------------------------------
 
+    # --- 分页控制方法 ---
+    def _update_pagination_controls(self, pagination_info=None):
+        """更新分页控件显示"""
+        if pagination_info:
+            self.current_page = pagination_info.get('current_page', 1)
+            self.total_pages = pagination_info.get('total_pages', 1)
+            self.total_count = pagination_info.get('total_count', 0)
+            
+            self.page_info_label.setText(f"第 {self.current_page} 页，共 {self.total_pages} 页 (总计 {self.total_count} 条)")
+            
+            self.prev_button.setEnabled(pagination_info.get('has_prev', False))
+            self.next_button.setEnabled(pagination_info.get('has_next', False))
+        else:
+            self.page_info_label.setText(f"第 {self.current_page} 页，共 {self.total_pages} 页")
+            self.prev_button.setEnabled(self.current_page > 1)
+            self.next_button.setEnabled(self.current_page < self.total_pages)
+        
+        self.goto_page_edit.clear()
+
+    @Slot()
+    def _go_to_prev_page(self):
+        """跳转到上一页"""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._perform_paginated_search()
+    
+    @Slot()
+    def _go_to_next_page(self):
+        """跳转到下一页"""
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._perform_paginated_search()
+    
+    @Slot(str)
+    def _on_page_size_changed(self, new_size):
+        """每页显示条数改变时的处理"""
+        try:
+            self.page_size = int(new_size)
+            self.current_page = 1
+            self._perform_paginated_search()
+        except ValueError:
+            print(f"无效的页面大小: {new_size}")
+    
+    @Slot()
+    def _goto_page(self):
+        """跳转到指定页面"""
+        try:
+            page_text = self.goto_page_edit.text().strip()
+            if not page_text:
+                return
+            
+            new_page = int(page_text)
+            if 1 <= new_page <= self.total_pages:
+                self.current_page = new_page
+                self._perform_paginated_search()
+                self.goto_page_edit.clear()
+            else:
+                QMessageBox.warning(self, "输入错误", f"页码必须在 1 到 {self.total_pages} 之间。")
+                self.goto_page_edit.clear()
+        except ValueError:
+            QMessageBox.warning(self, "输入错误", "页码必须是有效的整数。")
+            self.goto_page_edit.clear()
+
+    def _perform_paginated_search(self):
+        """执行分页搜索"""
+        if not self.current_search_params:
+            return
+        
+        params = self.current_search_params.copy()
+        params["page_size"] = self.page_size
+        params["page_number"] = self.current_page
+        params["return_total"] = self.current_page == 1
+        
+        self.startSearchSignal.emit(
+            params["query_str"],
+            params["search_mode"],
+            params["min_size"],
+            params["max_size"],
+            params["start_date"],
+            params["end_date"],
+            params["selected_file_types"],
+            params["index_dir"],
+            params["case_sensitive"],
+            params["search_scope"],
+            params["search_dirs_param"],
+            self.current_page,
+            self.page_size
+        )
+    # --- 分页控制方法结束 ---
+
 # --- 文件夹树视图组件 ---
 class FolderTreeWidget(QWidget):
     """提供文件夹树视图，显示搜索结果的源文件夹结构"""
@@ -5451,7 +5641,7 @@ class IndexDirectoriesDialog(QDialog):
                         image: url(checkmark_purple.png);
                     }
                 """
-            else:
+        else:
                 checkbox_style = """
                     QCheckBox::indicator:checked {
                         image: url(checkmark_blue.png);
@@ -5459,7 +5649,7 @@ class IndexDirectoriesDialog(QDialog):
                 """
                 
             # 应用样式到对话框中的所有复选框
-            self.setStyleSheet(checkbox_style)
+        self.setStyleSheet(checkbox_style)
             
         # 加载窗口几何信息
         geometry = self.settings.value("indexDirectoriesDialog/geometry")

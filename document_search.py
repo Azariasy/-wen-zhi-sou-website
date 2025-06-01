@@ -1391,7 +1391,13 @@ def search_index(query_str: str,
                  end_date: str | None = None,    # Changed to string (e.g., "2023-12-31")
                  file_type_filter: list[str] | None = None,
                  sort_by: str = 'relevance',
-                 case_sensitive: bool = False) -> list[dict]: # ADDED case_sensitive param
+                 case_sensitive: bool = False,  # ADDED case_sensitive param
+                 # --- ADDED: 分页支持参数 ---
+                 page_size: int = 50,           # 每页显示的结果数量
+                 page_number: int = 1,          # 当前页码（从1开始）
+                 return_total: bool = True,     # 是否返回总数（首次搜索时需要）
+                 # -------------------------
+                 ) -> dict:  # 修改返回类型为字典，包含结果和分页信息
     # --- MODIFIED: Include search_scope in debug log ---
     print(f"--- Starting search --- Query: '{query_str}', Mode: {search_mode}, Scope: {search_scope}")
     # ---------------------------------------------------
@@ -1693,8 +1699,37 @@ def search_index(query_str: str,
         print(f"Warning: Unknown sort_by option '{sort_by}', defaulting to relevance.")
         sort_field = None
 
+    # --- 修改分页支持的搜索逻辑 ---
+    print(f"分页搜索参数: page_size={page_size}, page_number={page_number}, return_total={return_total}")
+    
+    # 首先获取总数（仅在需要时）
+    total_count = 0
+    if return_total:
+        print("正在计算搜索结果总数...")
+        # 使用较大的limit来获取所有结果进行计数
+        total_results = searcher.search(final_query, limit=None, sortedby=sort_field, reverse=reverse)
+        total_count = len(total_results)
+        print(f"搜索结果总数: {total_count}")
+    
+    # 执行分页搜索 - 使用Whoosh的search_page方法
+    print(f"执行分页搜索: page_number={page_number}, page_size={page_size}")
+    
+    # 获取更多原始结果，然后在处理结果级别分页
+    # 估算需要多少文档才能产生足够的处理结果
+    estimated_docs_needed = max(200, page_number * page_size * 2)  # 保守估计
+    
+    try:
+        # 获取足够的文档命中
+        results = searcher.search(final_query, limit=estimated_docs_needed, sortedby=sort_field, reverse=reverse)
+        print(f"获取到 {len(results)} 个文档命中用于处理")
+        
+    except Exception as e:
+        print(f"搜索出错: {e}")
+        results = searcher.search(final_query, limit=100, sortedby=sort_field, reverse=reverse)
+    # --------------------------------
+
     # --- 修改搜索结果处理逻辑，过滤掉许可证无法访问的文件类型 ---
-    results = searcher.search(final_query, limit=100, sortedby=sort_field, reverse=reverse) # Increased limit
+    # results = searcher.search(final_query, limit=100, sortedby=sort_field, reverse=reverse) # 已替换为分页搜索
     
     # --- Result Processing and Highlighting (Conditional) --- MODIFIED
     if results:
@@ -1876,8 +1911,44 @@ def search_index(query_str: str,
     # Close searcher and index
     if searcher: searcher.close()
     if ix: ix.close()
-    print(f"--- Search complete. Returning {len(processed_results)} processed results. ---")
-    return processed_results
+    
+    # --- 在处理结果级别进行分页 ---
+    total_processed_count = len(processed_results)
+    print(f"--- 总共生成了 {total_processed_count} 个处理结果 ---")
+    
+    # 如果是第一页且需要返回总数，计算或使用已有总数
+    if return_total and page_number == 1:
+        # 使用处理结果的总数作为实际总数
+        actual_total_count = total_processed_count
+    else:
+        # 非首页，使用估算的总数或已知总数
+        actual_total_count = total_count if total_count > 0 else total_processed_count
+    
+    # 在处理结果上进行分页
+    start_idx = (page_number - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    paginated_results = processed_results[start_idx:end_idx]
+    print(f"--- 分页后返回 {len(paginated_results)} 个结果 (第{page_number}页，每页{page_size}条) ---")
+    
+    # 构建分页响应数据
+    import math
+    total_pages = math.ceil(actual_total_count / page_size) if actual_total_count > 0 else 1
+    
+    pagination_info = {
+        'current_page': page_number,
+        'page_size': page_size,
+        'total_count': actual_total_count,
+        'total_pages': total_pages,
+        'has_next': page_number < total_pages,
+        'has_prev': page_number > 1
+    }
+    
+    # 返回包含分页结果和分页信息的字典
+    return {
+        'results': paginated_results,
+        'pagination': pagination_info
+    }
 
 # --- MODIFIED: Accept a dictionary --- 
 # def _extract_worker(item_data: tuple) -> dict:
