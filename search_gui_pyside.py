@@ -1,3 +1,44 @@
+
+# --- 路径标准化函数 ---
+def normalize_path_for_display(path_str):
+    """
+    用于显示的路径标准化函数，确保路径一致性
+    """
+    if not path_str:
+        return ""
+        
+    try:
+        from pathlib import Path
+        import os
+        
+        # 对于压缩包内的文件特殊处理
+        if "::" in path_str:
+            archive_path, internal_path = path_str.split("::", 1)
+            norm_archive = normalize_path_for_display(archive_path)
+            norm_internal = internal_path.replace('\\', '/')
+            return f"{norm_archive}::{norm_internal}"
+            
+        # 普通文件路径处理
+        path_obj = Path(path_str)
+        if path_obj.exists():
+            norm_path = str(path_obj.resolve())
+        else:
+            norm_path = str(path_obj)
+        
+        # Windows路径标准化
+        if os.name == 'nt':
+            norm_path = norm_path.replace('/', '\\')
+            if len(norm_path) >= 2 and norm_path[1] == ':':
+                norm_path = norm_path[0].upper() + norm_path[1:]
+        else:
+            norm_path = norm_path.replace('\\', '/')
+            
+        return norm_path
+    except Exception as e:
+        print(f"路径标准化错误: {e}")
+        return path_str
+# ------------------------
+
 import sys
 import io # 新增导入
 
@@ -2367,17 +2408,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     folder_path = str(Path(archive_path).parent)
                 else:
                     folder_path = str(Path(file_path).parent)
-                    
+                
+                # 标准化路径进行比较
+                folder_path = normalize_path_for_display(folder_path)
+                normalized_filter_folder = normalize_path_for_display(self.current_filter_folder)
+                
                 # 检查文件路径是否属于所选文件夹
                 # 特殊处理根目录情况
                 is_match = False
-                if self.current_filter_folder.endswith(':\\'):  # 根目录情况
+                if normalized_filter_folder.endswith(':\\'):  # 根目录情况
                     # 对于D:\这样的根目录，直接检查文件路径是否以此开头
-                    is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
+                    is_match = folder_path.startswith(normalized_filter_folder) or folder_path == normalized_filter_folder[:-1]
                 else:
                     # 非根目录的正常情况
-                    is_match = (folder_path == self.current_filter_folder or 
-                               folder_path.startswith(self.current_filter_folder + os.path.sep))
+                    is_match = (folder_path == normalized_filter_folder or 
+                               folder_path.startswith(normalized_filter_folder + os.path.sep))
                 
                 if is_match:
                     folder_filtered_results.append(result)
@@ -3289,17 +3334,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     folder_path = str(Path(archive_path).parent)
                 else:
                     folder_path = str(Path(file_path).parent)
-                    
+                
+                # 标准化路径进行比较
+                folder_path = normalize_path_for_display(folder_path)
+                normalized_filter_folder = normalize_path_for_display(self.current_filter_folder)
+                
                 # 检查文件路径是否属于所选文件夹
                 # 特殊处理根目录情况
                 is_match = False
-                if self.current_filter_folder.endswith(':\\'):  # 根目录情况
+                if normalized_filter_folder.endswith(':\\'):  # 根目录情况
                     # 对于D:\这样的根目录，直接检查文件路径是否以此开头
-                    is_match = folder_path.startswith(self.current_filter_folder) or folder_path == self.current_filter_folder[:-1]
+                    is_match = folder_path.startswith(normalized_filter_folder) or folder_path == normalized_filter_folder[:-1]
                 else:
                     # 非根目录的正常情况
-                    is_match = (folder_path == self.current_filter_folder or 
-                               folder_path.startswith(self.current_filter_folder + os.path.sep))
+                    is_match = (folder_path == normalized_filter_folder or 
+                               folder_path.startswith(normalized_filter_folder + os.path.sep))
                 
                 if is_match:
                     folder_filtered_results.append(result)
@@ -5332,7 +5381,9 @@ class FolderTreeWidget(QWidget):
                 folder_path = str(Path(archive_path).parent)
             else:
                 folder_path = str(Path(file_path).parent)
-                
+            
+            # 标准化路径
+            folder_path = normalize_path_for_display(folder_path)
             self._add_folder_path(folder_path)
         
         # 展开所有顶层节点
