@@ -1,4 +1,5 @@
 
+
 # --- 路径标准化函数 ---
 def normalize_path_for_display(path_str):
     """
@@ -1639,6 +1640,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 添加查看方式功能变量 ---
         self.current_view_mode = 0  # 默认为列表视图
         # -------------------------
+        
+        # --- 即时搜索和防抖功能初始化 ---
+        self.instant_search_enabled = True  # 默认启用即时搜索
+        self.min_search_length = 2  # 最小搜索长度
+        self.debounce_delay = 500   # 防抖延迟（毫秒）
+        self.last_search_text = ""  # 上次搜索文本
+        
+        # 创建防抖计时器
+        self.search_debounce_timer = QTimer()
+        self.search_debounce_timer.setSingleShot(True)
+        self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
+        # --------------------------------------------
 
         # --- Central Widget and Main Layout ---
         central_widget = QWidget()
@@ -2718,6 +2731,24 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.display_search_results_slot(filtered_results)
             return
         
+        # 更新状态栏，显示过滤信息
+        original_count = len(self.original_search_results) if hasattr(self, 'original_search_results') else 0
+        filtered_count = len(filtered_results)
+        
+        if checked_types:
+            # 有选择文件类型时，显示过滤状态
+            type_names = ', '.join(checked_types)
+            if filtered_count == 0:
+                self.statusBar().showMessage(f"未找到 {type_names} 类型的文件 (原始结果: {original_count} 个)", 0)
+            else:
+                self.statusBar().showMessage(f"已过滤为 {type_names} 类型: {filtered_count} 个结果 (原始: {original_count} 个)", 0)
+        else:
+            # 没有选择文件类型时，显示所有结果
+            if filtered_count == 0:
+                self.statusBar().showMessage("未找到结果", 0)
+            else:
+                self.statusBar().showMessage(f"显示所有类型: {filtered_count} 个结果", 0)
+        
         # 使用新的查看方式系统来显示过滤后的结果
         self._apply_view_mode_and_display()
     
@@ -3003,9 +3034,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if filter_parts:
             status_msg += f" (筛选条件: {', '.join(filter_parts)})"
         
+        # --- 增强搜索进度提示 ---
         self.statusBar().showMessage(status_msg + "...", 0)
-        # --------------------------------------------------------------
-        self.progress_bar.setVisible(False)  # Hide progress during search
+        # 显示进度条，设置为不确定进度模式
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # 不确定进度模式
+        # 设置忙碌状态
+        self.set_busy_state(True)
+        # ------------------------------
 
         # --- Get File Type Filters --- 
         selected_file_types = []
@@ -3152,11 +3188,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
     def _apply_view_mode_and_display(self):
         """应用查看方式设置并重新显示结果（整合排序和分组）"""
-        if not getattr(self, 'search_results', []):
+        search_results = getattr(self, 'search_results', [])
+        if not search_results:
+            # 如果没有结果，显示空结果页面
+            self.results_text.clear()
+            self.results_text.setText("未找到匹配结果。")
             return
             
         # 首先对结果进行排序
-        sorted_results = self._sort_results(self.search_results)
+        sorted_results = self._sort_results(search_results)
         
         # 然后根据当前分组模式显示结果
         if getattr(self, 'grouping_enabled', False) and getattr(self, 'current_grouping_mode', 'none') != 'none':
@@ -3862,6 +3902,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 pass
         # --- Finally block (Corrected Indentation) ---
         finally:
+            # 隐藏进度条并重置忙碌状态
+            self.progress_bar.setVisible(False)
             self.set_busy_state(False)
 
     @Slot(dict)
