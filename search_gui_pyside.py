@@ -1619,6 +1619,26 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_directories = []  # 存储用户选择的搜索目录
         self.index_directories_dialog = None  # 索引目录对话框
         # ---------------------------
+        
+        # --- 添加防抖搜索功能变量 ---
+        self.search_debounce_timer = QTimer()
+        self.search_debounce_timer.setSingleShot(True)
+        self.debounce_delay = 300  # 300毫秒防抖延迟
+        self.min_search_length = 2  # 最小搜索长度
+        self.instant_search_enabled = False  # 即时搜索默认禁用
+        self.last_search_text = ""  # 上次搜索文本
+        # ---------------------------
+        
+        # --- 添加分组功能变量 ---
+        self.grouping_enabled = False  # 分组功能默认禁用
+        self.current_grouping_mode = 'none'  # 当前分组模式
+        self.group_data = {}  # 分组数据
+        self.group_collapse_states = {}  # 分组折叠状态
+        # -------------------------
+        
+        # --- 添加查看方式功能变量 ---
+        self.current_view_mode = 0  # 默认为列表视图
+        # -------------------------
 
         # --- Central Widget and Main Layout ---
         central_widget = QWidget()
@@ -1643,8 +1663,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- Filters ---
         # 移除文件大小筛选条件
         # 移除修改日期筛选条件
-        sort_layout = self._create_sort_bar() # Assume helper exists
-        main_layout.addLayout(sort_layout)
+        view_mode_layout = self._create_view_mode_bar() # 整合排序和分组功能
+        main_layout.addLayout(view_mode_layout)
         type_filter_layout = self._create_type_filter_bar() # Assume helper exists
         main_layout.addLayout(type_filter_layout)
         
@@ -1685,7 +1705,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         right_title.setAlignment(Qt.AlignCenter)
         right_title.setStyleSheet("background-color: #F0F0F0; padding: 5px;")
         self.results_text = QTextBrowser() 
-        self.results_text.setOpenLinks(False)
+        self.results_text.setOpenExternalLinks(False)  # 禁止外部链接自动打开
+        self.results_text.setOpenLinks(False)          # 禁止所有链接自动打开，使用信号处理
         self.results_text.setStyleSheet("border: 1px solid #D0D0D0;")
         
         right_layout.addWidget(right_title)
@@ -1771,91 +1792,266 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         QTimer.singleShot(500, self._check_first_launch)
 
     def _create_search_bar(self):
-        layout = QHBoxLayout()
-        # Search Label
-        search_label = QLabel("搜索词:")
-        layout.addWidget(search_label)
-        # Search ComboBox
+        """创建搜索栏 - 紧凑版本，节省垂直空间"""
+        # 创建紧凑的容器，不使用分组框节省空间
+        container = QFrame()
+        container.setObjectName("search_container")
+        container.setStyleSheet("""
+            QFrame#search_container {
+                background-color: #f0f8f0;
+                border: 2px solid #4CAF50;
+                border-radius: 6px;
+                padding: 4px;
+            }
+        """)
+        
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(4)  # 减少垂直间距
+        main_layout.setContentsMargins(4, 4, 4, 4)  # 减少边距
+        
+        # 第一行：搜索输入 - 紧凑布局
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(6)  # 减少间距
+        
+        search_label = QLabel("🔍")
+        search_label.setMaximumWidth(20)  # 使用图标代替文字
+        search_label.setStyleSheet("font-size: 16px;")
+        input_layout.addWidget(search_label)
+        
+        # 搜索输入框 - 减少高度
         self.search_combo = QComboBox()
         self.search_combo.setEditable(True)
         self.search_line_edit = self.search_combo.lineEdit()
         self.search_line_edit.setPlaceholderText("输入搜索词或选择历史记录...")
-        self.search_line_edit.setMinimumWidth(150) # ADDED: Minimum width for search input
-        layout.addWidget(self.search_combo, 1)
+        self.search_line_edit.setMinimumWidth(200)
+        self.search_line_edit.setMinimumHeight(26)  # 确保文字完整显示
+        self.search_line_edit.setMaximumHeight(28)
+        input_layout.addWidget(self.search_combo, 2)
 
-        # --- 创建搜索选项 (范围和模式) 使用下拉框 ---
-        # 所有搜索选项统一在一个水平布局中
-        options_h_layout = QHBoxLayout()
-        
-        # 范围选择下拉框
-        scope_label = QLabel("范围:")
-        self.scope_combo = QComboBox()
-        self.scope_combo.addItems(["全文", "文件名"])
-        options_h_layout.addWidget(scope_label)
-        options_h_layout.addWidget(self.scope_combo)
-        
-        # 添加一个小间隔
-        options_h_layout.addSpacing(10)
-        
-        # 模式选择下拉框
-        mode_label = QLabel("模式:")
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["精确", "模糊"])
-        options_h_layout.addWidget(mode_label)
-        options_h_layout.addWidget(self.mode_combo)
-        
-        options_h_layout.addStretch(1)
-        
-        # 将水平布局添加到主布局
-        layout.addLayout(options_h_layout)
-
-        # Search Button
+        # 搜索按钮 - 紧凑尺寸
         self.search_button = QPushButton("搜索")
         self.search_button.setObjectName("search_button")
-        layout.addWidget(self.search_button)
-        # Clear Button
-        self.clear_search_button = QPushButton("清空输入")
-        layout.addWidget(self.clear_search_button)
-
-        # 添加通配符帮助按钮
-        wildcard_help_button = QPushButton("?", self)
-        wildcard_help_button.setToolTip("通配符搜索帮助")
-        wildcard_help_button.setFixedSize(24, 24)  # 确保按钮足够小
-        wildcard_help_button.setStyleSheet("QPushButton { font-weight: bold; }")
-        wildcard_help_button.clicked.connect(self.show_wildcard_help_dialog)
+        self.search_button.setMaximumHeight(26)  # 减少高度
+        self.search_button.setMaximumWidth(50)   # 减少宽度
+        self.search_button.setStyleSheet("""
+            QPushButton#search_button {
+                font-weight: bold;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton#search_button:hover {
+                background-color: #45a049;
+            }
+            QPushButton#search_button:pressed {
+                background-color: #3d8b40;
+            }
+        """)
+        input_layout.addWidget(self.search_button)
         
-        # 添加到搜索布局中，放在合适位置
-        layout.insertWidget(layout.count()-1, wildcard_help_button)
+        # 清空按钮 - 紧凑尺寸
+        self.clear_search_button = QPushButton("清空")
+        self.clear_search_button.setMaximumHeight(26)
+        self.clear_search_button.setMaximumWidth(40)
+        self.clear_search_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+            QPushButton:pressed {
+                background-color: #c1180a;
+            }
+        """)
+        input_layout.addWidget(self.clear_search_button)
 
-        return layout
+        # 通配符帮助按钮 - 紧凑尺寸
+        wildcard_help_button = QPushButton("❓")
+        wildcard_help_button.setToolTip("通配符搜索帮助")
+        wildcard_help_button.setFixedSize(26, 26)  # 减少尺寸
+        wildcard_help_button.setStyleSheet("""
+            QPushButton {
+                font-weight: bold;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 13px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        wildcard_help_button.clicked.connect(self.show_wildcard_help_dialog)
+        input_layout.addWidget(wildcard_help_button)
+
+        main_layout.addLayout(input_layout)
+        
+        # 第二行：搜索选项 - 水平紧凑布局
+        options_layout = QHBoxLayout()
+        options_layout.setSpacing(8)  # 减少间距
+        
+        # 范围选择 - 水平布局
+        scope_label = QLabel("📍 范围:")
+        scope_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItems(["全文", "文件名"])
+        self.scope_combo.setMinimumHeight(26)  # 确保文字完整显示
+        self.scope_combo.setMaximumHeight(28)
+        options_layout.addWidget(scope_label)
+        options_layout.addWidget(self.scope_combo)
+        
+        # 模式选择 - 水平布局
+        mode_label = QLabel("🎯 模式:")
+        mode_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["精确", "模糊"])
+        self.mode_combo.setMinimumHeight(26)  # 确保文字完整显示
+        self.mode_combo.setMaximumHeight(28)
+        options_layout.addWidget(mode_label)
+        options_layout.addWidget(self.mode_combo)
+        
+        # 添加弹性空间
+        options_layout.addStretch(1)
+        
+        main_layout.addLayout(options_layout)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.addWidget(container)
+        return container_layout
 
     # (Add other _create_* helper methods if they were inline before)
-    def _create_sort_bar(self):
-        sort_layout = QHBoxLayout()
-        sort_label = QLabel("排序方式:")
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItems(["相关度", "文件路径", "修改日期", "文件大小"])
-        self.sort_desc_radio = QRadioButton("降序")
-        self.sort_asc_radio = QRadioButton("升序")
-        self.sort_desc_radio.setChecked(True)
-        sort_layout.addWidget(sort_label)
-        sort_layout.addWidget(self.sort_combo)
-        sort_layout.addWidget(self.sort_desc_radio)
-        sort_layout.addWidget(self.sort_asc_radio)
-        # 添加清除结果按钮
-        self.clear_results_button = QPushButton("清除结果")
+    def _create_view_mode_bar(self):
+        """创建查看方式栏 - 整合排序和分组功能"""
+        # 创建紧凑的水平布局
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # 添加背景和边框样式
+        container = QFrame()
+        container.setObjectName("view_container")
+        container.setStyleSheet("""
+            QFrame#view_container {
+                background-color: #f8f9fa;
+                border: 1px solid #C0C0C0;
+                border-radius: 6px;
+                padding: 2px;
+            }
+        """)
+        
+        # 查看方式选择器
+        view_label = QLabel("👁️ 查看方式:")
+        view_label.setStyleSheet("font-weight: bold; color: #333;")
+        
+        self.view_mode_combo = QComboBox()
+        # 定义各种查看方式
+        view_modes = [
+            "📄 列表视图 (按相关性)",        # 默认：不分组，按相关性排序
+            "⏰ 时间视图 (按日期分组)",       # 按修改日期分组
+            "📁 类型视图 (按文件类型)",       # 按文件类型分组  
+            "🗂️ 文件夹视图 (按路径)",        # 按文件夹分组
+            "📝 文件名 A→Z",              # 按文件名升序
+            "📝 文件名 Z→A",              # 按文件名降序
+            "📏 文件大小 (大→小)",          # 按大小降序
+            "📏 文件大小 (小→大)",          # 按大小升序
+            "⏰ 时间 (新→旧)",             # 按修改时间降序
+            "⏰ 时间 (旧→新)",             # 按修改时间升序
+        ]
+        
+        self.view_mode_combo.addItems(view_modes)
+        self.view_mode_combo.setCurrentIndex(0)  # 默认选择列表视图
+        self.view_mode_combo.setMinimumHeight(26)
+        self.view_mode_combo.setMaximumHeight(28)
+        self.view_mode_combo.setMinimumWidth(200)  # 确保文字完整显示
+        
+        main_layout.addWidget(view_label)
+        main_layout.addWidget(self.view_mode_combo)
+        
+        # 添加垂直分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setFixedWidth(1)
+        separator.setMaximumHeight(20)
+        separator.setStyleSheet("QFrame { color: #C0C0C0; }")
+        main_layout.addWidget(separator)
+        
+        # 清除结果按钮
+        self.clear_results_button = QPushButton("🗑️ 清除结果")
         self.clear_results_button.setToolTip("清除当前搜索结果")
-        sort_layout.addWidget(self.clear_results_button)
-        sort_layout.addStretch(1)
-        return sort_layout
+        self.clear_results_button.setMaximumHeight(24)
+        self.clear_results_button.setMaximumWidth(80)
+        self.clear_results_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+            QPushButton:pressed {
+                background-color: #E65100;
+            }
+        """)
+        main_layout.addWidget(self.clear_results_button)
+        
+        # 添加弹性空间
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(container)
+        return container_layout
 
     def _create_type_filter_bar(self):
+        """创建文件类型过滤栏 - 紧凑版本，节省垂直空间"""
         self.file_type_checkboxes = {}
         self.pro_file_types = {}  # 用于存储专业版文件类型的映射
         
-        type_filter_layout = QHBoxLayout()
-        type_filter_label = QLabel("文件类型:")
-        type_filter_layout.addWidget(type_filter_label)
+        # 创建紧凑的容器，不使用分组框节省空间
+        container = QFrame()
+        container.setObjectName("filter_container")
+        container.setStyleSheet("""
+            QFrame#filter_container {
+                background-color: #fafafa;
+                border: 1px solid #C0C0C0;
+                border-radius: 4px;
+                padding: 3px;
+            }
+        """)
+        
+        # 使用水平布局节省垂直空间
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(6)    # 减少间距
+        main_layout.setContentsMargins(3, 3, 3, 3)  # 减少边距
+        
+        # 文件类型选择区域 - 紧凑水平布局
+        type_filter_label = QLabel("📁 类型:")
+        type_filter_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        main_layout.addWidget(type_filter_label)
         
         # 定义支持的文件类型，包括专业版标记
         supported_types = {
@@ -1882,12 +2078,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             else:
                 pro_types.append((type_key, type_info))
         
-        # 处理函数 - 为了避免代码重复
+        # 处理函数 - 为了避免代码重复，紧凑版本
         def add_checkbox_to_layout(type_key, type_info):
             display_name = type_info['display']
             pro_feature = type_info['pro_feature']
             
             checkbox = QCheckBox(display_name)
+            checkbox.setStyleSheet("font-size: 11px;")  # 减小字体
             
             # 检查此文件类型是否需要专业版
             is_pro_feature = pro_feature is not None
@@ -1896,41 +2093,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 存储复选框和其对应的类型
             self.file_type_checkboxes[checkbox] = type_key
             
-            # 如果是专业版功能且未激活，则灰显并存储对应关系
+            # 如果是专业版功能且未激活，则灰显
             if is_pro_feature and not feature_available:
                 checkbox.setEnabled(False)
-                checkbox.setStyleSheet("color: #888888;")  # 灰色文本
+                checkbox.setStyleSheet("color: #888888; font-size: 11px;")  
+                checkbox.setText(f"{display_name}⭐")  # 添加星号标记专业版
                 
-                # 添加专业版标识
-                pro_label = QLabel("专业版")
-                pro_label.setStyleSheet("color: #FF6600; font-size: 8pt; font-weight: bold;")
                 self.pro_file_types[checkbox] = {
                     'feature': pro_feature,
-                    'pro_label': pro_label,
                     'display_name': display_name
                 }
-                
-                # 创建带有专业版标签的布局
-                checkbox_layout = QHBoxLayout()
-                checkbox_layout.setContentsMargins(0, 0, 0, 0)
-                checkbox_layout.setSpacing(2)
-                checkbox_layout.addWidget(checkbox)
-                checkbox_layout.addWidget(pro_label)
-                type_filter_layout.addLayout(checkbox_layout)
                 
                 # 为灰显的复选框添加点击事件提示专业版
                 checkbox.clicked.connect(self._show_pro_feature_dialog)
             else:
-                # 如果是已激活的专业版功能或基础版功能，正常显示
+                # 正常显示
                 checkbox.setEnabled(True)
-                
-                # 如果是专业版功能但已激活，不显示专业版标签
-                if is_pro_feature and feature_available:
-                    # 专业版功能已激活时，不显示"专业版"标签，直接添加复选框
-                    type_filter_layout.addWidget(checkbox)
-                else:
-                    # 基础版功能
-                    type_filter_layout.addWidget(checkbox)
+            
+            # 直接添加到主布局，不使用子布局
+            main_layout.addWidget(checkbox)
             
             # 连接复选框状态改变信号
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
@@ -1946,28 +2127,23 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             separator.setFrameShape(QFrame.VLine)
             separator.setFrameShadow(QFrame.Sunken)
             separator.setFixedWidth(1)
-            type_filter_layout.addWidget(separator)
-            
-            # 检查是否所有专业版功能都已激活
-            all_pro_features_available = True
-            for _, type_info in pro_types:
-                feature = type_info['pro_feature']
-                if feature is not None and not self.license_manager.is_feature_available(feature):
-                    all_pro_features_available = False
-                    break
-            
-            # 只有当有专业版功能未激活时，才显示"专业版"标签
-            if not all_pro_features_available:
-                pro_section_label = QLabel("专业版:")
-                pro_section_label.setStyleSheet("color: #FF6600; font-weight: bold;")
-                type_filter_layout.addWidget(pro_section_label)
+            separator.setMaximumHeight(16)  # 限制高度
+            main_layout.addWidget(separator)
         
         # 再添加专业版文件类型
         for type_key, type_info in pro_types:
             add_checkbox_to_layout(type_key, type_info)
         
-        type_filter_layout.addStretch(1)
-        return type_filter_layout
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.addWidget(container)
+        return container_layout
         
     def _show_pro_feature_dialog(self):
         """显示专业版功能提示对话框"""
@@ -2003,49 +2179,135 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print("DEBUG: Reset filter blocking after pro feature dialog closed")
         
         # 确保搜索结果在对话框关闭后不变
-        QTimer.singleShot(100, lambda: self._sort_and_redisplay_results_slot())
+        QTimer.singleShot(100, lambda: self._apply_view_mode_and_display())
         
         # 强制刷新UI，确保专业版功能的复选框状态正确显示
         QTimer.singleShot(200, self._force_ui_refresh)
 
     def _create_action_buttons(self):
-        """创建操作按钮区域"""
-        action_layout = QHBoxLayout()
+        """创建操作按钮区域 - 紧凑版本，节省垂直空间"""
+        # 创建紧凑的容器，不使用分组框节省空间
+        container = QFrame()
+        container.setObjectName("action_container")
+        container.setStyleSheet("""
+            QFrame#action_container {
+                background-color: #f5f5f5;
+                border: 1px solid #C0C0C0;
+                border-radius: 4px;
+                padding: 3px;
+            }
+        """)
         
-        # 添加说明标签
-        index_label = QLabel("索引操作:")
-        action_layout.addWidget(index_label)
+        # 使用水平布局节省垂直空间
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(8)  # 减少间距
+        main_layout.setContentsMargins(3, 3, 3, 3)  # 减少边距
         
-        # 创建索引按钮
-        self.index_button = QPushButton("创建索引")
+        # 操作标签
+        action_label = QLabel("⚙️ 操作:")
+        action_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        main_layout.addWidget(action_label)
+        
+        # 创建索引按钮 - 紧凑版本
+        self.index_button = QPushButton("📚 索引")
         self.index_button.setObjectName("index_button")
         self.index_button.setToolTip("创建或更新文档索引")
-        self.index_button.setMinimumWidth(100)  # 设置最小宽度确保按钮足够宽
+        self.index_button.setMaximumWidth(60)   # 减少宽度
+        self.index_button.setMaximumHeight(26)  # 减少高度
+        self.index_button.setStyleSheet("""
+            QPushButton#index_button {
+                font-weight: bold;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton#index_button:hover {
+                background-color: #1976D2;
+            }
+            QPushButton#index_button:pressed {
+                background-color: #1565C0;
+            }
+        """)
         
-        # --- ADDED: 创建取消索引按钮 ---
-        self.cancel_index_button = QPushButton("取消索引")
+        # 取消索引按钮 - 紧凑版本
+        self.cancel_index_button = QPushButton("⏹️ 取消")
         self.cancel_index_button.setObjectName("cancel_button")
         self.cancel_index_button.setToolTip("取消正在进行的索引操作")
-        self.cancel_index_button.setMinimumWidth(100)
-        self.cancel_index_button.setVisible(False)  # 初始时隐藏
-        # --------------------------------
+        self.cancel_index_button.setMaximumWidth(50)
+        self.cancel_index_button.setMaximumHeight(26)
+        self.cancel_index_button.setVisible(False)
+        self.cancel_index_button.setStyleSheet("""
+            QPushButton#cancel_button {
+                font-weight: bold;
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton#cancel_button:hover {
+                background-color: #da190b;
+            }
+            QPushButton#cancel_button:pressed {
+                background-color: #c1180a;
+            }
+        """)
         
-        # 查看跳过的文件按钮
-        self.view_skipped_button = QPushButton("查看跳过文件")
+        main_layout.addWidget(self.index_button)
+        main_layout.addWidget(self.cancel_index_button)
+        
+        # 添加垂直分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setFixedWidth(1)
+        separator.setMaximumHeight(16)  # 限制高度
+        separator.setStyleSheet("QFrame { color: #C0C0C0; }")
+        main_layout.addWidget(separator)
+        
+        # 查看跳过的文件按钮 - 紧凑版本
+        self.view_skipped_button = QPushButton("📄 跳过文件")
         self.view_skipped_button.setToolTip("查看在创建索引过程中被跳过的文件")
-        self.view_skipped_button.setMinimumWidth(120)  # 设置最小宽度确保按钮足够宽
-        self.view_skipped_button.setObjectName("index_button")  # 使用相同的objectName来应用相同样式
+        self.view_skipped_button.setMaximumWidth(80)
+        self.view_skipped_button.setMaximumHeight(26)
+        self.view_skipped_button.setStyleSheet("""
+            QPushButton {
+                font-weight: bold;
+                background-color: #9C27B0;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+            QPushButton:pressed {
+                background-color: #6A1B9A;
+            }
+        """)
         
         # 为保持兼容性，添加同名变量引用
         self.view_skipped_files_button = self.view_skipped_button
         
-        # 将按钮添加到布局
-        action_layout.addWidget(self.index_button)
-        action_layout.addWidget(self.cancel_index_button)  # 添加取消按钮
-        action_layout.addWidget(self.view_skipped_button)
-        action_layout.addStretch(1)
+        main_layout.addWidget(self.view_skipped_button)
         
-        return action_layout
+        # 添加弹性空间
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.addWidget(container)
+        return container_layout
 
     def _setup_status_bar(self):
         """Sets up the status bar with progress bar and labels."""
@@ -2167,6 +2429,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_button.clicked.connect(self.start_search_slot)
         self.clear_search_button.clicked.connect(self.clear_search_entry_slot)
         self.clear_results_button.clicked.connect(self.clear_results_slot)
+        
+        # --- 排序和分组控件连接 ---
+        # --- 查看方式控件信号连接 ---
+        self.view_mode_combo.currentIndexChanged.connect(self._handle_view_mode_change_slot)
+        
+        # --- 搜索防抖机制连接 ---
+        self.search_line_edit.textChanged.connect(self._on_search_text_changed)
+        self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
 
         # --- Date fields ---
 
@@ -2198,9 +2468,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
             
         # --- Sort option changes trigger redisplay ---
-        self.sort_combo.currentIndexChanged.connect(self._sort_and_redisplay_results_slot)
-        # Direction also changes the sorting
-        self.sort_desc_radio.toggled.connect(self._sort_and_redisplay_results_slot)
+
+
         
         # --- 新增：范围下拉框变化时更新模式下拉框启用状态 ---
         self.scope_combo.currentIndexChanged.connect(self._update_mode_combo_state_slot)
@@ -2449,84 +2718,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.display_search_results_slot(filtered_results)
             return
         
-        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
-        # 避免递归调用
-        self.display_search_results_slot(filtered_results)
+        # 使用新的查看方式系统来显示过滤后的结果
+        self._apply_view_mode_and_display()
     
     @Slot()
     def _sort_and_redisplay_results_slot(self):
-        """Sort results based on current sort settings and redisplay."""
-        # 获取排序键
-        combo_text = self.sort_combo.currentText()
-        if combo_text == "相关度":
-            sort_key = 'score'
-        elif combo_text == "文件路径":
-            sort_key = 'path'
-        elif combo_text == "修改日期":
-            sort_key = 'date'
-        elif combo_text == "文件大小":
-            sort_key = 'size'
-        else:
-            sort_key = 'score'  # 默认为相关度
-        
-        # 获取排序方向
-        is_descending = self.sort_desc_radio.isChecked()
-        
-        # 如果排序配置已更改，更新并保存设置
-        if sort_key != self.current_sort_key or is_descending != self.current_sort_descending:
-            self.current_sort_key = sort_key
-            self.current_sort_descending = is_descending
-            self._save_default_sort()
-        
-        # 对结果进行排序
-        results_to_sort = list(self.search_results)  # 创建副本进行排序
-        
-        try:
-            def get_sort_key(item):
-                if sort_key == 'score':
-                    # 相关度得分，可能是None
-                    return item.get('score', 0) or 0
-                elif sort_key == 'path':
-                    # 按文件路径排序
-                    return item.get('file_path', '').lower()
-                elif sort_key == 'date':
-                    # 按修改日期排序，格式为ISO字符串
-                    date_str = item.get('file_date', '')
-                    if not date_str:
-                        # 如果没有日期，归为最早或最晚
-                        return '1900-01-01' if is_descending else '9999-12-31'
-                    return date_str
-                elif sort_key == 'size':
-                    # 按文件大小排序
-                    return item.get('file_size_kb', 0) or 0
-                else:
-                    # 默认按相关度排序
-                    return item.get('score', 0) or 0
-            
-            # 执行排序
-            results_to_sort.sort(
-                key=get_sort_key,
-                reverse=is_descending
-            )
-        except Exception as e:
-            print(f"Error during sorting: {e}")
-            # 出错时继续使用未排序的结果
-        
-        # 更新并显示排序后的结果
-        self.search_results = results_to_sort
-        self.display_search_results_slot(self.search_results)
-        
-        # 更新状态消息（反映过滤状态）
-        result_count = len(self.search_results)
-        total_count = len(self.original_search_results)
-        
-        if self.filtered_by_folder and self.current_filter_folder:
-            self.statusBar().showMessage(f"显示 '{self.current_filter_folder}' 中的 {result_count} 条结果 (总共 {total_count} 条)", 0)
-        elif result_count != total_count:
-            # 其他过滤条件（如文件类型）
-            self.statusBar().showMessage(f"显示 {result_count} / {total_count} 条经过过滤的结果", 0)
-        else:
-            self.statusBar().showMessage(f"显示 {result_count} 条结果", 0)
+        """向后兼容的排序函数 - 重定向到新的查看方式函数"""
+        self._apply_view_mode_and_display()
 
     def _load_search_history(self):
         """Loads search history from QSettings and populates the search combo box."""
@@ -2557,6 +2755,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # Clear stored data associated with results
         self.collapse_states = {}
         self.original_search_results = []
+        self.search_results = []
+        # 清空分组状态
+        self.group_data = {}
+        self.group_collapse_states = {}
+        # --- 同时清空文件夹树 ---
+        if hasattr(self, 'folder_tree'):
+            self.folder_tree.clear()
+        # ----------------------------
 
     # UNIFIED Search Slot (Handles button click, enter press, combo activation)
     @Slot()
@@ -2833,6 +3039,500 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- ADDED: Store the current search scope --- 
         self.last_search_scope = search_scope 
         # ---------------------------------------------
+    
+    # --- 搜索防抖和分组功能方法 ---
+    @Slot(str)
+    def _on_search_text_changed(self, text):
+        """处理搜索文本变化 - 防抖机制"""
+        # 重置防抖计时器
+        if hasattr(self, 'search_debounce_timer'):
+            self.search_debounce_timer.stop()
+        
+        # 如果搜索文本长度不足最小要求，不触发搜索
+        if len(text.strip()) < getattr(self, 'min_search_length', 2):
+            return
+            
+        # 如果文本与上次相同，不需要重新搜索
+        if text.strip() == getattr(self, 'last_search_text', ''):
+            return
+            
+        # 如果启用了即时搜索，启动防抖计时器
+        if getattr(self, 'instant_search_enabled', False):
+            if hasattr(self, 'search_debounce_timer'):
+                self.search_debounce_timer.start(getattr(self, 'debounce_delay', 300))
+        
+    @Slot()
+    def _perform_debounced_search(self):
+        """执行防抖搜索"""
+        current_text = self.search_line_edit.text().strip()
+        
+        # 再次检查长度和变化
+        if len(current_text) < getattr(self, 'min_search_length', 2):
+            return
+            
+        if current_text == getattr(self, 'last_search_text', ''):
+            return
+            
+        # 记录当前搜索文本
+        self.last_search_text = current_text
+        
+        # 执行搜索
+        print(f"防抖搜索: {current_text}")
+        self.start_search_slot()
+        
+    def _toggle_instant_search(self, enabled):
+        """切换即时搜索功能"""
+        self.instant_search_enabled = enabled
+        print(f"即时搜索 {'启用' if enabled else '禁用'}")
+        
+    @Slot()
+    def _handle_view_mode_change_slot(self):
+        """处理查看方式改变 - 整合了排序和分组功能"""
+        view_mode_index = self.view_mode_combo.currentIndex()
+        view_mode_text = self.view_mode_combo.currentText()
+        print(f"查看方式改变为: {view_mode_text}")
+        
+        # 清除分组折叠状态
+        self.group_collapse_states = {}
+        
+        # 根据选择的查看方式设置内部状态
+        if view_mode_index == 0:      # 📄 列表视图 (按相关性)
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "相关度"
+            self.current_sort_desc = True
+        elif view_mode_index == 1:    # ⏰ 时间视图 (按日期分组)
+            self.current_grouping_mode = 'date'
+            self.grouping_enabled = True
+            self.current_sort_mode = "修改日期"
+            self.current_sort_desc = True
+        elif view_mode_index == 2:    # 📁 类型视图 (按文件类型)
+            self.current_grouping_mode = 'type'
+            self.grouping_enabled = True
+            self.current_sort_mode = "相关度"
+            self.current_sort_desc = True
+        elif view_mode_index == 3:    # 🗂️ 文件夹视图 (按路径)
+            self.current_grouping_mode = 'folder'
+            self.grouping_enabled = True
+            self.current_sort_mode = "相关度"
+            self.current_sort_desc = True
+        elif view_mode_index == 4:    # 📝 文件名 A→Z
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "文件路径"
+            self.current_sort_desc = False
+        elif view_mode_index == 5:    # 📝 文件名 Z→A
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "文件路径"
+            self.current_sort_desc = True
+        elif view_mode_index == 6:    # 📏 文件大小 (大→小)
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "文件大小"
+            self.current_sort_desc = True
+        elif view_mode_index == 7:    # 📏 文件大小 (小→大)
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "文件大小"
+            self.current_sort_desc = False
+        elif view_mode_index == 8:    # ⏰ 时间 (新→旧)
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "修改日期"
+            self.current_sort_desc = True
+        elif view_mode_index == 9:    # ⏰ 时间 (旧→新)
+            self.current_grouping_mode = 'none'
+            self.grouping_enabled = False
+            self.current_sort_mode = "修改日期"
+            self.current_sort_desc = False
+        
+        # 重新应用排序和分组并显示结果
+        self._apply_view_mode_and_display()
+        
+    def _apply_view_mode_and_display(self):
+        """应用查看方式设置并重新显示结果（整合排序和分组）"""
+        if not getattr(self, 'search_results', []):
+            return
+            
+        # 首先对结果进行排序
+        sorted_results = self._sort_results(self.search_results)
+        
+        # 然后根据当前分组模式显示结果
+        if getattr(self, 'grouping_enabled', False) and getattr(self, 'current_grouping_mode', 'none') != 'none':
+            # 应用分组
+            grouped_results = self._group_results(sorted_results, self.current_grouping_mode)
+            self._display_grouped_results(grouped_results)
+        else:
+            # 不分组，直接显示
+            self._display_ungrouped_results(sorted_results)
+            
+    def _sort_results(self, results):
+        """根据当前排序设置对结果进行排序"""
+        if not results:
+            return results
+            
+        sort_mode = getattr(self, 'current_sort_mode', '相关度')
+        sort_desc = getattr(self, 'current_sort_desc', True)
+        
+        def get_sort_key(result):
+            if sort_mode == "相关度":
+                return result.get('score', 0)
+            elif sort_mode == "文件路径":
+                path = result.get('file_path', result.get('path', ''))
+                return os.path.basename(path).lower() if path else ''
+            elif sort_mode == "修改日期":
+                return result.get('mtime', 0)
+            elif sort_mode == "文件大小":
+                return result.get('size', 0)
+            else:
+                return result.get('score', 0)  # 默认按相关度
+        
+        try:
+            sorted_results = sorted(results, key=get_sort_key, reverse=sort_desc)
+            return sorted_results
+        except Exception as e:
+            print(f"排序结果时出错: {e}")
+            return results  # 返回原始结果
+            
+    def _apply_grouping_and_display(self):
+        """保持向后兼容的分组应用函数"""
+        self._apply_view_mode_and_display()
+            
+    def _group_results(self, results, group_mode):
+        """将搜索结果按指定方式分组"""
+        grouped = {}
+        
+        for result in results:
+            group_key = self._get_group_key(result, group_mode)
+            
+            if group_key not in grouped:
+                grouped[group_key] = []
+            grouped[group_key].append(result)
+        
+        return grouped
+        
+    def _get_group_key(self, result, group_mode):
+        """获取结果的分组键"""
+        if group_mode == 'type':
+            # 按文件类型分组
+            file_path = result.get('file_path', result.get('path', ''))
+            return self._extract_file_type(file_path)
+        elif group_mode == 'date':
+            # 按修改日期分组（按天）
+            mtime = result.get('mtime', 0)
+            if mtime > 0:
+                date_obj = datetime.datetime.fromtimestamp(mtime)
+                return date_obj.strftime('%Y-%m-%d')
+            return '未知日期'
+        elif group_mode == 'folder':
+            # 按文件夹分组
+            file_path = result.get('file_path', result.get('path', ''))
+            return self._extract_folder_path(file_path)
+        else:
+            return '默认'
+            
+    def _display_grouped_results(self, grouped_results):
+        """显示分组后的搜索结果 - 使用完整的搜索结果显示格式"""
+        # 将分组结果展平为包含组信息的结果列表
+        flattened_results = []
+        
+        # 按组名排序
+        sorted_groups = sorted(grouped_results.keys())
+        
+        for group_name in sorted_groups:
+            group_results = grouped_results[group_name]
+            result_count = len(group_results)
+            
+            # 检查组的折叠状态
+            group_collapse_states = getattr(self, 'group_collapse_states', {})
+            is_collapsed = group_collapse_states.get(group_name, False)
+            collapse_symbol = "▶" if is_collapsed else "▼"
+            
+            # 创建组标题项（伪造一个结果项用于显示组标题）
+            group_id = f"group_{hash(group_name) & 0xFFFFFF:06X}"
+            
+            # 存储分组ID到名称的映射
+            if not hasattr(self, 'group_id_mapping'):
+                self.group_id_mapping = {}
+            self.group_id_mapping[group_id] = group_name
+            
+            # 添加组标题标记
+            group_header = {
+                '_is_group_header': True,
+                '_group_name': group_name,
+                '_group_id': group_id,
+                '_group_count': result_count,
+                '_is_collapsed': is_collapsed,
+                '_collapse_symbol': collapse_symbol
+            }
+            flattened_results.append(group_header)
+            
+            # 如果组未折叠，添加组内的结果
+            if not is_collapsed:
+                for result in group_results:
+                    # 为每个结果添加分组信息
+                    result_with_group = dict(result)
+                    result_with_group['_in_group'] = group_name
+                    flattened_results.append(result_with_group)
+        
+        # 使用完整的搜索结果显示函数，但需要临时修改来处理分组
+        # 保存原始的last_search_scope设置
+        original_scope = getattr(self, 'last_search_scope', 'fulltext')
+        self.last_search_scope = 'fulltext'  # 确保使用详细显示模式
+        
+        # 调用主显示函数
+        self._display_grouped_search_results(flattened_results)
+        
+        # 恢复原始设置
+        self.last_search_scope = original_scope
+        
+    def _display_grouped_search_results(self, flattened_results):
+        """显示包含分组信息的完整搜索结果"""
+        scrollbar = self.results_text.verticalScrollBar()
+        scroll_position = scrollbar.value()
+        
+        try:
+            self.results_text.clear()
+            if not flattened_results:
+                self.results_text.setText("未找到匹配结果。")
+                self.statusBar().showMessage("未找到结果", 5000)
+                return
+
+            # 获取主题颜色设置（复制自display_search_results_slot）
+            current_theme = self.settings.value("ui/theme", "现代蓝")
+            if current_theme == "现代蓝":
+                phrase_bg_color = "#E3F2FD"
+                fuzzy_bg_color = "#E8F5E9"
+                highlight_text_color = "#1565C0"
+                link_color = "#2196F3"
+                toggle_color = "#3498db"
+            elif current_theme == "现代紫":
+                phrase_bg_color = "#F3E5F5"
+                fuzzy_bg_color = "#EDE7F6"
+                highlight_text_color = "#7B1FA2"
+                link_color = "#9C27B0"
+                toggle_color = "#9b59b6"
+            elif current_theme == "现代红":
+                phrase_bg_color = "#FFE0E0"
+                fuzzy_bg_color = "#FFE8E8"
+                highlight_text_color = "#C62828"
+                link_color = "#E53935"
+                toggle_color = "#F44336"
+            elif current_theme == "现代橙":
+                phrase_bg_color = "#FFF3E0"
+                fuzzy_bg_color = "#FFF8E1"
+                highlight_text_color = "#FF6F00"
+                link_color = "#FF9800"
+                toggle_color = "#F57C00"
+            else:
+                phrase_bg_color = "#FFECB3"
+                fuzzy_bg_color = "#FFF9C4"
+                highlight_text_color = "#FF6F00"
+                link_color = "#FF9800"
+                toggle_color = "#F57C00"
+            
+            # 定义高亮标签
+            phrase_highlight_start = f'<span style="background-color: {phrase_bg_color}; color: {highlight_text_color};">'
+            fuzzy_highlight_start = f'<span style="background-color: {fuzzy_bg_color}; color: {highlight_text_color};">'
+            highlight_end = '</span>'
+            
+            link_style = f'style="color: {link_color}; text-decoration:none; font-weight:bold;"'
+            toggle_link_style = f'style="color: {toggle_color}; text-decoration:none; font-weight:bold;"'
+
+            html_output = []
+            
+            # 统计总结果数（排除组标题）
+            total_results = sum(1 for r in flattened_results if not r.get('_is_group_header', False))
+            html_output.append(f"<h4>搜索结果总计: {total_results} 个文件</h4>")
+            
+            # 处理每个项目（组标题或搜索结果）
+            for i, item in enumerate(flattened_results):
+                if item.get('_is_group_header', False):
+                    # 显示组标题
+                    group_name = item['_group_name']
+                    group_id = item['_group_id']
+                    group_count = item['_group_count']
+                    collapse_symbol = item['_collapse_symbol']
+                    
+                    html_output.append(f'''
+                        <div style="background-color: #f5f5f5; padding: 12px; margin: 15px 0 10px 0; border-left: 4px solid {toggle_color}; border-radius: 3px;">
+                            <a href="#{group_id}" {toggle_link_style}>
+                                <h3 style="margin: 0; color: {toggle_color};">{collapse_symbol} {group_name} ({group_count} 个文件)</h3>
+                            </a>
+                        </div>
+                    ''')
+                else:
+                    # 显示常规搜索结果（使用与首次搜索相同的逻辑）
+                    # 这里需要重复display_search_results_slot中的主要逻辑
+                    file_path = item.get('file_path', '(未知文件)')
+                    original_heading = item.get('heading', '(无章节标题)')
+                    marked_heading = item.get('marked_heading')
+                    marked_paragraph = item.get('marked_paragraph')
+                    match_start = item.get('match_start')
+                    match_end = item.get('match_end')
+                    original_paragraph = item.get('paragraph')
+                    
+                    escaped_display_path = html.escape(file_path)
+                    escaped_start_marker = html.escape("__HIGHLIGHT_START__")
+                    escaped_end_marker = html.escape("__HIGHLIGHT_END__")
+                    
+                    # 处理标题高亮
+                    heading_to_display = marked_heading if marked_heading is not None else original_heading
+                    escaped_heading_display = html.escape(heading_to_display)
+                    if marked_heading and escaped_start_marker in escaped_heading_display:
+                        escaped_heading_display = escaped_heading_display.replace(escaped_start_marker, fuzzy_highlight_start).replace(escaped_end_marker, highlight_end)
+                    
+                    # 处理段落高亮
+                    highlighted_paragraph_display = None
+                    if original_paragraph is not None:
+                        paragraph_text_for_highlight = marked_paragraph if marked_paragraph is not None else original_paragraph
+                        escaped_paragraph = html.escape(paragraph_text_for_highlight)
+                        highlighted_paragraph_display = escaped_paragraph
+                        
+                        if match_start is not None and match_end is not None:
+                            if 0 <= match_start < match_end <= len(escaped_paragraph):
+                                pre = escaped_paragraph[:match_start]
+                                mat = escaped_paragraph[match_start:match_end]
+                                post = escaped_paragraph[match_end:]
+                                highlighted_paragraph_display = f"{pre}{phrase_highlight_start}{mat}{highlight_end}{post}"
+                        elif marked_paragraph and escaped_start_marker in escaped_paragraph:
+                            highlighted_paragraph_display = escaped_paragraph.replace(escaped_start_marker, fuzzy_highlight_start).replace(escaped_end_marker, highlight_end)
+                    
+                    # 添加结果项显示
+                    html_output.append(f'<div style="margin-left: 20px; border-left: 2px solid #e0e0e0; padding-left: 15px; margin-bottom: 15px;">')
+                    
+                    # 文件路径和操作链接
+                    folder_path_str = ""
+                    is_archive_member = "::" in file_path
+                    try:
+                        if is_archive_member:
+                            archive_file_path = file_path.split("::", 1)[0]
+                            folder_path_str = str(Path(archive_file_path).parent)
+                        else:
+                            path_obj = Path(file_path)
+                            if path_obj.is_file():
+                                folder_path_str = str(path_obj.parent)
+                    except Exception as pe:
+                        print(f"W: Could not get parent for {file_path}: {pe}")
+
+                    links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>[打开文件]</a>']
+                    if folder_path_str:
+                        links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>[打开目录]</a>')
+                    
+                    html_output.append(f"<p><strong>{escaped_display_path}</strong></p>")
+                    html_output.append(f"<p>{ ' &nbsp; '.join(links) }</p>")
+                    
+                    # 章节信息
+                    if escaped_heading_display and escaped_heading_display != '(无章节标题)':
+                        html_output.append(f'<p style="margin-left: 10px;"><b>章节:</b> {escaped_heading_display}</p>')
+                    
+                    # 段落内容
+                    if highlighted_paragraph_display:
+                        html_output.append(f'<p style="margin-left: 20px;">{highlighted_paragraph_display}</p>')
+                    
+                    html_output.append('</div>')
+            
+            final_html = "".join(html_output)
+            self.results_text.setHtml(final_html)
+            scrollbar.setValue(scroll_position)
+            
+            self.statusBar().showMessage(f"找到 {total_results} 个匹配文件", 0)
+            
+        except Exception as e:
+            print(f"Error in _display_grouped_search_results: {e}")
+            self.results_text.setText(f"显示结果时出错: {e}")
+        
+    def _display_ungrouped_results(self, results):
+        """显示未分组的搜索结果 - 使用与首次搜索相同的详细显示格式"""
+        # 直接使用完整的搜索结果显示函数，确保显示效果一致
+        self.display_search_results_slot(results)
+        
+    def _format_single_result(self, result, result_id):
+        """格式化单个搜索结果的HTML"""
+        file_path = result.get('file_path', result.get('path', 'Unknown'))
+        score = result.get('score', 0)
+        mtime = result.get('mtime', 0)
+        size = result.get('size', 0)
+        
+        # 格式化修改时间
+        if mtime > 0:
+            mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            mtime_str = '未知'
+        
+        # 格式化文件大小
+        if size > 0:
+            if size < 1024:
+                size_str = f"{size} B"
+            elif size < 1024 * 1024:
+                size_str = f"{size / 1024:.1f} KB"
+            else:
+                size_str = f"{size / (1024 * 1024):.1f} MB"
+        else:
+            size_str = '未知'
+        
+        # 提取文件名和目录
+        normalized_path = normalize_path_for_display(file_path)
+        file_name = os.path.basename(normalized_path)
+        file_dir = os.path.dirname(normalized_path)
+        
+        return f'''
+            <div style="border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 6px; background-color: #fafafa;">
+                <div style="font-weight: bold; color: #1976d2; margin-bottom: 5px;">
+                    <a href="openfile:{normalized_path}" style="text-decoration: none; color: inherit;">{file_name}</a>
+                </div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 5px;">
+                    📁 <a href="openfolder:{file_dir}" style="text-decoration: none; color: #666;">{file_dir}</a>
+                </div>
+                <div style="color: #888; font-size: 0.8em;">
+                    相关度: {score:.2f} | 修改时间: {mtime_str} | 大小: {size_str}
+                </div>
+            </div>
+        '''
+        
+    def _extract_file_type(self, file_path):
+        """提取文件类型"""
+        if not file_path:
+            return '未知类型'
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext.startswith('.'):
+            ext = ext[1:]
+        
+        # 文件类型映射
+        type_mapping = {
+            'pdf': 'PDF文档',
+            'doc': 'Word文档', 'docx': 'Word文档',
+            'xls': 'Excel文档', 'xlsx': 'Excel文档',
+            'ppt': 'PowerPoint文档', 'pptx': 'PowerPoint文档',
+            'txt': '文本文件',
+            'md': 'Markdown文档',
+            'html': 'HTML文档', 'htm': 'HTML文档',
+            'rtf': 'RTF文档',
+            'eml': '邮件文件',
+            'msg': 'Outlook邮件',
+        }
+        
+        return type_mapping.get(ext, f'{ext.upper()}文件' if ext else '无扩展名')
+        
+    def _extract_folder_path(self, file_path):
+        """提取文件夹路径"""
+        if not file_path:
+            return '未知路径'
+        
+        # 标准化路径显示
+        normalized_path = normalize_path_for_display(file_path)
+        folder_path = os.path.dirname(normalized_path)
+        
+        # 如果路径太长，进行缩短
+        if len(folder_path) > 60:
+            # 保留开头和结尾，中间用...代替
+            parts = folder_path.split(os.sep)
+            if len(parts) > 3:
+                return os.sep.join([parts[0], '...', parts[-2], parts[-1]])
+        
+        return folder_path if folder_path else '根目录'
 
     # --- GUI Update Slots (Connected to worker signals) --- 
     @Slot(str)
@@ -3227,48 +3927,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # Note: set_busy_state(False) is called within display_search_results_slot's finally block
     
     # --- NEW Slot for Sorting (Called by sort controls) ---
-    @Slot()
-    def _sort_and_redisplay_results_slot(self):
-        """Sorts the original search results based on current sort controls and triggers redisplay."""
-        if not self.original_search_results: # Don't sort if there are no results
-            return
-            
-        # --- Get Sort Parameters --- 
-        sort_field = self.sort_combo.currentText()
-        is_descending = self.sort_desc_radio.isChecked()
-        reverse_sort = is_descending # True for descending, False for ascending
-
-        # --- Define Sort Key Function --- 
-        def get_sort_key(item):
-            if sort_field == "相关度":
-                # Default score is already handled in display, but keep it for explicit sorting
-                # Score is negated for descending sort earlier, so here negate again if ascending
-                return -item.get('score', 0.0) # Higher score first
-            elif sort_field == "文件路径":
-                return item.get('file_path', '')
-            elif sort_field == "修改日期":
-                # Ensure timestamp exists, default to 0 if missing
-                return item.get('last_modified', 0.0) 
-            elif sort_field == "文件大小":
-                # Ensure size exists, default to 0 if missing
-                return item.get('file_size', 0)
-            else:
-                return None # Should not happen
-
-        # --- Sort Original Results --- 
-        try:
-            # For score, already handled negation in key function, so always sort ascending based on key
-            if sort_field == "相关度":
-                 self.original_search_results.sort(key=get_sort_key, reverse=not reverse_sort) # Negate reverse for score
-            else:
-                 self.original_search_results.sort(key=get_sort_key, reverse=reverse_sort)
-        except Exception as sort_err:
-            print(f"Error during sorting: {sort_err}")
-            QMessageBox.warning(self, "排序错误", f"对结果进行排序时出错: {sort_err}")
-            return # Stop if sorting fails
-
-        # --- Trigger Redisplay (which applies file type filter) --- 
-        self._filter_results_by_type_slot() 
+ 
 
     # --- Slot for Live File Type Filtering (Modified) --- 
     @Slot()
@@ -3375,9 +4034,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.display_search_results_slot(filtered_results)
             return
         
-        # 修复：直接调用display_search_results_slot，而不是_sort_and_redisplay_results_slot
-        # 避免递归调用
-        self.display_search_results_slot(filtered_results)
+        # 使用新的查看方式系统来显示过滤后的结果
+        self._apply_view_mode_and_display()
 
     # --- Link Handling Slot ---
     @Slot(QUrl)
@@ -3464,6 +4122,34 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 print("Error: Could not extract key from toggle link:", raw_url_str)
             except Exception as e:
                 print(f"Error processing toggle link {raw_url_str}: {e}")
+        
+        elif scheme == "" and raw_url_str.startswith("#group_"):
+            try:
+                # 处理锚点格式的分组链接 (#group_XXXXXX)
+                group_id = raw_url_str[1:]  # 移除开头的#
+                
+                # 从ID映射中获取分组名称
+                if hasattr(self, 'group_id_mapping') and group_id in self.group_id_mapping:
+                    group_name = self.group_id_mapping[group_id]
+
+                else:
+                    print(f"  Warning: Unknown group ID: {group_id}")  # DEBUG
+                    return
+                
+                # 切换该分组的折叠状态
+                current_state = self.group_collapse_states.get(group_name, False)  # 默认展开
+                print(f"  Current collapse state for group '{group_name}': {current_state}")
+                new_state = not current_state
+                self.group_collapse_states[group_name] = new_state
+                print(f"  New collapse state for group '{group_name}': {self.group_collapse_states[group_name]}")
+                
+                # 重新应用分组显示
+                self._apply_grouping_and_display()
+                
+            except IndexError:
+                print("Error: Could not extract group name from toggle_group link:", raw_url_str)
+            except Exception as e:
+                print(f"Error processing toggle_group link {raw_url_str}: {e}")
 
     def _save_window_geometry(self):
         """Saves window geometry to QSettings."""
@@ -3676,7 +4362,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 print(f"刷新控件时出错: {e}")
             
         # 特别关注下拉框控件
-        for widget in [self.search_combo, self.sort_combo]:
+        for widget in [self.search_combo, self.view_mode_combo]:
             if widget:
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
@@ -4073,7 +4759,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             icon_path = arrow_icon_path.replace('\\', '/').replace('\\', '/')
             
             # 将图标应用到所有下拉框
-            for widget in [self.search_combo, self.scope_combo, self.mode_combo, self.sort_combo]:
+            for widget in [self.search_combo, self.scope_combo, self.mode_combo, self.view_mode_combo]:
                 if widget:
                     try:
                         # 设置自定义样式表以使用新图标
@@ -4150,36 +4836,29 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 如果出现错误，使用系统默认样式
             app.setStyleSheet("")
 
-    # --- Load and Apply Default Sort Settings --- 
+    # --- Load and Apply Default View Mode Settings --- 
     def _load_and_apply_default_sort(self):
-        """Loads default sort settings and applies them to the UI controls."""
-        default_sort_by = self.settings.value("search/defaultSortBy", "相关度") # Default: Relevance
-        default_sort_desc = self.settings.value("search/defaultSortDescending", True, type=bool) # Default: Descending
+        """Loads default view mode settings and applies them to the UI controls."""
+        default_view_mode = self.settings.value("search/defaultViewMode", 0, type=int) # Default: 列表视图
         
-        print(f"DEBUG: Loading default sort settings - Read By: '{default_sort_by}', Read Descending: {default_sort_desc}") # DETAILED DEBUG
+        print(f"DEBUG: Loading default view mode setting - Read Mode: {default_view_mode}") # DETAILED DEBUG
 
-        # Apply to ComboBox
-        index = self.sort_combo.findText(default_sort_by)
-        if index != -1:
-            self.sort_combo.setCurrentIndex(index)
+        # Apply to View Mode ComboBox
+        if hasattr(self, 'view_mode_combo') and default_view_mode < self.view_mode_combo.count():
+            self.view_mode_combo.setCurrentIndex(default_view_mode)
+            self.current_view_mode = default_view_mode
         else:
-            print(f"Warning: Default sort field '{default_sort_by}' not found in ComboBox. Using default.")
-            self.sort_combo.setCurrentIndex(0) # Fallback to first item (Relevance)
-            
-        # Apply to RadioButtons
-        if default_sort_desc:
-            self.sort_desc_radio.setChecked(True)
-        else:
-            self.sort_asc_radio.setChecked(True)
+            print(f"Warning: Default view mode '{default_view_mode}' is invalid. Using default.")
+            if hasattr(self, 'view_mode_combo'):
+                self.view_mode_combo.setCurrentIndex(0) # Fallback to first item
+            self.current_view_mode = 0
             
     def _save_default_sort(self):
-        """Saves the current sort settings as the new default."""
-        current_sort_by = self.sort_combo.currentText()
-        current_sort_desc = self.sort_desc_radio.isChecked()
-        
-        print(f"DEBUG: Saving default sort settings - Current By: '{current_sort_by}', Current Descending: {current_sort_desc}") # DETAILED DEBUG
-        self.settings.setValue("search/defaultSortBy", current_sort_by)
-        self.settings.setValue("search/defaultSortDescending", current_sort_desc)
+        """Saves the current view mode settings as the new default."""
+        if hasattr(self, 'view_mode_combo'):
+            current_view_mode = self.view_mode_combo.currentIndex()
+            print(f"DEBUG: Saving default view mode setting - Current Mode: {current_view_mode}") # DETAILED DEBUG
+            self.settings.setValue("search/defaultViewMode", current_view_mode)
         # self.settings.sync() # Explicit sync usually not needed, but can try if issues persist
 
     def _apply_result_font_size(self):
