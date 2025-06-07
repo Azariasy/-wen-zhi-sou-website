@@ -30,6 +30,12 @@ import extract_msg
 import csv
 from datetime import datetime
 import functools
+# --- ADDED: 导入并发处理模块 ---
+import asyncio
+import concurrent.futures
+from threading import Lock
+import time
+# ------------------------------------
 
 # --- ADDED: 许可证管理器支持 ---
 try:
@@ -292,6 +298,233 @@ def strip_tags(html):
     s = MLStripper()
     s.feed(html)
     return s.get_data()
+
+# --- ADDED: 并行搜索引擎优化类 ---
+class OptimizedSearchEngine:
+    """优化的并行搜索引擎"""
+    
+    def __init__(self, max_workers: int = 4):
+        self.max_workers = max_workers
+        self.search_lock = Lock()
+        self.result_cache = {}
+        self.cache_timeout = 300  # 5分钟缓存过期
+        
+    def _get_cache_key(self, query_str: str, search_params: dict) -> str:
+        """生成缓存键"""
+        import hashlib
+        key_data = f"{query_str}_{sorted(search_params.items())}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+        
+    def _is_cache_valid(self, cache_entry: dict) -> bool:
+        """检查缓存是否仍然有效"""
+        return time.time() - cache_entry['timestamp'] < self.cache_timeout
+        
+    def _analyze_query_complexity(self, query_str: str, search_params: dict) -> str:
+        """分析查询复杂度"""
+        # 简单查询：短文本，无通配符，无复杂过滤
+        if (len(query_str) <= 10 and 
+            '*' not in query_str and '?' not in query_str and
+            not search_params.get('file_type_filter') and
+            not search_params.get('min_size_kb') and
+            not search_params.get('start_date')):
+            return 'simple'
+            
+        # 复杂查询：多个通配符，多个过滤条件
+        wildcard_count = query_str.count('*') + query_str.count('?')
+        filter_count = sum(1 for k in ['file_type_filter', 'min_size_kb', 'max_size_kb', 'start_date', 'end_date'] 
+                          if search_params.get(k))
+        
+        if wildcard_count > 2 or filter_count > 2:
+            return 'complex'
+            
+        return 'medium'
+        
+    async def optimized_search(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
+        """优化的搜索入口"""
+        start_time = time.time()
+        
+        # 移除不兼容的参数
+        clean_params = search_params.copy()
+        if 'limit' in clean_params:
+            del clean_params['limit']
+        
+        # 生成缓存键
+        cache_key = self._get_cache_key(query_str, clean_params)
+        
+        # 检查缓存
+        if cache_key in self.result_cache:
+            cache_entry = self.result_cache[cache_key]
+            if self._is_cache_valid(cache_entry):
+                print(f"💾 缓存命中: {query_str} ({len(cache_entry['results'])} 结果)")
+                return cache_entry['results']
+            else:
+                # 清理过期缓存
+                del self.result_cache[cache_key]
+                
+        # 分析查询复杂度
+        complexity = self._analyze_query_complexity(query_str, clean_params)
+        print(f"🔍 查询复杂度: {complexity}")
+        
+        # 根据复杂度选择搜索策略
+        if complexity == 'simple':
+            results = await self._fast_simple_search(query_str, index_dir_path, **clean_params)
+        elif complexity == 'medium':
+            results = await self._parallel_search(query_str, index_dir_path, **clean_params)
+        else:
+            results = await self._complex_search_with_optimization(query_str, index_dir_path, **clean_params)
+            
+        # 缓存结果
+        self.result_cache[cache_key] = {
+            'results': results,
+            'timestamp': time.time()
+        }
+        
+        search_time = time.time() - start_time
+        print(f"⚡ 优化搜索完成: {search_time:.2f}秒, {len(results)} 结果")
+        
+        return results
+        
+    async def _fast_simple_search(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
+        """快速简单搜索"""
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            results = await loop.run_in_executor(
+                executor, 
+                lambda: search_index(query_str, index_dir_path, **search_params)
+            )
+        # 对于简单查询，限制返回结果数
+        return results[:100] if len(results) > 100 else results
+        
+    async def _parallel_search(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
+        """并行搜索（适用于中等复杂度查询）"""
+        loop = asyncio.get_event_loop()
+        
+        # 创建多个搜索任务
+        tasks = []
+        
+        # 如果有文件类型过滤，可以分别搜索不同类型
+        file_types = search_params.get('file_type_filter')
+        if file_types and len(file_types) > 1:
+            # 分文件类型并行搜索
+            for file_type in file_types:
+                task_params = search_params.copy()
+                task_params['file_type_filter'] = [file_type]
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    task = loop.run_in_executor(
+                        executor,
+                        lambda ft=file_type, tp=task_params: search_index(query_str, index_dir_path, **tp)
+                    )
+                    tasks.append(task)
+                    
+            # 等待所有任务完成并合并结果
+            if tasks:
+                all_results = await asyncio.gather(*tasks)
+                merged_results = []
+                seen_paths = set()
+                
+                for results in all_results:
+                    for result in results:
+                        path = result.get('file_path')
+                        if path not in seen_paths:
+                            merged_results.append(result)
+                            seen_paths.add(path)
+                            
+                # 按相关度重新排序
+                merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+                return merged_results[:500]  # 限制最多返回500个结果
+        
+        # 如果无法并行化，使用单线程搜索
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            results = await loop.run_in_executor(
+                executor,
+                lambda: search_index(query_str, index_dir_path, **search_params)
+            )
+        return results
+        
+    async def _complex_search_with_optimization(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
+        """复杂搜索优化"""
+        # 对于复杂查询，采用分阶段搜索策略
+        
+        # 第一阶段：快速文件名搜索
+        filename_params = search_params.copy()
+        filename_params['search_scope'] = 'filename'
+        
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            filename_results = await loop.run_in_executor(
+                executor,
+                lambda: search_index(query_str, index_dir_path, **filename_params)
+            )
+        
+        print(f"📁 文件名搜索: {len(filename_results)} 结果")
+        
+        # 第二阶段：全文搜索
+        fulltext_params = search_params.copy()
+        fulltext_params['search_scope'] = 'fulltext'
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            fulltext_results = await loop.run_in_executor(
+                executor,
+                lambda: search_index(query_str, index_dir_path, **fulltext_params)
+            )
+            
+        print(f"📄 全文搜索: {len(fulltext_results)} 结果")
+        
+        # 合并结果，去重，按相关度排序
+        all_results = filename_results + fulltext_results
+        seen_paths = set()
+        merged_results = []
+        
+        for result in all_results:
+            path = result.get('file_path')
+            if path not in seen_paths:
+                merged_results.append(result)
+                seen_paths.add(path)
+                
+        # 按相关度排序
+        merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+        return merged_results[:500]  # 限制最多返回500个结果
+        
+    def clear_cache(self):
+        """清理缓存"""
+        self.result_cache.clear()
+        print("🧹 搜索缓存已清理")
+        
+    def get_cache_stats(self) -> dict:
+        """获取缓存统计"""
+        valid_entries = sum(1 for entry in self.result_cache.values() 
+                           if self._is_cache_valid(entry))
+        return {
+            'total_entries': len(self.result_cache),
+            'valid_entries': valid_entries,
+            'cache_hit_potential': valid_entries / max(len(self.result_cache), 1)
+        }
+
+# 创建全局优化搜索引擎实例
+_optimized_search_engine = None
+
+def get_optimized_search_engine() -> OptimizedSearchEngine:
+    """获取全局优化搜索引擎实例"""
+    global _optimized_search_engine
+    if _optimized_search_engine is None:
+        _optimized_search_engine = OptimizedSearchEngine(max_workers=4)
+    return _optimized_search_engine
+
+def optimized_search_sync(query_str: str, index_dir_path: str, **search_params) -> list[dict]:
+    """同步版本的优化搜索接口"""
+    engine = get_optimized_search_engine()
+    
+    # 如果已经在事件循环中，直接调用异步版本
+    try:
+        loop = asyncio.get_running_loop()
+        # 在已有事件循环中，创建新任务
+        task = asyncio.create_task(engine.optimized_search(query_str, index_dir_path, **search_params))
+        return asyncio.run_coroutine_threadsafe(task, loop).result()
+    except RuntimeError:
+        # 没有运行的事件循环，创建新的
+        return asyncio.run(engine.optimized_search(query_str, index_dir_path, **search_params))
+# ------------------------------------
 
 def get_schema() -> Schema:
     analyzer = ChineseAnalyzer()

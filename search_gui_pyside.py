@@ -1167,36 +1167,69 @@ class Worker(QObject):
         # 注意：只有当后端实际支持search_dirs参数时才传递
         try:
             import inspect
-            backend_params = inspect.signature(document_search.search_index).parameters
-            if 'search_dirs' in backend_params:
-                # 后端支持search_dirs参数
-                results = document_search.search_index(
-                    query_str=query_str, 
-                    index_dir_path=index_dir_path, 
-                    search_mode=search_mode,
-                    search_scope=search_scope,
-                    min_size_kb=min_size,
-                    max_size_kb=max_size,
-                    start_date=start_date_str, 
-                    end_date=end_date_str, 
-                    file_type_filter=file_type_filter_list,
-                    case_sensitive=case_sensitive,
-                    search_dirs=search_dirs_list
+            # --- ADDED: 使用优化的搜索引擎 ---
+            print(f"🚀 使用优化搜索引擎: {query_str}")
+            
+            # 构建搜索参数
+            search_params = {
+                'search_mode': search_mode,
+                'search_scope': search_scope,
+                'case_sensitive': case_sensitive,
+                'limit': 500
+            }
+            
+            # 添加可选参数
+            if min_size is not None:
+                search_params['min_size_kb'] = min_size
+            if max_size is not None:
+                search_params['max_size_kb'] = max_size  
+            if start_date_str:
+                search_params['start_date'] = start_date_str
+            if end_date_str:
+                search_params['end_date'] = end_date_str
+            if file_type_filter_list:
+                search_params['file_type_filter'] = file_type_filter_list
+            if search_dirs_list:
+                search_params['search_dirs'] = search_dirs_list
+            
+            # 尝试使用优化搜索引擎，降级到原始搜索
+            try:
+                results = document_search.optimized_search_sync(
+                    query_str, index_dir_path, **search_params
                 )
-            else:
-                # 后端不支持search_dirs参数
-                results = document_search.search_index(
-                    query_str=query_str, 
-                    index_dir_path=index_dir_path, 
-                    search_mode=search_mode,
-                    search_scope=search_scope,
-                    min_size_kb=min_size,
-                    max_size_kb=max_size,
-                    start_date=start_date_str, 
-                    end_date=end_date_str, 
-                    file_type_filter=file_type_filter_list,
-                    case_sensitive=case_sensitive
-                )
+            except Exception as e:
+                print(f"⚠️ 优化搜索失败，降级到传统搜索: {e}")
+                # 降级到原始搜索方法
+                backend_params = inspect.signature(document_search.search_index).parameters
+                if 'search_dirs' in backend_params:
+                    # 后端支持search_dirs参数
+                    results = document_search.search_index(
+                        query_str=query_str, 
+                        index_dir_path=index_dir_path, 
+                        search_mode=search_mode,
+                        search_scope=search_scope,
+                        min_size_kb=min_size,
+                        max_size_kb=max_size,
+                        start_date=start_date_str, 
+                        end_date=end_date_str, 
+                        file_type_filter=file_type_filter_list,
+                        case_sensitive=case_sensitive,
+                        search_dirs=search_dirs_list
+                    )
+                else:
+                    # 后端不支持search_dirs参数
+                    results = document_search.search_index(
+                        query_str=query_str, 
+                        index_dir_path=index_dir_path, 
+                        search_mode=search_mode,
+                        search_scope=search_scope,
+                        min_size_kb=min_size,
+                        max_size_kb=max_size,
+                        start_date=start_date_str, 
+                        end_date=end_date_str, 
+                        file_type_filter=file_type_filter_list,
+                        case_sensitive=case_sensitive
+                    )
         except TypeError:
             # 如果后端不支持某些参数，使用最基本的参数调用
             results = document_search.search_index(
