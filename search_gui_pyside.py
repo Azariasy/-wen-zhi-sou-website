@@ -1,5 +1,7 @@
 
 
+
+
 # --- 路径标准化函数 ---
 def normalize_path_for_display(path_str):
     """
@@ -789,8 +791,8 @@ class VirtualResultsModel(QAbstractListModel):
         
         # 从父窗口获取查看方式设置并应用完整的处理流程
         if self.parent_window:
-            # 首先应用排序
-            sorted_results = self.parent_window._sort_results(results)
+            # 使用默认相关性排序（搜索引擎返回顺序）
+            sorted_results = results
             
             # 检查是否需要分组显示
             if (hasattr(self.parent_window, 'grouping_enabled') and 
@@ -2359,6 +2361,108 @@ class SettingsDialog(QDialog):
         self.selected_file_types = self._save_current_file_types()
 
 # --- Main GUI Window ---
+# --- UI设计规范常量 ---
+UI_CONSTANTS = {
+    # 字体设置
+    'FONT_SIZE_NORMAL': '12px',      # 标准字体大小
+    'FONT_SIZE_SMALL': '11px',       # 小字体大小
+    'FONT_SIZE_LARGE': '14px',       # 大字体大小
+    'FONT_SIZE_ICON': '14px',        # 图标字体大小
+    
+    # 控件尺寸
+    'BUTTON_HEIGHT': 28,             # 标准按钮高度
+    'INPUT_HEIGHT': 28,              # 输入框高度
+    'COMBO_HEIGHT': 28,              # 下拉框高度
+    'ICON_SIZE': 16,                 # 标准图标尺寸
+    
+    # 间距设置
+    'SPACING_SMALL': 6,              # 小间距
+    'SPACING_NORMAL': 8,             # 标准间距
+    'SPACING_LARGE': 12,             # 大间距
+    'MARGIN_SMALL': 4,               # 小边距
+    'MARGIN_NORMAL': 6,              # 标准边距
+    
+    # 圆角设置
+    'BORDER_RADIUS_SMALL': 4,        # 小圆角
+    'BORDER_RADIUS_NORMAL': 6,       # 标准圆角
+    
+    # 配色方案 - 现代渐变色系
+    'COLORS': {
+        # 主要操作按钮 - 蓝绿渐变系
+        'PRIMARY': '#00BCD4',           # 青色主色
+        'PRIMARY_HOVER': '#00ACC1',     # 青色悬停
+        'PRIMARY_PRESSED': '#0097A7',   # 青色按下
+        
+        # 成功操作按钮 - 绿色系
+        'SUCCESS': '#4CAF50',           # 绿色主色  
+        'SUCCESS_HOVER': '#45A049',     # 绿色悬停
+        'SUCCESS_PRESSED': '#3D8B40',   # 绿色按下
+        
+        # 警告操作按钮 - 橙色系
+        'WARNING': '#FF9800',           # 橙色主色
+        'WARNING_HOVER': '#F57C00',     # 橙色悬停  
+        'WARNING_PRESSED': '#E65100',   # 橙色按下
+        
+        # 危险操作按钮 - 红色系
+        'DANGER': '#F44336',            # 红色主色
+        'DANGER_HOVER': '#E53935',      # 红色悬停
+        'DANGER_PRESSED': '#C62828',    # 红色按下
+        
+        # 信息操作按钮 - 蓝色系
+        'INFO': '#2196F3',              # 蓝色主色
+        'INFO_HOVER': '#1E88E5',        # 蓝色悬停
+        'INFO_PRESSED': '#1565C0',      # 蓝色按下
+        
+        # 次要操作按钮 - 紫色系
+        'SECONDARY': '#9C27B0',         # 紫色主色
+        'SECONDARY_HOVER': '#8E24AA',   # 紫色悬停
+        'SECONDARY_PRESSED': '#7B1FA2', # 紫色按下
+    },
+    
+    # 图标定义
+    'ICONS': {
+        'search': '🔍',
+        'clear': '✖️',
+        'help': '❓',
+        'settings': '⚙️',
+        'index': '📚',
+        'cancel': '⏹️',
+        'files': '📄',
+        'list': '📄',
+        'time': '⏰',
+        'type': '📁',
+        'folder': '🗂️',
+        'range': '📍',
+        'mode': '🎯',
+        'view': '👁️'
+    }
+}
+
+def create_button_style(color_type='PRIMARY'):
+    """创建统一的按钮样式
+    
+    Args:
+        color_type: 颜色类型，可选值：PRIMARY, SUCCESS, WARNING, DANGER, INFO, SECONDARY
+    """
+    colors = UI_CONSTANTS['COLORS']
+    return f"""
+        QPushButton {{
+            font-weight: bold;
+            background-color: {colors[color_type]};
+            color: white;
+            border: none;
+            border-radius: {UI_CONSTANTS['BORDER_RADIUS_SMALL']}px;
+            padding: {UI_CONSTANTS['MARGIN_SMALL']}px {UI_CONSTANTS['MARGIN_NORMAL']}px;
+            font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};
+        }}
+        QPushButton:hover {{
+            background-color: {colors[f'{color_type}_HOVER']};
+        }}
+        QPushButton:pressed {{
+            background-color: {colors[f'{color_type}_PRESSED']};
+        }}
+    """
+
 class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # Signal to trigger indexing in the worker thread
     # --- MODIFIED: Add file_types_to_index parameter ---
@@ -2433,6 +2537,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 添加查看方式功能变量 ---
         self.current_view_mode = 0  # 默认为列表视图
         # -------------------------
+        
+
         
         # --- 即时搜索和防抖功能初始化 ---
         self.instant_search_enabled = True  # 默认启用即时搜索
@@ -2632,131 +2738,106 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         QTimer.singleShot(500, self._check_first_launch)
 
     def _create_search_bar(self):
-        """创建搜索栏 - 紧凑版本，节省垂直空间"""
-        # 创建紧凑的容器，不使用分组框节省空间
+        """创建搜索栏 - 使用统一设计规范"""
+        # 创建统一样式的容器
         container = QFrame()
         container.setObjectName("search_container")
-        container.setStyleSheet("""
-            QFrame#search_container {
+        container.setStyleSheet(f"""
+            QFrame#search_container {{
                 background-color: #f0f8f0;
                 border: 2px solid #4CAF50;
-                border-radius: 6px;
-                padding: 4px;
-            }
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_NORMAL']}px;
+                padding: {UI_CONSTANTS['MARGIN_NORMAL']}px;
+            }}
         """)
         
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(4)  # 减少垂直间距
-        main_layout.setContentsMargins(4, 4, 4, 4)  # 减少边距
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_SMALL'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_SMALL'], UI_CONSTANTS['MARGIN_SMALL'], 
+                                     UI_CONSTANTS['MARGIN_SMALL'], UI_CONSTANTS['MARGIN_SMALL'])
         
-        # 第一行：搜索输入 - 紧凑布局
+        # 第一行：搜索输入 - 统一布局
         input_layout = QHBoxLayout()
-        input_layout.setSpacing(6)  # 减少间距
+        input_layout.setSpacing(UI_CONSTANTS['SPACING_NORMAL'])
         
-        search_label = QLabel("🔍")
-        search_label.setMaximumWidth(20)  # 使用图标代替文字
-        search_label.setStyleSheet("font-size: 16px;")
+        search_label = QLabel(UI_CONSTANTS['ICONS']['search'])
+        search_label.setFixedSize(UI_CONSTANTS['ICON_SIZE'] + 4, UI_CONSTANTS['INPUT_HEIGHT'])
+        search_label.setAlignment(Qt.AlignCenter)
+        search_label.setStyleSheet(f"font-size: {UI_CONSTANTS['FONT_SIZE_ICON']};")
         input_layout.addWidget(search_label)
         
-        # 搜索输入框 - 减少高度
+        # 搜索输入框 - 统一高度
         self.search_combo = QComboBox()
         self.search_combo.setEditable(True)
         self.search_line_edit = self.search_combo.lineEdit()
         self.search_line_edit.setPlaceholderText("输入搜索词或选择历史记录...")
         self.search_line_edit.setMinimumWidth(200)
-        self.search_line_edit.setMinimumHeight(26)  # 确保文字完整显示
-        self.search_line_edit.setMaximumHeight(28)
+        self.search_combo.setFixedHeight(UI_CONSTANTS['INPUT_HEIGHT'])
         input_layout.addWidget(self.search_combo, 2)
 
-        # 搜索按钮 - 紧凑尺寸
+        # 搜索按钮 - 使用SUCCESS配色（绿色系）
         self.search_button = QPushButton("搜索")
         self.search_button.setObjectName("search_button")
-        self.search_button.setMaximumHeight(26)  # 减少高度
-        self.search_button.setMaximumWidth(50)   # 减少宽度
-        self.search_button.setStyleSheet("""
-            QPushButton#search_button {
-                font-weight: bold;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton#search_button:hover {
-                background-color: #45a049;
-            }
-            QPushButton#search_button:pressed {
-                background-color: #3d8b40;
-            }
-        """)
+        self.search_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.search_button.setMinimumWidth(60)
+        self.search_button.setStyleSheet(create_button_style('SUCCESS'))
         input_layout.addWidget(self.search_button)
         
-        # 清空按钮 - 紧凑尺寸
-        self.clear_search_button = QPushButton("清空")
-        self.clear_search_button.setMaximumHeight(26)
-        self.clear_search_button.setMaximumWidth(40)
-        self.clear_search_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-            QPushButton:pressed {
-                background-color: #c1180a;
-            }
-        """)
+        # 清空按钮 - 使用DANGER配色（红色系）
+        self.clear_search_button = QPushButton(UI_CONSTANTS['ICONS']['clear'])
+        self.clear_search_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.clear_search_button.setFixedWidth(UI_CONSTANTS['BUTTON_HEIGHT'])  # 正方形按钮
+        self.clear_search_button.setToolTip("清空搜索")
+        self.clear_search_button.setStyleSheet(create_button_style('DANGER'))
         input_layout.addWidget(self.clear_search_button)
 
-        # 通配符帮助按钮 - 紧凑尺寸
-        wildcard_help_button = QPushButton("❓")
+        # 通配符帮助按钮 - 使用INFO配色（蓝色系）
+        wildcard_help_button = QPushButton(UI_CONSTANTS['ICONS']['help'])
         wildcard_help_button.setToolTip("通配符搜索帮助")
-        wildcard_help_button.setFixedSize(26, 26)  # 减少尺寸
-        wildcard_help_button.setStyleSheet("""
-            QPushButton {
+        wildcard_help_button.setFixedSize(UI_CONSTANTS['BUTTON_HEIGHT'], UI_CONSTANTS['BUTTON_HEIGHT'])
+        # 为圆形按钮特别设置样式
+        wildcard_help_button.setStyleSheet(f"""
+            QPushButton {{
                 font-weight: bold;
-                background-color: #2196F3;
+                background-color: {UI_CONSTANTS['COLORS']['INFO']};
                 color: white;
                 border: none;
-                border-radius: 13px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
+                border-radius: {UI_CONSTANTS['BUTTON_HEIGHT'] // 2}px;
+                font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};
+            }}
+            QPushButton:hover {{
+                background-color: {UI_CONSTANTS['COLORS']['INFO_HOVER']};
+            }}
+            QPushButton:pressed {{
+                background-color: {UI_CONSTANTS['COLORS']['INFO_PRESSED']};
+            }}
         """)
         wildcard_help_button.clicked.connect(self.show_wildcard_help_dialog)
         input_layout.addWidget(wildcard_help_button)
 
         main_layout.addLayout(input_layout)
         
-        # 第二行：搜索选项 - 水平紧凑布局
+        # 第二行：搜索选项 - 统一布局
         options_layout = QHBoxLayout()
-        options_layout.setSpacing(8)  # 减少间距
+        options_layout.setSpacing(UI_CONSTANTS['SPACING_LARGE'])
         
-        # 范围选择 - 水平布局
-        scope_label = QLabel("📍 范围:")
-        scope_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        # 范围选择 - 统一样式
+        scope_label = QLabel(f"{UI_CONSTANTS['ICONS']['range']} 范围:")
+        scope_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
         self.scope_combo = QComboBox()
         self.scope_combo.addItems(["全文", "文件名"])
-        self.scope_combo.setMinimumHeight(26)  # 确保文字完整显示
-        self.scope_combo.setMaximumHeight(28)
+        self.scope_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.scope_combo.setMinimumWidth(80)
         options_layout.addWidget(scope_label)
         options_layout.addWidget(self.scope_combo)
         
-        # 模式选择 - 水平布局
-        mode_label = QLabel("🎯 模式:")
-        mode_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        # 模式选择 - 统一样式
+        mode_label = QLabel(f"{UI_CONSTANTS['ICONS']['mode']} 模式:")
+        mode_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["精确", "模糊"])
-        self.mode_combo.setMinimumHeight(26)  # 确保文字完整显示
-        self.mode_combo.setMaximumHeight(28)
+        self.mode_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.mode_combo.setMinimumWidth(80)
         options_layout.addWidget(mode_label)
         options_layout.addWidget(self.mode_combo)
         
@@ -2776,82 +2857,63 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
     # (Add other _create_* helper methods if they were inline before)
     def _create_view_mode_bar(self):
-        """创建查看方式栏 - 整合排序和分组功能"""
-        # 创建紧凑的水平布局
+        """创建查看方式栏 - 使用统一设计规范"""
+        # 创建统一的水平布局
         main_layout = QHBoxLayout()
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_LARGE'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'], 
+                                     UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'])
         
-        # 添加背景和边框样式
+        # 添加统一的背景和边框样式
         container = QFrame()
         container.setObjectName("view_container")
-        container.setStyleSheet("""
-            QFrame#view_container {
+        container.setStyleSheet(f"""
+            QFrame#view_container {{
                 background-color: #f8f9fa;
                 border: 1px solid #C0C0C0;
-                border-radius: 6px;
-                padding: 2px;
-            }
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_NORMAL']}px;
+                padding: {UI_CONSTANTS['MARGIN_SMALL']}px;
+            }}
         """)
         
-        # 查看方式选择器
-        view_label = QLabel("👁️ 查看方式:")
-        view_label.setStyleSheet("font-weight: bold; color: #333;")
+        # === 视图方式选择器 ===
+        view_label = QLabel(f"{UI_CONSTANTS['ICONS']['view']} 视图:")
+        view_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
         
         self.view_mode_combo = QComboBox()
-        # 定义各种查看方式
+        # 定义视图方式 - 使用统一图标
         view_modes = [
-            "📄 列表视图 (按相关性)",        # 默认：不分组，按相关性排序
-            "⏰ 时间视图 (按日期分组)",       # 按修改日期分组
-            "📁 类型视图 (按文件类型)",       # 按文件类型分组  
-            "🗂️ 文件夹视图 (按路径)",        # 按文件夹分组
-            "📝 文件名 A→Z",              # 按文件名升序
-            "📝 文件名 Z→A",              # 按文件名降序
-            "📏 文件大小 (大→小)",          # 按大小降序
-            "📏 文件大小 (小→大)",          # 按大小升序
-            "⏰ 时间 (新→旧)",             # 按修改时间降序
-            "⏰ 时间 (旧→新)",             # 按修改时间升序
+            f"{UI_CONSTANTS['ICONS']['list']} 列表视图",        # 默认：不分组
+            f"{UI_CONSTANTS['ICONS']['time']} 时间视图",        # 按修改日期分组
+            f"{UI_CONSTANTS['ICONS']['type']} 类型视图",        # 按文件类型分组  
+            f"{UI_CONSTANTS['ICONS']['folder']} 文件夹视图",      # 按文件夹分组
         ]
         
         self.view_mode_combo.addItems(view_modes)
         self.view_mode_combo.setCurrentIndex(0)  # 默认选择列表视图
-        self.view_mode_combo.setMinimumHeight(26)
-        self.view_mode_combo.setMaximumHeight(28)
-        self.view_mode_combo.setMinimumWidth(200)  # 确保文字完整显示
+        self.view_mode_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.view_mode_combo.setMinimumWidth(140)
         
         main_layout.addWidget(view_label)
         main_layout.addWidget(self.view_mode_combo)
         
         # 添加垂直分隔线
-        separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        separator.setFixedWidth(1)
-        separator.setMaximumHeight(20)
-        separator.setStyleSheet("QFrame { color: #C0C0C0; }")
-        main_layout.addWidget(separator)
+        separator1 = QFrame()
+        separator1.setFrameShape(QFrame.VLine)
+        separator1.setFrameShadow(QFrame.Sunken)
+        separator1.setFixedWidth(1)
+        separator1.setMaximumHeight(20)
+        separator1.setStyleSheet("QFrame { color: #C0C0C0; }")
+        main_layout.addWidget(separator1)
         
-        # 清除结果按钮
+
+        
+        # 清除结果按钮 - 使用WARNING配色（橙色系）
         self.clear_results_button = QPushButton("🗑️ 清除结果")
         self.clear_results_button.setToolTip("清除当前搜索结果")
-        self.clear_results_button.setMaximumHeight(24)
-        self.clear_results_button.setMaximumWidth(80)
-        self.clear_results_button.setStyleSheet("""
-            QPushButton {
-                background-color: #FF9800;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #F57C00;
-            }
-            QPushButton:pressed {
-                background-color: #E65100;
-            }
-        """)
+        self.clear_results_button.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.clear_results_button.setMinimumWidth(100)
+        self.clear_results_button.setStyleSheet(create_button_style('WARNING'))
         main_layout.addWidget(self.clear_results_button)
         
         # 添加弹性空间
@@ -3025,112 +3087,65 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         QTimer.singleShot(200, self._force_ui_refresh)
 
     def _create_action_buttons(self):
-        """创建操作按钮区域 - 紧凑版本，节省垂直空间"""
-        # 创建紧凑的容器，不使用分组框节省空间
+        """创建操作按钮区域 - 使用统一设计规范"""
+        # 创建统一样式的容器
         container = QFrame()
         container.setObjectName("action_container")
-        container.setStyleSheet("""
-            QFrame#action_container {
+        container.setStyleSheet(f"""
+            QFrame#action_container {{
                 background-color: #f5f5f5;
                 border: 1px solid #C0C0C0;
-                border-radius: 4px;
-                padding: 3px;
-            }
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_SMALL']}px;
+                padding: {UI_CONSTANTS['MARGIN_NORMAL']}px;
+            }}
         """)
         
-        # 使用水平布局节省垂直空间
+        # 使用统一的水平布局
         main_layout = QHBoxLayout()
-        main_layout.setSpacing(8)  # 减少间距
-        main_layout.setContentsMargins(3, 3, 3, 3)  # 减少边距
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_NORMAL'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'], 
+                                     UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'])
         
-        # 操作标签
-        action_label = QLabel("⚙️ 操作:")
-        action_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
+        # 操作标签 - 统一样式
+        action_label = QLabel(f"{UI_CONSTANTS['ICONS']['settings']} 操作:")
+        action_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
         main_layout.addWidget(action_label)
         
-        # 创建索引按钮 - 紧凑版本
-        self.index_button = QPushButton("📚 索引")
+        # 创建索引按钮 - 使用PRIMARY配色（青蓝色系）
+        self.index_button = QPushButton(f"{UI_CONSTANTS['ICONS']['index']} 索引")
         self.index_button.setObjectName("index_button")
         self.index_button.setToolTip("创建或更新文档索引")
-        self.index_button.setMaximumWidth(60)   # 减少宽度
-        self.index_button.setMaximumHeight(26)  # 减少高度
-        self.index_button.setStyleSheet("""
-            QPushButton#index_button {
-                font-weight: bold;
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton#index_button:hover {
-                background-color: #1976D2;
-            }
-            QPushButton#index_button:pressed {
-                background-color: #1565C0;
-            }
-        """)
+        self.index_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.index_button.setMinimumWidth(80)
+        self.index_button.setStyleSheet(create_button_style('PRIMARY'))
         
-        # 取消索引按钮 - 紧凑版本
-        self.cancel_index_button = QPushButton("⏹️ 取消")
+        # 取消索引按钮 - 使用DANGER配色（红色系）
+        self.cancel_index_button = QPushButton(f"{UI_CONSTANTS['ICONS']['cancel']} 取消")
         self.cancel_index_button.setObjectName("cancel_button")
         self.cancel_index_button.setToolTip("取消正在进行的索引操作")
-        self.cancel_index_button.setMaximumWidth(50)
-        self.cancel_index_button.setMaximumHeight(26)
+        self.cancel_index_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.cancel_index_button.setMinimumWidth(80)
         self.cancel_index_button.setVisible(False)
-        self.cancel_index_button.setStyleSheet("""
-            QPushButton#cancel_button {
-                font-weight: bold;
-                background-color: #f44336;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton#cancel_button:hover {
-                background-color: #da190b;
-            }
-            QPushButton#cancel_button:pressed {
-                background-color: #c1180a;
-            }
-        """)
+        self.cancel_index_button.setStyleSheet(create_button_style('DANGER'))
         
         main_layout.addWidget(self.index_button)
         main_layout.addWidget(self.cancel_index_button)
         
-        # 添加垂直分隔线
+        # 添加垂直分隔线 - 统一样式
         separator = QFrame()
         separator.setFrameShape(QFrame.VLine)
         separator.setFrameShadow(QFrame.Sunken)
         separator.setFixedWidth(1)
-        separator.setMaximumHeight(16)  # 限制高度
+        separator.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'] - 6)
         separator.setStyleSheet("QFrame { color: #C0C0C0; }")
         main_layout.addWidget(separator)
         
-        # 查看跳过的文件按钮 - 紧凑版本
-        self.view_skipped_button = QPushButton("📄 跳过文件")
+        # 查看跳过的文件按钮 - 使用SECONDARY配色（紫色系）
+        self.view_skipped_button = QPushButton(f"{UI_CONSTANTS['ICONS']['files']} 跳过文件")
         self.view_skipped_button.setToolTip("查看在创建索引过程中被跳过的文件")
-        self.view_skipped_button.setMaximumWidth(80)
-        self.view_skipped_button.setMaximumHeight(26)
-        self.view_skipped_button.setStyleSheet("""
-            QPushButton {
-                font-weight: bold;
-                background-color: #9C27B0;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 2px 6px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #7B1FA2;
-            }
-            QPushButton:pressed {
-                background-color: #6A1B9A;
-            }
-        """)
+        self.view_skipped_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.view_skipped_button.setMinimumWidth(100)
+        self.view_skipped_button.setStyleSheet(create_button_style('SECONDARY'))
         
         # 为保持兼容性，添加同名变量引用
         self.view_skipped_files_button = self.view_skipped_button
@@ -3338,13 +3353,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # 如果是许可证错误，显示升级提示
                     self._show_pro_feature_dialog_message("通配符搜索")
                     # 恢复用户界面状态
-                    self.set_busy_state(False)
+                    self.set_busy_state(False, "search")
                     return
                 else:
                     # 其他错误显示普通错误对话框
                     QMessageBox.warning(self, "搜索错误", error_msg)
                     # 恢复用户界面状态
-                    self.set_busy_state(False)
+                    self.set_busy_state(False, "search")
                     return
             
             # 检查是否有性能警告
@@ -3918,11 +3933,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- 增强搜索进度提示 ---
         self.statusBar().showMessage(status_msg + "...", 0)
-        # 显示进度条，设置为不确定进度模式
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # 不确定进度模式
-        # 设置忙碌状态
-        self.set_busy_state(True)
+        # 设置忙碌状态为搜索操作（不显示进度条和取消按钮）
+        self.set_busy_state(True, "search")
         # ------------------------------
 
         # --- Get File Type Filters --- 
@@ -4005,68 +4017,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
     @Slot()
     def _handle_view_mode_change_slot(self):
-        """处理查看方式改变 - 整合了排序和分组功能"""
+        """处理视图方式改变 - 只控制分组功能"""
         view_mode_index = self.view_mode_combo.currentIndex()
         view_mode_text = self.view_mode_combo.currentText()
-        print(f"查看方式改变为: {view_mode_text}")
+        print(f"视图方式改变为: {view_mode_text}")
         
         # 清除分组折叠状态
         self.group_collapse_states = {}
         
-        # 根据选择的查看方式设置内部状态
-        if view_mode_index == 0:      # 📄 列表视图 (按相关性)
+        # 根据选择的视图方式设置分组模式
+        if view_mode_index == 0:      # 📄 列表视图
             self.current_grouping_mode = 'none'
             self.grouping_enabled = False
-            self.current_sort_mode = "相关度"
-            self.current_sort_desc = True
-        elif view_mode_index == 1:    # ⏰ 时间视图 (按日期分组)
+        elif view_mode_index == 1:    # ⏰ 时间视图
             self.current_grouping_mode = 'date'
             self.grouping_enabled = True
-            self.current_sort_mode = "修改日期"
-            self.current_sort_desc = True
-        elif view_mode_index == 2:    # 📁 类型视图 (按文件类型)
+        elif view_mode_index == 2:    # 📁 类型视图
             self.current_grouping_mode = 'type'
             self.grouping_enabled = True
-            self.current_sort_mode = "相关度"
-            self.current_sort_desc = True
-        elif view_mode_index == 3:    # 🗂️ 文件夹视图 (按路径)
+        elif view_mode_index == 3:    # 🗂️ 文件夹视图
             self.current_grouping_mode = 'folder'
             self.grouping_enabled = True
-            self.current_sort_mode = "相关度"
-            self.current_sort_desc = True
-        elif view_mode_index == 4:    # 📝 文件名 A→Z
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "文件路径"
-            self.current_sort_desc = False
-        elif view_mode_index == 5:    # 📝 文件名 Z→A
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "文件路径"
-            self.current_sort_desc = True
-        elif view_mode_index == 6:    # 📏 文件大小 (大→小)
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "文件大小"
-            self.current_sort_desc = True
-        elif view_mode_index == 7:    # 📏 文件大小 (小→大)
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "文件大小"
-            self.current_sort_desc = False
-        elif view_mode_index == 8:    # ⏰ 时间 (新→旧)
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "修改日期"
-            self.current_sort_desc = True
-        elif view_mode_index == 9:    # ⏰ 时间 (旧→新)
-            self.current_grouping_mode = 'none'
-            self.grouping_enabled = False
-            self.current_sort_mode = "修改日期"
-            self.current_sort_desc = False
         
-        # 重新应用排序和分组并显示结果
+        # 重新应用视图设置并显示结果
         self._apply_view_mode_and_display()
+    
+
         
     def _apply_view_mode_and_display(self):
         """应用查看方式设置并重新显示结果（整合排序和分组）- 支持虚拟滚动"""
@@ -4085,8 +4061,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.results_text.setText("未找到匹配结果。")
             return
             
-        # 首先对结果进行排序
-        sorted_results = self._sort_results(search_results)
+        # 使用默认相关性排序
+        sorted_results = search_results
         
         # === 虚拟滚动兼容性检查 ===
         use_virtual_scroll = len(sorted_results) > self.virtual_scroll_threshold
@@ -4116,33 +4092,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 不分组，直接显示
             self._display_ungrouped_results(sorted_results)
             
-    def _sort_results(self, results):
-        """根据当前排序设置对结果进行排序"""
-        if not results:
-            return results
-            
-        sort_mode = getattr(self, 'current_sort_mode', '相关度')
-        sort_desc = getattr(self, 'current_sort_desc', True)
-        
-        def get_sort_key(result):
-            if sort_mode == "相关度":
-                return result.get('score', 0)
-            elif sort_mode == "文件路径":
-                path = result.get('file_path', result.get('path', ''))
-                return os.path.basename(path).lower() if path else ''
-            elif sort_mode == "修改日期":
-                return result.get('mtime', 0)
-            elif sort_mode == "文件大小":
-                return result.get('size', 0)
-            else:
-                return result.get('score', 0)  # 默认按相关度
-        
-        try:
-            sorted_results = sorted(results, key=get_sort_key, reverse=sort_desc)
-            return sorted_results
-        except Exception as e:
-            print(f"排序结果时出错: {e}")
-            return results  # 返回原始结果
+
             
     def _apply_grouping_and_display(self):
         """保持向后兼容的分组应用函数"""
@@ -4885,9 +4835,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 pass
         # --- Finally block (Corrected Indentation) ---
         finally:
-            # 隐藏进度条并重置忙碌状态
-            self.progress_bar.setVisible(False)
-            self.set_busy_state(False)
+            # 注意：搜索的忙碌状态现在在_handle_new_search_results_slot中重置
+            # 这里不再重复重置，避免多次调用
+            pass
 
     @Slot(dict)
     def indexing_finished_slot(self, summary_dict):
@@ -4905,7 +4855,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.detail_label.setVisible(False)
         # -------------------------------
         print("Calling set_busy_state(False)...") # DEBUG
-        self.set_busy_state(False)
+        self.set_busy_state(False, "index")
         print("--- indexing_finished_slot finished ---") # DEBUG
         # Optionally, show a confirmation message box
         # QMessageBox.information(self, "索引完成", final_message)
@@ -4924,7 +4874,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.detail_label.setVisible(False)
         # -------------------------------------------
         # Reset busy state
-        self.set_busy_state(False)
+        self.set_busy_state(False, "index")
 
     # --- NEW Slot to handle results directly from worker ---
     @Slot(list)
@@ -4947,9 +4897,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 如果功能不可用，确保文件夹树是空的
             self.folder_tree.clear()
         
+        # 重置搜索的忙碌状态（关键修复）
+        self.set_busy_state(False, "search")
+        
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
-        # Note: set_busy_state(False) is called within display_search_results_slot's finally block
     
     # --- NEW Slot for Sorting (Called by sort controls) ---
  
@@ -5328,12 +5280,19 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         QApplication.processEvents()
         
         print("DEBUG: UI刷新完成")
-    def set_busy_state(self, is_busy):
+    def set_busy_state(self, is_busy, operation_type="index"):
         """设置应用程序忙碌状态，禁用或启用UI控件
         
         Args:
             is_busy: 是否处于忙碌状态
+            operation_type: 操作类型，"index" 或 "search"
         """
+        # 添加调试信息
+        import traceback
+        call_stack = traceback.extract_stack()
+        caller_info = call_stack[-2] if len(call_stack) >= 2 else "Unknown"
+        print(f"🔧 set_busy_state 调用: is_busy={is_busy}, operation_type='{operation_type}', 调用者: {caller_info.filename}:{caller_info.lineno} in {caller_info.name}")
+        
         self.is_busy = is_busy
         
         # 禁用或启用主要操作按钮
@@ -5344,14 +5303,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # --- ADDED: 控制索引按钮的显示/隐藏 ---
             self.index_button.setVisible(not is_busy)
         if hasattr(self, 'cancel_index_button'):
-            # --- MODIFIED: 改进取消按钮状态管理 ---
+            # --- MODIFIED: 根据操作类型决定取消按钮的行为 ---
             if is_busy:
-                # 开始忙碌状态：显示并启用取消按钮
-                print("🔧 显示取消按钮...")
-                self.cancel_index_button.setVisible(True)
-                print(f"🔧 取消按钮可见性: {self.cancel_index_button.isVisible()}")
-                self.cancel_index_button.setEnabled(True)
-                self.cancel_index_button.setText("取消索引")
+                print(f"🔧 条件检查: operation_type='{operation_type}', 比较结果: {operation_type == 'index'}")
+                if operation_type == "index":
+                    # 索引操作：显示并启用取消按钮
+                    print("🔧 显示取消按钮...")
+                    self.cancel_index_button.setVisible(True)
+                    print(f"🔧 取消按钮可见性: {self.cancel_index_button.isVisible()}")
+                    self.cancel_index_button.setEnabled(True)
+                    self.cancel_index_button.setText("取消索引")
+                else:
+                    # 搜索操作：隐藏取消按钮，因为搜索操作通常很快完成
+                    print(f"🔧 隐藏取消按钮 (操作类型: '{operation_type}')")
+                    self.cancel_index_button.setVisible(False)
+                    self.cancel_index_button.setEnabled(False)
             else:
                 # 结束忙碌状态：隐藏取消按钮并重置状态
                 self.cancel_index_button.setVisible(False)
@@ -5363,15 +5329,26 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if hasattr(self, 'clear_results_button'):
             self.clear_results_button.setEnabled(not is_busy)
         
-        # 显示或隐藏进度条
+        # 显示或隐藏进度条 - 根据操作类型决定
         if hasattr(self, 'progress_bar'):
-            self.progress_bar.setVisible(is_busy)
+            if operation_type == "search":
+                # 搜索操作：隐藏进度条，因为搜索通常很快
+                self.progress_bar.setVisible(False)
+            else:
+                # 索引操作：显示进度条
+                self.progress_bar.setVisible(is_busy)
         
-        # --- ADDED: 显示或隐藏进度相关的标签 ---
+        # --- ADDED: 显示或隐藏进度相关的标签 - 根据操作类型决定 ---
         if hasattr(self, 'phase_label'):
-            self.phase_label.setVisible(is_busy)
+            if operation_type == "search":
+                self.phase_label.setVisible(False)
+            else:
+                self.phase_label.setVisible(is_busy)
         if hasattr(self, 'detail_label'):
-            self.detail_label.setVisible(is_busy)
+            if operation_type == "search":
+                self.detail_label.setVisible(False)
+            else:
+                self.detail_label.setVisible(is_busy)
 
 
     def _update_feature_availability(self):
@@ -5848,7 +5825,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # Show immediate feedback that check is starting
         self.statusBar().showMessage("正在检查更新...", 0) 
-        self.set_busy_state(True) # Prevent other actions during check
+        self.set_busy_state(True, "update") # Prevent other actions during check
         
         # Trigger the worker
         # Pass current version and URL from constants
@@ -5857,7 +5834,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot(dict)
     def show_update_available_dialog_slot(self, update_info):
         """Displays a dialog indicating an update is available."""
-        self.set_busy_state(False) # Reset busy state
+        self.set_busy_state(False, "update") # Reset busy state
         self.statusBar().showMessage("发现新版本", 5000) # Update status
         
         latest_version = update_info.get('version', '未知')
@@ -5891,14 +5868,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def show_up_to_date_dialog_slot(self):
         """Displays a dialog indicating the application is up to date."""
-        self.set_busy_state(False) # Reset busy state
+        self.set_busy_state(False, "update") # Reset busy state
         self.statusBar().showMessage("已是最新版本", 3000)
         QMessageBox.information(self, "检查更新", "您当前使用的是最新版本。")
 
     @Slot(str)
     def show_update_check_failed_dialog_slot(self, error_message):
         """Displays a dialog indicating the update check failed."""
-        self.set_busy_state(False) # Reset busy state
+        self.set_busy_state(False, "update") # Reset busy state
         self.statusBar().showMessage("检查更新失败", 3000)
         
         # 避免重复弹出对话框，检查是否已经存在更新错误对话框
@@ -6111,7 +6088,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print(f"- TXT文件大小限制: {txt_content_limit_kb}KB")
         print(f"- 索引文件类型: {file_types_str}")
 
-        self.set_busy_state(True)
+        self.set_busy_state(True, "index")
         self.results_text.clear()  # Clear previous results/logs
         self.statusBar().showMessage(f"开始准备索引 {len(source_dirs)} 个源目录...", 3000)
 
@@ -6906,7 +6883,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # 8. 重置UI状态
         print("🔧 重置UI状态...")
-        self.set_busy_state(False)
+        self.set_busy_state(False, "index")
+        
+        # 9. 清除所有进度相关显示
+        if hasattr(self, 'progress_bar'):
+            self.progress_bar.setVisible(False)
+        if hasattr(self, 'phase_label'):
+            self.phase_label.setVisible(False)
+            self.phase_label.setText("")  # 清除文本
+        if hasattr(self, 'detail_label'):
+            self.detail_label.setVisible(False)
+            self.detail_label.setText("")  # 清除文本
+            
         self.statusBar().showMessage("索引操作已被用户强制取消", 5000)
         
         # 9. 显示取消确认
