@@ -1694,7 +1694,7 @@ def search_index(query_str: str,
         sort_field = None
 
     # --- 修改搜索结果处理逻辑，过滤掉许可证无法访问的文件类型 ---
-    results = searcher.search(final_query, limit=100, sortedby=sort_field, reverse=reverse) # Increased limit
+    results = searcher.search(final_query, limit=500, sortedby=sort_field, reverse=reverse) # Increased limit for virtual scrolling
     
     # --- Result Processing and Highlighting (Conditional) --- MODIFIED
     if results:

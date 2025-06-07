@@ -687,8 +687,8 @@ def get_license_manager():
                 
                 # 出错时也要确保返回一个可用的实例
                 _license_manager_instance = LicenseManager()
-        else:
-            logger.debug("使用已存在的LicenseManager实例")
+        # else:
+            # logger.debug("使用已存在的LicenseManager实例")  # 注释掉以减少重复日志
     finally:
         # 释放锁，如果我们获取了它
         if have_lock and _license_manager_lock:
