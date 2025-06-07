@@ -1175,7 +1175,7 @@ class Worker(QObject):
                 'search_mode': search_mode,
                 'search_scope': search_scope,
                 'case_sensitive': case_sensitive,
-                'limit': 500
+                'limit': 1200  # 调整到1200条，平衡性能与完整性
             }
             
             # 添加可选参数
@@ -2511,6 +2511,22 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         right_title.setAlignment(Qt.AlignCenter)
         right_title.setStyleSheet("background-color: #F0F0F0; padding: 5px;")
         
+        # 添加搜索警告标签（结果截断提示）
+        self.search_warning_label = QLabel()
+        self.search_warning_label.setVisible(False)  # 默认隐藏
+        self.search_warning_label.setWordWrap(True)  # 允许文字换行
+        self.search_warning_label.setStyleSheet("""
+            QLabel {
+                background-color: #FFF3CD;
+                color: #856404;
+                border: 1px solid #FFEAA7;
+                border-radius: 4px;
+                padding: 8px;
+                margin: 4px;
+                font-weight: bold;
+            }
+        """)
+        
         # === 创建搜索结果显示区域 - 支持传统和虚拟滚动 ===
         self.results_text = QTextBrowser() 
         self.results_text.setOpenExternalLinks(False)  # 禁止外部链接自动打开
@@ -2533,6 +2549,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.virtual_scroll_threshold = 50  # 超过50个结果时使用虚拟滚动
         
         right_layout.addWidget(right_title)
+        right_layout.addWidget(self.search_warning_label)  # 添加警告标签
         right_layout.addWidget(self.results_stack)
         
         # 将两个容器添加到分隔器
@@ -3642,6 +3659,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if hasattr(self, 'results_stack'):
             self.results_stack.setCurrentIndex(0)
             
+        # 隐藏搜索警告标签
+        if hasattr(self, 'search_warning_label'):
+            self.search_warning_label.setVisible(False)
+            
         self.statusBar().showMessage("就绪", 0)  # Reset status
         self.progress_bar.setVisible(False)
         # Clear stored data associated with results
@@ -4561,7 +4582,26 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if not results:
                     self.statusBar().showMessage("未找到结果", 5000)
                 else:
-                    self.statusBar().showMessage(f"找到 {len(results)} 个结果 (虚拟滚动模式)", 0)
+                    # 检查是否可能被截断（接近限制数值）
+                    max_recommended_results = 1000
+                    if len(results) >= max_recommended_results:
+                        self.statusBar().showMessage(f"🔍 显示 {len(results)} 条结果（已达到推荐上限）建议使用更具体的搜索词或筛选条件", 0)
+                        
+                        # 在界面顶部添加警告横幅
+                        if hasattr(self, 'search_warning_label'):
+                            self.search_warning_label.setText(f"⚠️ 结果数量较多（{len(results)} 条），可能已截断。建议使用更具体的搜索词或添加筛选条件以获得更精确的结果。")
+                            self.search_warning_label.setVisible(True)
+                    elif len(results) >= 1000:
+                        self.statusBar().showMessage(f"找到 {len(results)} 个结果 (虚拟滚动模式，性能优化)", 0)
+                        # 隐藏警告标签
+                        if hasattr(self, 'search_warning_label'):
+                            self.search_warning_label.setVisible(False)
+                    else:
+                        self.statusBar().showMessage(f"找到 {len(results)} 个结果 (虚拟滚动模式)", 0)
+                        # 隐藏警告标签
+                        if hasattr(self, 'search_warning_label'):
+                            self.search_warning_label.setVisible(False)
+                    
                     print(f"💡 虚拟滚动模式: 显示 {len(results)} 个结果，提升UI性能")
                 return
             else:
@@ -4805,7 +4845,20 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         
                     # --- Status update (Corrected Indentation) ---
                     if result_count > 0:
-                        self.statusBar().showMessage(f"找到 {result_count} 条结果", 0)
+                        # 检查是否可能被截断（接近限制数值）
+                        max_recommended_results = 1000
+                        if result_count >= max_recommended_results:
+                            self.statusBar().showMessage(f"🔍 显示 {result_count} 条结果（已达到推荐上限）建议使用更具体的搜索词或筛选条件", 0)
+                            
+                            # 在界面顶部添加警告横幅
+                            if hasattr(self, 'search_warning_label'):
+                                self.search_warning_label.setText(f"⚠️ 结果数量较多（{result_count} 条），可能已截断。建议使用更具体的搜索词或添加筛选条件以获得更精确的结果。")
+                                self.search_warning_label.setVisible(True)
+                        else:
+                            self.statusBar().showMessage(f"找到 {result_count} 条结果", 0)
+                            # 隐藏警告标签
+                            if hasattr(self, 'search_warning_label'):
+                                self.search_warning_label.setVisible(False)
                         
                 except Exception as render_err: # Inner exception handling
                     # (This block needs correct indentation relative to the inner try)

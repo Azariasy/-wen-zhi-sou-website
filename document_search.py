@@ -392,8 +392,8 @@ class OptimizedSearchEngine:
                 executor, 
                 lambda: search_index(query_str, index_dir_path, **search_params)
             )
-        # 对于简单查询，限制返回结果数
-        return results[:100] if len(results) > 100 else results
+        # 对于简单查询，限制返回结果数（限制到1000条，优化性能）
+        return results[:1000] if len(results) > 1000 else results
         
     async def _parallel_search(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
         """并行搜索（适用于中等复杂度查询）"""
@@ -432,7 +432,7 @@ class OptimizedSearchEngine:
                             
                 # 按相关度重新排序
                 merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
-                return merged_results[:500]  # 限制最多返回500个结果
+                return merged_results[:1000]  # 限制最多返回1000个结果
         
         # 如果无法并行化，使用单线程搜索
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -484,7 +484,7 @@ class OptimizedSearchEngine:
                 
         # 按相关度排序
         merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
-        return merged_results[:500]  # 限制最多返回500个结果
+        return merged_results[:1000]  # 限制最多返回1000个结果
         
     def clear_cache(self):
         """清理缓存"""
@@ -1927,7 +1927,7 @@ def search_index(query_str: str,
         sort_field = None
 
     # --- 修改搜索结果处理逻辑，过滤掉许可证无法访问的文件类型 ---
-    results = searcher.search(final_query, limit=500, sortedby=sort_field, reverse=reverse) # Increased limit for virtual scrolling
+    results = searcher.search(final_query, limit=3000, sortedby=sort_field, reverse=reverse) # Performance-balanced limit with user experience priority
     
     # --- Result Processing and Highlighting (Conditional) --- MODIFIED
     if results:
@@ -2109,6 +2109,19 @@ def search_index(query_str: str,
     # Close searcher and index
     if searcher: searcher.close()
     if ix: ix.close()
+    
+    # 智能结果截断和用户友好提示
+    original_count = len(processed_results)
+    max_recommended_results = 1000  # 推荐的最大结果数
+    
+    if original_count > max_recommended_results:
+        # 截断到推荐数量，保留相关度最高的结果
+        processed_results = processed_results[:max_recommended_results]
+        print(f"⚠️  结果数量较多 ({original_count} 条)，为保证性能已截断到 {max_recommended_results} 条")
+        print(f"💡 建议：使用更具体的搜索词或添加筛选条件以获得更精确的结果")
+    elif original_count > 500:
+        print(f"💡 找到 {original_count} 条结果，将使用虚拟滚动模式保证界面流畅性")
+    
     print(f"--- Search complete. Returning {len(processed_results)} processed results. ---")
     return processed_results
 
