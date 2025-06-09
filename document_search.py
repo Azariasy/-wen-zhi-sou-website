@@ -44,62 +44,11 @@ try:
 except ImportError:
     _license_manager_available = False
 
-# --- 添加标准化路径函数 ---
-def normalize_path_for_index(path_str):
-    """
-    标准化路径以确保在不同操作系统之间比较时的一致性。
-    
-    Args:
-        path_str (str): 要标准化的路径字符串
-        
-    Returns:
-        str: 标准化后的路径字符串
-    """
-    # 处理None或空字符串
-    if not path_str:
-        return ""
-        
-    try:
-        # 对于压缩包内的文件特殊处理
-        if "::" in path_str:
-            archive_path, internal_path = path_str.split("::", 1)
-            # 分别标准化压缩包路径和内部路径
-            norm_archive = normalize_path_for_index(archive_path)
-            # 内部路径只需要统一分隔符
-            norm_internal = internal_path.replace('\\', '/')
-            return f"{norm_archive}::{norm_internal}"
-            
-        # 普通文件路径处理
-        try:
-            # 尝试使用Path对象处理
-            path_obj = Path(path_str)
-            if path_obj.exists():
-                # 如果路径存在，使用resolve()获取绝对路径
-                norm_path = str(path_obj.resolve()).replace('\\', '/')
-            else:
-                # 如果路径不存在，则只进行基本的分隔符转换
-                norm_path = str(path_obj).replace('\\', '/')
-        except:
-            # 路径无法通过Path对象处理，直接进行字符串处理
-            norm_path = path_str.replace('\\', '/')
-        
-        # 移除驱动器字母大小写差异（Windows）
-        if ':/' in norm_path:
-            drive, rest = norm_path.split(':', 1)
-            norm_path = drive.lower() + ':' + rest
-            
-        # 移除可能的尾部斜杠，确保一致性
-        if norm_path.endswith('/') and len(norm_path) > 1:
-            norm_path = norm_path.rstrip('/')
-            
-        return norm_path
-    except Exception as e:
-        print(f"路径标准化错误 ({path_str}): {e}")
-        # 失败时返回原始路径，但尝试进行最基本的分隔符转换
-        try:
-            return path_str.replace('\\', '/')
-        except:
-            return path_str
+# --- 导入统一路径处理工具 ---
+from path_utils import normalize_path_for_index, PathStandardizer
+
+# --- 导入统一文件处理工具 ---
+from file_processing_utils import check_cancellation, periodic_cancellation_check, InterruptedError
 
 # -------------------------------
 
@@ -557,11 +506,13 @@ def extract_text_from_docx(file_path: Path, cancel_callback=None) -> tuple[str, 
     full_text_list = []
     structure = []
     try:
+        # 开始处理前检查取消状态
+        check_cancellation(cancel_callback, "DOCX文件处理")
+        
         doc = docx.Document(file_path)
         for i, para in enumerate(doc.paragraphs):
-            # 每处理50个段落检查一次取消状态
-            if i % 50 == 0 and cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            # 每处理50个段落检查一次取消状态（使用统一工具函数）
+            periodic_cancellation_check(cancel_callback, 50, i, "DOCX段落处理")
                 
             text = para.text.strip()
             if not text:
@@ -579,6 +530,10 @@ def extract_text_from_docx(file_path: Path, cancel_callback=None) -> tuple[str, 
             else:
                 para_info["type"] = "paragraph"
             structure.append(para_info)
+        
+        # 处理完成前最后检查取消状态
+        check_cancellation(cancel_callback, "DOCX文件处理")
+        
         full_text = '\n'.join(full_text_list)
         return full_text, structure
     except InterruptedError:
@@ -605,16 +560,14 @@ def extract_text_from_txt(file_path: Path, cancel_callback=None) -> tuple[str, l
         for encoding in encodings_to_try:
             try:
                 # 在开始读取文件前检查是否需要取消
-                if cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                check_cancellation(cancel_callback, "TXT文件读取")
                     
                 content = file_path.read_text(encoding=encoding)
                 if content:
                     lines = content.splitlines()
                     for i, line in enumerate(lines):
                         # 对于大文件，每处理100行检查一次取消状态
-                        if i % 100 == 0 and cancel_callback and cancel_callback():
-                            raise InterruptedError("操作被用户取消")
+                        periodic_cancellation_check(cancel_callback, 100, i, "TXT文件行处理")
                             
                         cleaned_line = line.strip()
                         if cleaned_line:
@@ -656,8 +609,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
         return None, []
     
     # --- ADDED: 早期取消检查 ---
-    if cancel_callback and cancel_callback():
-        raise InterruptedError("操作被用户取消")
+    check_cancellation(cancel_callback, "PDF文件处理")
     # ---------------------------
     
     extracted_text = ""
@@ -692,8 +644,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
         ocr_texts = []
         try:
             # --- ADDED: 在开始OCR前再次检查取消状态 ---
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, "PDF OCR处理开始")
             # ----------------------------------------
                 
             # --- 添加 pdf2image 时间日志 ---
@@ -719,14 +670,12 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
             # -------------------------------
 
             # --- ADDED: 在开始处理页面前检查取消状态 ---
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, "PDF页面处理开始")
             # ----------------------------------------
 
             for i, image in enumerate(images):
                 # --- MODIFIED: 在处理每个页面前检查是否需要取消 ---
-                if cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                check_cancellation(cancel_callback, f"PDF页面 {i + 1} 处理")
                 # ------------------------------------------------
                     
                 page_num = i + 1
@@ -753,8 +702,7 @@ def extract_text_from_pdf(file_path: Path, enable_ocr: bool = True, ocr_lang: st
                         pass
 
                     # --- ADDED: 在每页OCR完成后检查取消状态 ---
-                    if cancel_callback and cancel_callback():
-                        raise InterruptedError("操作被用户取消")
+                    check_cancellation(cancel_callback, f"PDF页面 {page_num} OCR完成")
                     # ----------------------------------------
                         
                 except TesseractError as te:
@@ -853,11 +801,13 @@ def extract_text_from_pptx(file_path: Path, cancel_callback=None) -> tuple[str, 
     full_text_list = []
     structure = []
     try:
+        # 开始处理前检查取消状态
+        check_cancellation(cancel_callback, "PPTX文件处理")
+        
         presentation = pptx.Presentation(file_path)
         for slide_num, slide in enumerate(presentation.slides):
             # 在处理每个幻灯片前检查是否需要取消
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, f"PPTX幻灯片 {slide_num + 1} 处理")
                 
             slide_texts = []
             for shape in slide.shapes:
@@ -898,8 +848,7 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
     MAX_HEADER_CHECK_ROWS = 10
     
     # 在开始处理前检查是否需要取消
-    if cancel_callback and cancel_callback():
-        raise InterruptedError("操作被用户取消")
+    check_cancellation(cancel_callback, "XLSX文件处理")
     
     try:
         excel_data = pd.read_excel(file_path, sheet_name=None, header=None, keep_default_na=False)
@@ -908,13 +857,11 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
         return "", []
     
     # 在读取Excel数据后检查取消状态
-    if cancel_callback and cancel_callback():
-        raise InterruptedError("操作被用户取消")
+    check_cancellation(cancel_callback, "XLSX数据读取")
     
     for sheet_name, df_initial in excel_data.items():
         # 在处理每个工作表前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, f"XLSX工作表 {sheet_name} 处理")
             
         if df_initial.empty:
             continue
@@ -925,9 +872,8 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
         
         # 在表头检测循环中增加更频繁的取消检查
         for i in range(min(MAX_HEADER_CHECK_ROWS, len(df_initial))):
-            # 在检查表头的循环中也添加取消检查
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            # 在检查表头的循环中也添加取消检查（使用周期性检查）
+            periodic_cancellation_check(cancel_callback, 5, i, f"XLSX表头检测 {sheet_name}")
                 
             row_values = df_initial.iloc[i].tolist()
             current_score = sum(1 for cell in row_values if pd.notna(cell) and isinstance(cell, str) and str(cell).strip() and not str(cell).replace('.', '', 1).isdigit())
@@ -939,16 +885,14 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
                 potential_header_idx = i
                 
         # 在表头检测完成后检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, f"XLSX表头检测完成 {sheet_name}")
             
         if potential_header_idx != -1 and best_header_score >= 1:
             header_row_index = potential_header_idx
             print(f"Detected header in '{sheet_name}' at row {header_row_index + 1}")
             try:
                 # 在重新读取工作表前检查取消状态
-                if cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                check_cancellation(cancel_callback, f"XLSX重新读取工作表 {sheet_name}")
                     
                 df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row_index, keep_default_na=False)
                 df = df.dropna(axis=0, how='all')
@@ -957,19 +901,16 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
                 headers = [str(h).strip() for h in df.columns]
                 
                 # 在开始处理行数据前检查取消状态
-                if cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                check_cancellation(cancel_callback, f"XLSX开始处理行数据 {sheet_name}")
                 
                 row_count = 0
                 for idx, row in df.iterrows():
                     # 在处理每一行时也检查取消 - 增加频率
-                    if cancel_callback and cancel_callback():
-                        raise InterruptedError("操作被用户取消")
+                    check_cancellation(cancel_callback, f"XLSX行处理 {sheet_name} 第{idx}行")
                     
                     # 每处理10行检查一次取消状态（提高响应性）
                     row_count += 1
-                    if row_count % 10 == 0 and cancel_callback and cancel_callback():
-                        raise InterruptedError("操作被用户取消")
+                    periodic_cancellation_check(cancel_callback, 10, row_count, f"XLSX批量行处理 {sheet_name}")
                         
                     excel_row_num = idx + header_row_index + 2
                     row_values = [str(cell).strip() for cell in row.tolist()]
@@ -994,16 +935,14 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
             except Exception as e:
                 print(f"Error re-reading sheet '{sheet_name}' with header at row {header_row_index + 1}: {e}")
                 # 在异常处理中也检查取消状态
-                if cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                check_cancellation(cancel_callback, f"XLSX异常处理 {sheet_name}")
                 sheet_text = df_initial.to_string(index=False, header=False)
                 full_text_list.append(sheet_text)
                 structure.append({'type': 'paragraph', 'text': f"Content from sheet '{sheet_name}' (header detection failed)."})
         else:
             print(f"Warning: Could not detect header in sheet '{sheet_name}'. Indexing as plain text.")
             # 在处理无表头工作表前检查取消状态
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, f"XLSX无表头工作表处理 {sheet_name}")
                 
             sheet_text = df_initial.to_string(index=False, header=False)
             cleaned_sheet_text = "\n".join(line.strip() for line in sheet_text.splitlines() if line.strip())
@@ -1016,8 +955,7 @@ def extract_text_from_xlsx(file_path: Path, cancel_callback=None) -> tuple[str, 
                 })
                 
     # 在返回前最后检查一次取消状态
-    if cancel_callback and cancel_callback():
-        raise InterruptedError("操作被用户取消")
+    check_cancellation(cancel_callback, "XLSX文件处理完成")
         
     full_text = '\n'.join(full_text_list)
     return full_text, structure
@@ -1039,8 +977,7 @@ def extract_text_from_md(file_path: Path, cancel_callback=None) -> tuple[str, li
     encodings_to_try = ['utf-8', 'gbk', 'gb2312']
     try:
         # 在开始处理前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "MD文件处理开始")
             
         raw_md_content = None
         for encoding in encodings_to_try:
@@ -1058,8 +995,7 @@ def extract_text_from_md(file_path: Path, cancel_callback=None) -> tuple[str, li
             return "", []
         
         # 在转换前检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "MD转换HTML")
             
         html_content = markdown.markdown(raw_md_content)
         content = strip_tags(html_content).strip()
@@ -1080,8 +1016,7 @@ def extract_text_from_html(file_path: Path, cancel_callback=None) -> tuple[str, 
     structure = []
     try:
         # 在开始处理前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "HTML文件处理开始")
             
         raw_html_bytes = file_path.read_bytes()
         if not raw_html_bytes:
@@ -1111,8 +1046,7 @@ def extract_text_from_html(file_path: Path, cancel_callback=None) -> tuple[str, 
                 html_content_decoded = raw_html_bytes.decode('utf-8', errors='replace')
         
         # 在解析前再次检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "HTML解析处理")
             
         soup = BeautifulSoup(html_content_decoded, 'lxml')
         for script_or_style in soup(["script", "style"]):
@@ -1137,8 +1071,7 @@ def extract_text_from_rtf(file_path: Path, cancel_callback=None) -> tuple[str, l
     encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'latin-1']
     try:
         # 在开始处理前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "RTF文件处理开始")
             
         rtf_content = None
         for encoding in encodings_to_try:
@@ -1158,8 +1091,7 @@ def extract_text_from_rtf(file_path: Path, cancel_callback=None) -> tuple[str, l
             return "", []
         
         # 在转换前检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "RTF转换文本")
             
         content = rtf_to_text(rtf_content, errors="ignore").strip()
         if content:
@@ -1187,8 +1119,7 @@ def extract_text_from_eml(file_path: Path, cancel_callback=None) -> tuple[str, l
     structure = []
     try:
         # 在开始处理前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "EML文件处理开始")
             
         raw_bytes = file_path.read_bytes()
         if not raw_bytes:
@@ -1197,8 +1128,7 @@ def extract_text_from_eml(file_path: Path, cancel_callback=None) -> tuple[str, l
         msg = parser.parsebytes(raw_bytes)
         
         # 在解析邮件内容前检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "EML邮件解析")
             
         def decode_header_simple(header_value):
             if not header_value:
@@ -1299,8 +1229,7 @@ def extract_text_from_msg(file_path: Path, cancel_callback=None) -> tuple[str, l
         processed_html_body = False
         
         # 在处理邮件正文前检查取消状态
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "MSG邮件正文处理")
             
         if hasattr(msg, 'htmlBody') and msg.htmlBody:
             print("MSG Body: Attempting to process HTML body.")
@@ -2174,8 +2103,7 @@ def _extract_worker(worker_args: dict) -> dict:
         start_time = time.time()
         
         # --- MODIFIED: 在开始处理前检查是否需要取消 ---
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "文件提取处理开始")
         # ----------------------------------------
         
         # --- Select extraction function based on file type --- 
@@ -2184,8 +2112,7 @@ def _extract_worker(worker_args: dict) -> dict:
             file_ext = file_path.suffix.lower()
             
             # --- ADDED: 在确定文件类型后再次检查取消状态 ---
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, f"文件类型确定 {file_ext}")
             # ----------------------------------------
             
             # Select function based on extension (Corrected indentation)
@@ -2246,8 +2173,7 @@ def _extract_worker(worker_args: dict) -> dict:
                     print(f"开始处理PDF文件: {display_name} (OCR: {'启用' if enable_ocr_for_file else '禁用'})")
                     
                     # --- ADDED: 在开始PDF处理前检查取消状态 ---
-                    if cancel_callback and cancel_callback():
-                        raise InterruptedError("操作被用户取消")
+                    check_cancellation(cancel_callback, f"PDF处理开始 {display_name}")
                     # ----------------------------------------
                     
                     text_content_tuple = extract_text_from_pdf(file_path, enable_ocr=enable_ocr_for_file, timeout=extraction_timeout, cancel_callback=cancel_callback)
@@ -2396,8 +2322,7 @@ def _extract_worker(worker_args: dict) -> dict:
         
         elif file_type == 'archive':
             # --- ADDED: 在处理压缩包前检查取消状态 ---
-            if cancel_callback and cancel_callback():
-                raise InterruptedError("操作被用户取消")
+            check_cancellation(cancel_callback, "压缩包处理开始")
             # ----------------------------------------
             
             if not archive_path_abs_str or not member_name:
@@ -2488,8 +2413,7 @@ def _extract_worker(worker_args: dict) -> dict:
                             error_message = f"Unsupported archive type: {archive_type}"
                         
                         # --- ADDED: 在提取完成后检查取消状态 ---
-                        if cancel_callback and cancel_callback():
-                            raise InterruptedError("操作被用户取消")
+                        check_cancellation(cancel_callback, "压缩包成员提取完成")
                         # ----------------------------------------
                         
                         if not error_message and temp_file_path and temp_file_path.exists():
@@ -2856,8 +2780,7 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
 
     for directory_path in path_objects:
         # 在扫描每个目录前检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, f"扫描目录 {directory_path}")
             
         if not directory_path.is_dir():
             print(f"错误: 路径不是目录: {directory_path}")
@@ -2870,8 +2793,7 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
             for item in directory_path.rglob('*'):
                 # 每扫描50个文件检查一次取消状态
                 file_count += 1
-                if file_count % 50 == 0 and cancel_callback and cancel_callback():
-                    raise InterruptedError("操作被用户取消")
+                periodic_cancellation_check(cancel_callback, 50, file_count, "文件扫描")
                     
                 if not item.is_file():
                     continue
@@ -3010,8 +2932,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
     
     try:
         # 检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "索引初始化")
             
         # 确保索引目录存在
         index_path = Path(index_dir_path)
@@ -3025,8 +2946,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         yield progress
 
         # 检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "开始文件扫描")
 
         # 1. 扫描文件
         print("开始扫描文档...")
@@ -3043,8 +2963,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         yield progress
 
         # 检查是否需要取消
-        if cancel_callback and cancel_callback():
-            raise InterruptedError("操作被用户取消")
+        check_cancellation(cancel_callback, "扫描完成后检查")
 
         if not all_files:
             progress.update({

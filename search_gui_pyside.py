@@ -2,44 +2,11 @@
 
 
 
-# --- 路径标准化函数 ---
-def normalize_path_for_display(path_str):
-    """
-    用于显示的路径标准化函数，确保路径一致性
-    """
-    if not path_str:
-        return ""
-        
-    try:
-        from pathlib import Path
-        import os
-        
-        # 对于压缩包内的文件特殊处理
-        if "::" in path_str:
-            archive_path, internal_path = path_str.split("::", 1)
-            norm_archive = normalize_path_for_display(archive_path)
-            norm_internal = internal_path.replace('\\', '/')
-            return f"{norm_archive}::{norm_internal}"
-            
-        # 普通文件路径处理
-        path_obj = Path(path_str)
-        if path_obj.exists():
-            norm_path = str(path_obj.resolve())
-        else:
-            norm_path = str(path_obj)
-        
-        # Windows路径标准化
-        if os.name == 'nt':
-            norm_path = norm_path.replace('/', '\\')
-            if len(norm_path) >= 2 and norm_path[1] == ':':
-                norm_path = norm_path[0].upper() + norm_path[1:]
-        else:
-            norm_path = norm_path.replace('\\', '/')
-            
-        return norm_path
-    except Exception as e:
-        print(f"路径标准化错误: {e}")
-        return path_str
+# --- 导入统一路径处理工具 ---
+from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
+
+# --- 导入统一主题管理工具 ---
+from theme_manager import ThemeManager
 # ------------------------
 
 import sys
@@ -2551,6 +2518,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
         # --------------------------------------------
+        
+        # --- 主题管理系统初始化 ---
+        self.current_theme = "现代蓝"  # 保持兼容性
+        self.theme_manager = ThemeManager("现代蓝")  # 创建统一主题管理器
+        # ---------------------------
 
         # --- Central Widget and Main Layout ---
         central_widget = QWidget()
@@ -4436,21 +4408,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
     def _extract_folder_path(self, file_path):
         """提取文件夹路径"""
-        if not file_path:
-            return '未知路径'
-        
-        # 标准化路径显示
-        normalized_path = normalize_path_for_display(file_path)
-        folder_path = os.path.dirname(normalized_path)
-        
-        # 如果路径太长，进行缩短
-        if len(folder_path) > 60:
-            # 保留开头和结尾，中间用...代替
-            parts = folder_path.split(os.sep)
-            if len(parts) > 3:
-                return os.sep.join([parts[0], '...', parts[-2], parts[-1]])
-        
-        return folder_path if folder_path else '根目录'
+        return PathStandardizer.get_folder_path(file_path)
 
     # --- GUI Update Slots (Connected to worker signals) --- 
     @Slot(str)
@@ -5558,6 +5516,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 
             theme_name = "现代蓝"
             self.settings.setValue("ui/theme", theme_name)
+        
+        # --- 更新主题管理器 ---
+        self.theme_manager.set_current_theme(theme_name)
         
         # --- 应用主题 ---
         if theme_name == "现代蓝":
