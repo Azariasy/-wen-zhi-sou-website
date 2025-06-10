@@ -2,6 +2,7 @@
 
 
 
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -382,7 +383,8 @@ class VirtualResultsModel(QAbstractListModel):
             if not is_file_collapsed and (is_new_file or is_new_heading):
                 # 检查是否是Excel数据
                 if result.get('excel_sheet') is None:
-                    chapter_key = f"c::{file_path}::{i}::{original_heading}"
+                    # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                    chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
                     is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
                     
                     chapter_item = {
@@ -400,10 +402,12 @@ class VirtualResultsModel(QAbstractListModel):
             
             # 处理内容（段落或Excel数据）
             if not is_file_collapsed:
-                chapter_key = f"c::{file_path}::{i}::{original_heading}"
+                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
                 is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
                 
-                if not is_chapter_collapsed or result.get('excel_sheet') is not None:
+                # 修复BUG：无论是否是Excel数据，只要章节被折叠就不显示内容
+                if not is_chapter_collapsed:
                     content_item = {
                         'type': 'content',
                         'file_path': file_path,
@@ -855,6 +859,10 @@ class VirtualResultsView(QListView):
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         
+        # 启用右键菜单
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+        
         # 设置HTML委托
         self.html_delegate = HtmlItemDelegate(self)
         self.setItemDelegate(self.html_delegate)
@@ -888,6 +896,118 @@ class VirtualResultsView(QListView):
         
         # 调用父类处理
         super().mousePressEvent(event)
+        
+    def mouseDoubleClickEvent(self, event):
+        """处理双击事件，显示文本选择对话框"""
+        if event.button() == Qt.LeftButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid():
+                # 获取HTML内容
+                html_content = index.data(Qt.DisplayRole)
+                if html_content:
+                    self._show_text_selection_dialog(html_content)
+                    return
+        
+        # 调用父类处理
+        super().mouseDoubleClickEvent(event)
+        
+    def _show_text_selection_dialog(self, html_content):
+        """显示文本选择对话框"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QMessageBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("文本选择")
+        dialog.resize(800, 500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # 创建文本编辑器显示内容
+        text_edit = QTextEdit()
+        text_edit.setHtml(html_content)
+        text_edit.setReadOnly(False)  # 允许选择
+        layout.addWidget(text_edit)
+        
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        
+        # 复制全部按钮
+        copy_all_btn = QPushButton("复制全部内容")
+        copy_all_btn.clicked.connect(lambda: self._copy_all_text(text_edit, dialog))
+        button_layout.addWidget(copy_all_btn)
+        
+        # 复制选中按钮
+        copy_selected_btn = QPushButton("复制选中文本")
+        copy_selected_btn.clicked.connect(lambda: self._copy_selected_text(text_edit, dialog))
+        button_layout.addWidget(copy_selected_btn)
+        
+        # 关闭按钮
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(dialog.close)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+    
+    def _copy_all_text(self, text_edit, dialog):
+        """复制全部文本内容"""
+        plain_text = text_edit.toPlainText()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(plain_text)
+        QMessageBox.information(dialog, "复制成功", f"已复制 {len(plain_text)} 个字符到剪贴板")
+        
+    def _copy_selected_text(self, text_edit, dialog):
+        """复制选中的文本"""
+        cursor = text_edit.textCursor()
+        selected_text = cursor.selectedText()
+        
+        if selected_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(selected_text)
+            QMessageBox.information(dialog, "复制成功", f"已复制 {len(selected_text)} 个字符到剪贴板")
+        else:
+            QMessageBox.warning(dialog, "未选择文本", "请先选择要复制的文本")
+            
+    def _show_context_menu(self, position):
+        """显示虚拟滚动视图的右键菜单"""
+        index = self.indexAt(position)
+        if not index.isValid():
+            return
+            
+        menu = QMenu(self)
+        
+        # 获取HTML内容
+        html_content = index.data(Qt.DisplayRole)
+        if html_content:
+            # 复制内容选项
+            copy_action = menu.addAction("复制内容")
+            copy_action.triggered.connect(lambda: self._copy_item_content(html_content))
+            
+            menu.addSeparator()
+            
+            # 文本选择对话框选项
+            select_action = menu.addAction("文本选择...")
+            select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
+            
+            # 显示菜单
+            menu.exec(self.mapToGlobal(position))
+            
+    def _copy_item_content(self, html_content):
+        """复制项目的纯文本内容"""
+        from PySide6.QtGui import QTextDocument
+        
+        # 将HTML转换为纯文本
+        doc = QTextDocument()
+        doc.setHtml(html_content)
+        plain_text = doc.toPlainText()
+        
+        # 复制到剪贴板
+        clipboard = QApplication.clipboard()
+        clipboard.setText(plain_text)
+        
+        # 显示成功消息（可选）
+        if hasattr(self, 'parent') and hasattr(self.parent(), 'statusBar'):
+            self.parent().statusBar().showMessage(f"已复制 {len(plain_text)} 个字符到剪贴板", 3000)
 
 # --- Worker Class for Background Tasks ---
 class Worker(QObject):
@@ -917,9 +1037,9 @@ class Worker(QObject):
         if self.stop_requested:
             raise InterruptedError("操作被用户中断")
 
-    @Slot(list, str, bool, int, int, object) # Added object for file_types_to_index
+    @Slot(list, str, bool, int, int, object) # Added object for file_type_config
     @Slot(list, str, bool, int, int) # Added int for txt_content_limit_kb
-    def run_indexing(self, source_directories, index_dir_path, enable_ocr, extraction_timeout, txt_content_limit_kb, file_types_to_index=None):
+    def run_indexing(self, source_directories, index_dir_path, enable_ocr, extraction_timeout, txt_content_limit_kb, file_type_config=None):
         """Runs the indexing process in the background for multiple source directories."""
         try:
             # 重置完成标志，防止重复发送信号
@@ -948,13 +1068,26 @@ class Worker(QObject):
                     return True
                 return False
             
+            # Extract file type configuration if provided
+            full_index_types = []
+            filename_only_types = []
+            
+            if file_type_config and isinstance(file_type_config, dict):
+                full_index_types = file_type_config.get('full_index_types', [])
+                filename_only_types = file_type_config.get('filename_only_types', [])
+                print(f"完整索引文件类型: {full_index_types}")
+                print(f"仅文件名索引文件类型: {filename_only_types}")
+            else:
+                print("使用默认设置：索引所有支持的文件类型（完整索引）")
+
             generator = document_search.create_or_update_index_legacy(
                 source_directories,
                 index_dir_path,
                 enable_ocr,
                 extraction_timeout=extraction_timeout, # Pass timeout here
                 txt_content_limit_kb=txt_content_limit_kb, # Pass txt limit here
-                file_types_to_index=file_types_to_index, # Pass file types to index
+                file_types_to_index=full_index_types, # 仅传递完整索引的文件类型
+                filename_only_types=filename_only_types, # 新增：仅文件名索引的文件类型
                 cancel_callback=cancel_check  # Pass cancel callback
             )
 
@@ -1147,6 +1280,15 @@ class Worker(QObject):
                 'limit': 1200  # 调整到1200条，平衡性能与完整性
             }
             
+            # 添加详细调试信息
+            print(f"🔍 精确搜索调试信息:")
+            print(f"   查询词: '{query_str}'")
+            print(f"   搜索模式: {search_mode}")
+            print(f"   搜索范围: {search_scope}")
+            print(f"   区分大小写: {case_sensitive}")
+            if search_mode == 'phrase':
+                print(f"   精确搜索: 将查找包含完整短语 '{query_str}' 的内容")
+            
             # 添加可选参数
             if min_size is not None:
                 search_params['min_size_kb'] = min_size
@@ -1159,7 +1301,7 @@ class Worker(QObject):
             if file_type_filter_list:
                 search_params['file_type_filter'] = file_type_filter_list
             if search_dirs_list:
-                search_params['search_dirs'] = search_dirs_list
+                search_params['current_source_dirs'] = search_dirs_list
             
             # 尝试使用优化搜索引擎，降级到原始搜索
             try:
@@ -1170,8 +1312,8 @@ class Worker(QObject):
                 print(f"⚠️ 优化搜索失败，降级到传统搜索: {e}")
                 # 降级到原始搜索方法
                 backend_params = inspect.signature(document_search.search_index).parameters
-                if 'search_dirs' in backend_params:
-                    # 后端支持search_dirs参数
+                if 'current_source_dirs' in backend_params:
+                    # 后端支持current_source_dirs参数
                     results = document_search.search_index(
                         query_str=query_str, 
                         index_dir_path=index_dir_path, 
@@ -1183,10 +1325,10 @@ class Worker(QObject):
                         end_date=end_date_str, 
                         file_type_filter=file_type_filter_list,
                         case_sensitive=case_sensitive,
-                        search_dirs=search_dirs_list
+                        current_source_dirs=search_dirs_list
                     )
                 else:
-                    # 后端不支持search_dirs参数
+                    # 后端不支持current_source_dirs参数
                     results = document_search.search_index(
                         query_str=query_str, 
                         index_dir_path=index_dir_path, 
@@ -1210,12 +1352,14 @@ class Worker(QObject):
         # 如果搜索目录不为None但后端不支持，则手动过滤结果
         if search_dirs_list and results:
             try:
+                print(f"DEBUG: 后端不支持目录过滤，手动过滤 {len(results)} 个结果")
                 # 创建过滤后的结果列表
                 filtered_results = []
                 
                 # 规范化所选目录路径
                 # 确保路径格式一致，以便正确匹配
-                normalized_search_dirs = [os.path.normpath(d) for d in search_dirs_list]
+                normalized_search_dirs = [os.path.normpath(d).lower() for d in search_dirs_list]
+                print(f"DEBUG: 规范化的过滤目录: {normalized_search_dirs}")
                 
                 # 遍历结果进行过滤
                 for result in results:
@@ -1229,21 +1373,20 @@ class Worker(QObject):
                     # 处理存档文件内部项目
                     if '::' in file_path:
                         archive_path = file_path.split('::', 1)[0]
-                        parent_dir = os.path.dirname(os.path.normpath(archive_path))
+                        file_path_normalized = os.path.normpath(archive_path).lower()
                     else:
-                        parent_dir = os.path.dirname(os.path.normpath(file_path))
+                        file_path_normalized = os.path.normpath(file_path).lower()
                     
-                    # 检查文件的父目录是否在选定的目录列表中或其子目录中
+                    # 检查文件是否在选定的目录列表中或其子目录中
                     for search_dir in normalized_search_dirs:
-                        # 检查文件是否在搜索目录中
-                        if parent_dir == search_dir:
+                        # 检查文件是否在搜索目录中或其子目录中
+                        if file_path_normalized.startswith(search_dir + os.sep) or file_path_normalized == search_dir:
                             is_in_selected_dir = True
+                            print(f"DEBUG: 文件 {file_path} 匹配目录 {search_dir}")
                             break
-                            
-                        # 检查文件是否在搜索目录的子目录中
-                        if os.path.commonpath([parent_dir, search_dir]) == search_dir and parent_dir.startswith(search_dir):
-                            is_in_selected_dir = True
-                            break
+                    
+                    if not is_in_selected_dir:
+                        print(f"DEBUG: 过滤掉文件 {file_path}（不在当前源目录中）")
                     
                     # 如果文件在所选目录中，添加到过滤结果
                     if is_in_selected_dir:
@@ -1456,40 +1599,62 @@ class SettingsDialog(QDialog):
 
         # --- Populate Index Settings Container ---
         index_layout = QVBoxLayout(self.index_settings_widget)
-        index_layout.setContentsMargins(0,0,0,0) # Remove margins if needed
-        # Use QGroupBox for better visual grouping
-        index_groupbox = QGroupBox("索引设置")
-        index_layout.addWidget(index_groupbox)
-        index_group_layout = QVBoxLayout(index_groupbox) # Layout for the groupbox
+        index_layout.setContentsMargins(5,5,5,5) 
+        
+        # 创建标签页控件来组织设置
+        tab_widget = QTabWidget()
+        index_layout.addWidget(tab_widget)
+        
+        # === 基本设置标签页 ===
+        basic_tab = QWidget()
+        basic_layout = QVBoxLayout(basic_tab)
+        basic_layout.setSpacing(15)
+        
+        # 基本设置分组
+        basic_group = QGroupBox("📁 基本设置")
+        basic_group_layout = QVBoxLayout(basic_group)
 
         # --- Source Directories Management ---
         source_dirs_label = QLabel("要索引的文件夹:")
+        source_dirs_label.setStyleSheet("font-weight: bold; color: #333;")
+        
         self.source_dirs_list = QListWidget()
-        self.source_dirs_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # Allow multiple selections
+        self.source_dirs_list.setSelectionMode(QAbstractItemView.ExtendedSelection) 
         self.source_dirs_list.setToolTip("指定一个或多个需要建立索引的根文件夹。")
+        self.source_dirs_list.setMaximumHeight(120)  # 限制高度
 
         source_dirs_button_layout = QHBoxLayout()
-        self.add_source_dir_button = QPushButton("添加目录")
-        self.remove_source_dir_button = QPushButton("移除选中")
+        self.add_source_dir_button = QPushButton("➕ 添加目录")
+        self.remove_source_dir_button = QPushButton("➖ 移除选中")
+        self.add_source_dir_button.setMaximumWidth(100)
+        self.remove_source_dir_button.setMaximumWidth(100)
         source_dirs_button_layout.addWidget(self.add_source_dir_button)
         source_dirs_button_layout.addWidget(self.remove_source_dir_button)
-        source_dirs_button_layout.addStretch() # Push buttons to the left
+        source_dirs_button_layout.addStretch() 
 
-        index_group_layout.addWidget(source_dirs_label)
-        index_group_layout.addWidget(self.source_dirs_list)
-        index_group_layout.addLayout(source_dirs_button_layout)
-        index_group_layout.addSpacing(15) # Add some space before next setting
+        basic_group_layout.addWidget(source_dirs_label)
+        basic_group_layout.addWidget(self.source_dirs_list)
+        basic_group_layout.addLayout(source_dirs_button_layout)
 
-        # --- OCR Setting ---
-        # --- MODIFIED: 添加OCR设置区域和专业版标记 ---
+        # OCR设置分组
+        ocr_group = QGroupBox("🔍 OCR设置")
+        ocr_group_layout = QVBoxLayout(ocr_group)
+        
         ocr_layout = QHBoxLayout()
-        self.enable_ocr_checkbox = QCheckBox("索引时启用 OCR (适用于 PDF, 可能显著增加时长)")
-        self.pro_feature_ocr_label = QLabel("专业版专享")
-        self.pro_feature_ocr_label.setStyleSheet("color: #FF6600; font-weight: bold;")
+        self.enable_ocr_checkbox = QCheckBox("启用 OCR 光学字符识别")
+        self.pro_feature_ocr_label = QLabel("🔒 专业版专享")
+        self.pro_feature_ocr_label.setStyleSheet("color: #FF6600; font-weight: bold; font-size: 11px;")
         ocr_layout.addWidget(self.enable_ocr_checkbox)
         ocr_layout.addWidget(self.pro_feature_ocr_label)
         ocr_layout.addStretch()
-        index_group_layout.addLayout(ocr_layout)
+        
+        # OCR说明
+        ocr_info = QLabel("💡 OCR可以识别PDF中的图像文字，但会显著增加索引时间")
+        ocr_info.setStyleSheet("color: #666; font-size: 11px; margin-top: 5px;")
+        ocr_info.setWordWrap(True)
+        
+        ocr_group_layout.addLayout(ocr_layout)
+        ocr_group_layout.addWidget(ocr_info)
         
         # 根据许可状态禁用OCR选项
         pdf_support_available = self.license_manager.is_feature_available(Features.PDF_SUPPORT)
@@ -1499,34 +1664,71 @@ class SettingsDialog(QDialog):
         # 添加提示信息
         self.enable_ocr_checkbox.setToolTip("OCR功能需要专业版授权才能使用" if not pdf_support_available else 
                                        "启用OCR可以识别PDF中的图像文字，但会显著增加索引时间")
-        # ----------------------------------------
         
-        index_group_layout.addSpacing(15) # Add some space
+        basic_layout.addWidget(basic_group)
+        basic_layout.addWidget(ocr_group)
+        basic_layout.addStretch()
+        tab_widget.addTab(basic_tab, "📁 基本设置")
+
+        # === 文件类型标签页 ===
+        file_types_tab = QWidget()
+        file_types_layout = QVBoxLayout(file_types_tab)
+        file_types_layout.setSpacing(10)
 
         # --- ADDED: File Types to Index Selection ---
-        file_types_group = QGroupBox("要索引的文件类型")
+        file_types_group = QGroupBox("📄 文件类型与索引模式")
         file_types_group.setToolTip("选择需要创建索引的文件类型，未勾选的类型将被跳过")
-        file_types_layout = QVBoxLayout(file_types_group)
+        file_types_group_layout = QVBoxLayout(file_types_group)
+        
+        # 添加说明信息
+        info_widget = QWidget()
+        info_widget.setStyleSheet("background-color: #e8f4fd; border: 1px solid #bee5eb; border-radius: 4px; padding: 8px;")
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(8, 8, 8, 8)
+        
+        info_title = QLabel("💡 索引模式说明")
+        info_title.setStyleSheet("font-weight: bold; color: #0c5460; margin-bottom: 4px;")
+        info_content = QLabel("• 完整索引：提取并索引文件完整内容，支持全文搜索\n• 仅文件名：只索引文件名信息，适合大文件或归档文件")
+        info_content.setStyleSheet("color: #0c5460; font-size: 11px; line-height: 1.4;")
+        info_content.setWordWrap(True)
+        
+        info_layout.addWidget(info_title)
+        info_layout.addWidget(info_content)
+        file_types_group_layout.addWidget(info_widget)
         
         # 创建全选复选框
-        self.select_all_types_checkbox = QCheckBox("全选")
+        controls_layout = QHBoxLayout()
+        self.select_all_types_checkbox = QCheckBox("🔲 全选/全不选")
         self.select_all_types_checkbox.setChecked(True)
-        file_types_layout.addWidget(self.select_all_types_checkbox)
+        self.select_all_types_checkbox.setStyleSheet("font-weight: bold; color: #333;")
+        controls_layout.addWidget(self.select_all_types_checkbox)
+        controls_layout.addStretch()
+        file_types_group_layout.addLayout(controls_layout)
+        
+        # 创建滚动区域用于文件类型列表
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setMaximumHeight(300)
+        
+        scroll_widget = QWidget()
+        scroll_area.setWidget(scroll_widget)
         
         # 定义支持的文件类型
         supported_types = {
-            'txt': {'display': '文本文件 (.txt)', 'pro_feature': None},
-            'docx': {'display': 'Word文档 (.docx)', 'pro_feature': None},
-            'xlsx': {'display': 'Excel表格 (.xlsx)', 'pro_feature': None},
-            'pptx': {'display': 'PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
-            'pdf': {'display': 'PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
-            'html': {'display': 'HTML网页 (.html, .htm)', 'pro_feature': None},
-            'rtf': {'display': 'RTF富文本 (.rtf)', 'pro_feature': None},
-            'md': {'display': 'Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
-            'eml': {'display': '电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
-            'msg': {'display': 'Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
-            'zip': {'display': 'ZIP压缩包 (.zip)', 'pro_feature': None},
-            'rar': {'display': 'RAR压缩包 (.rar)', 'pro_feature': None},
+            'txt': {'display': '📝 文本文件 (.txt)', 'pro_feature': None},
+            'docx': {'display': '📄 Word文档 (.docx)', 'pro_feature': None},
+            'xlsx': {'display': '📊 Excel表格 (.xlsx)', 'pro_feature': None},
+            'pptx': {'display': '📺 PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
+            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
+            'html': {'display': '🌐 HTML网页 (.html, .htm)', 'pro_feature': None},
+            'rtf': {'display': '📄 RTF富文本 (.rtf)', 'pro_feature': None},
+            'md': {'display': '📝 Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
+            'eml': {'display': '📧 电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'msg': {'display': '📧 Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
+            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
         }
         
         # 将文件类型分为基础版和专业版两组
@@ -1538,107 +1740,172 @@ class SettingsDialog(QDialog):
             else:
                 pro_types.append((type_key, type_info))
         
-        # 创建复选框网格布局 - 2列
-        grid_layout = QGridLayout()
+        # 创建复选框网格布局
+        grid_layout = QGridLayout(scroll_widget)
         grid_layout.setColumnStretch(0, 1)
-        grid_layout.setColumnStretch(1, 1)
+        grid_layout.setSpacing(8)
         
-        # 文件类型复选框字典
+        # 文件类型复选框和模式选择字典
         self.file_type_checkboxes = {}
+        self.file_type_modes = {}
         
-        # 添加基础版文件类型复选框
+        # 添加基础版文件类型
         row = 0
-        col = 0
         for i, (type_key, type_info) in enumerate(free_types):
+            type_layout = QHBoxLayout()
+            type_layout.setSpacing(8)
+            
+            # 复选框
             checkbox = QCheckBox(type_info['display'])
-            checkbox.setChecked(True)  # 默认选中所有类型
+            checkbox.setChecked(True)
             self.file_type_checkboxes[type_key] = checkbox
-            grid_layout.addWidget(checkbox, row, col)
             
-            # 连接信号到更新全选状态的方法
+            # 索引模式选择下拉框
+            mode_combo = QComboBox()
+            mode_combo.addItem("完整索引", "full")
+            mode_combo.addItem("仅文件名", "filename_only")
+            mode_combo.setCurrentIndex(0)
+            mode_combo.setMinimumWidth(85)
+            mode_combo.setMaximumWidth(85)
+            mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
+            self.file_type_modes[type_key] = mode_combo
+            
+            type_layout.addWidget(checkbox)
+            type_layout.addStretch()
+            type_layout.addWidget(mode_combo)
+            
+            type_widget = QWidget()
+            type_widget.setLayout(type_layout)
+            grid_layout.addWidget(type_widget, row, 0)
+            
             checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
-            
-            # 每两个切换列
-            col = (col + 1) % 2
-            if col == 0:
-                row += 1
+            row += 1
         
-        # 添加专业版文件类型复选框
+        # 添加专业版文件类型
         for type_key, type_info in pro_types:
             pro_feature = type_info['pro_feature']
             feature_available = self.license_manager.is_feature_available(pro_feature)
             
-            checkbox = QCheckBox(type_info['display'])
-            checkbox.setChecked(feature_available)  # 仅当功能可用时默认选中
+            type_layout = QHBoxLayout()
+            type_layout.setSpacing(8)
             
-            # 如果功能不可用，禁用复选框
+            # 复选框
+            checkbox = QCheckBox(type_info['display'])
+            checkbox.setChecked(feature_available)
+            
             if not feature_available:
                 checkbox.setEnabled(False)
                 checkbox.setToolTip(f"此文件类型需要专业版授权才能使用")
+                checkbox.setStyleSheet("color: #999;")
             
-            # 连接信号到更新全选状态的方法（只有当功能可用时连接）
+            # 索引模式选择下拉框
+            mode_combo = QComboBox()
+            mode_combo.addItem("完整索引", "full")
+            mode_combo.addItem("仅文件名", "filename_only")
+            mode_combo.setCurrentIndex(0)
+            mode_combo.setMinimumWidth(85)
+            mode_combo.setMaximumWidth(85)
+            mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
+            
+            if not feature_available:
+                mode_combo.setEnabled(False)
+                mode_combo.setToolTip(f"此文件类型需要专业版授权才能使用")
+            
+            self.file_type_modes[type_key] = mode_combo
+            
+            type_layout.addWidget(checkbox)
+            type_layout.addStretch()
+            type_layout.addWidget(mode_combo)
+            
+            # 添加专业版标记
+            if not feature_available:
+                pro_label = QLabel("🔒")
+                pro_label.setStyleSheet("color: #FF6600; font-size: 12px;")
+                pro_label.setToolTip("专业版功能")
+                type_layout.addWidget(pro_label)
+            
+            type_widget = QWidget()
+            type_widget.setLayout(type_layout)
+            grid_layout.addWidget(type_widget, row, 0)
+            
             if feature_available:
                 checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
             
             self.file_type_checkboxes[type_key] = checkbox
-            grid_layout.addWidget(checkbox, row, col)
-            
-            # 每两个切换列
-            col = (col + 1) % 2
-            if col == 0:
-                row += 1
+            row += 1
         
-        file_types_layout.addLayout(grid_layout)
-        index_group_layout.addWidget(file_types_group)
-        index_group_layout.addSpacing(15)
+        file_types_group_layout.addWidget(scroll_area)
+        file_types_layout.addWidget(file_types_group)
         
         # 连接全选复选框信号
         self.select_all_types_checkbox.stateChanged.connect(self._toggle_all_file_types)
-        # ---------------------------------------------
+        tab_widget.addTab(file_types_tab, "📄 文件类型")
+
+        # === 高级设置标签页 ===
+        advanced_tab = QWidget()
+        advanced_layout = QVBoxLayout(advanced_tab)
+        advanced_layout.setSpacing(15)
+        
+        # 性能设置分组
+        performance_group = QGroupBox("⚡ 性能设置")
+        performance_layout = QVBoxLayout(performance_group)
 
         # --- ADDED: Extraction Timeout Setting ---
         timeout_layout = QHBoxLayout()
-        timeout_label = QLabel("单个文件提取超时 (秒):")
+        timeout_label = QLabel("⏱️ 单个文件提取超时 (秒):")
+        timeout_label.setStyleSheet("font-weight: bold; color: #333;")
         self.extraction_timeout_spinbox = QSpinBox()
-        self.extraction_timeout_spinbox.setMinimum(0) # 0 means no timeout
-        self.extraction_timeout_spinbox.setMaximum(600) # Max 10 minutes, adjust as needed
-        self.extraction_timeout_spinbox.setValue(120) # Default 2 minutes
+        self.extraction_timeout_spinbox.setMinimum(0)
+        self.extraction_timeout_spinbox.setMaximum(600)
+        self.extraction_timeout_spinbox.setValue(120)
         self.extraction_timeout_spinbox.setToolTip("设置提取单个文件内容（尤其是 OCR）允许的最长时间。\n0 表示不设置超时限制。")
+        self.extraction_timeout_spinbox.setMaximumWidth(100)
         timeout_layout.addWidget(timeout_label)
         timeout_layout.addWidget(self.extraction_timeout_spinbox)
         timeout_layout.addStretch()
-        index_group_layout.addLayout(timeout_layout)
-        index_group_layout.addSpacing(15)
-        # ----------------------------------------
+        performance_layout.addLayout(timeout_layout)
 
         # --- ADDED: TXT Content Limit Setting ---
         txt_limit_layout = QHBoxLayout()
-        txt_limit_label = QLabel(".txt 文件内容索引上限 (KB):")
+        txt_limit_label = QLabel("📝 .txt 文件内容索引上限 (KB):")
+        txt_limit_label.setStyleSheet("font-weight: bold; color: #333;")
         self.txt_content_limit_spinbox = QSpinBox()
-        self.txt_content_limit_spinbox.setMinimum(0)       # 0 means no limit
-        self.txt_content_limit_spinbox.setMaximum(102400)  # Max 100 MB, adjust as needed
-        self.txt_content_limit_spinbox.setValue(0)         # Default 0 (no limit)
-        self.txt_content_limit_spinbox.setToolTip("限制索引 .txt 文件内容的最大大小（单位 KB）。\\n设置为 0 表示不限制。")
+        self.txt_content_limit_spinbox.setMinimum(1)
+        self.txt_content_limit_spinbox.setMaximum(10240)
+        self.txt_content_limit_spinbox.setValue(1024)
+        self.txt_content_limit_spinbox.setToolTip("设置每个 .txt 文件可以索引的内容大小上限。\n大文件会被截断以节省内存和空间。")
+        self.txt_content_limit_spinbox.setMaximumWidth(100)
         txt_limit_layout.addWidget(txt_limit_label)
         txt_limit_layout.addWidget(self.txt_content_limit_spinbox)
         txt_limit_layout.addStretch()
-        index_group_layout.addLayout(txt_limit_layout)
-        index_group_layout.addSpacing(15)
-        # -----------------------------------------
-
-        # --- Index Storage Location ---
+        performance_layout.addLayout(txt_limit_layout)
+        
+        advanced_layout.addWidget(performance_group)
+        
+        # 索引存储位置设置
+        storage_group = QGroupBox("💾 存储设置")
+        storage_layout = QVBoxLayout(storage_group)
+        
         index_dir_layout = QHBoxLayout()
-        index_dir_label = QLabel("索引文件存储位置:")
+        index_dir_label = QLabel("📁 索引文件存储位置:")
+        index_dir_label.setStyleSheet("font-weight: bold; color: #333;")
         self.index_dir_entry = QLineEdit()
         self.index_dir_entry.setToolTip("指定用于存储索引文件的文件夹。")
-        self.browse_index_button = QPushButton("浏览...")
+        self.browse_index_button = QPushButton("📂 浏览...")
+        self.browse_index_button.setMaximumWidth(80)
         index_dir_layout.addWidget(index_dir_label)
         index_dir_layout.addWidget(self.index_dir_entry, 1)
         index_dir_layout.addWidget(self.browse_index_button)
-        index_group_layout.addLayout(index_dir_layout)
+        storage_layout.addLayout(index_dir_layout)
+        
+        advanced_layout.addWidget(storage_group)
+        advanced_layout.addStretch()
+        tab_widget.addTab(advanced_tab, "⚙️ 高级设置")
 
-        # Remove the stretch added earlier as group box provides structure
-        # index_layout.addStretch(1)
+        # 连接按钮信号
+        self.add_source_dir_button.clicked.connect(self._browse_add_source_directory)
+        self.remove_source_dir_button.clicked.connect(self._remove_selected_source_directory)
+        self.browse_index_button.clicked.connect(self._browse_index_directory)
 
         # --- Populate Search Settings Container ---
         search_layout = QVBoxLayout(self.search_settings_widget)
@@ -1842,7 +2109,7 @@ class SettingsDialog(QDialog):
         # --- Connections ---\
         self.browse_index_button.clicked.connect(self._browse_index_directory)
         self.add_source_dir_button.clicked.connect(self._browse_add_source_directory)
-        self.remove_source_dir_button.clicked.connect(self._remove_selected_source_directory)
+        # 注意：remove_source_dir_button 的连接已在创建按钮时完成，避免重复连接
 
         # --- Load Initial Settings (Load all, visibility handles display) ---\
         self._load_settings()
@@ -1923,10 +2190,17 @@ class SettingsDialog(QDialog):
                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if confirm == QMessageBox.Yes:
-            for item in selected_items:
-                # QListWidget.takeItem requires the row index
-                row = self.source_dirs_list.row(item)
+            # 收集要移除的项目文本，避免在移除过程中索引变化
+            items_to_remove = [(item, self.source_dirs_list.row(item)) for item in selected_items]
+            
+            # 按行号从大到小排序，确保移除时不会影响索引
+            items_to_remove.sort(key=lambda x: x[1], reverse=True)
+            
+            for item, row in items_to_remove:
                 self.source_dirs_list.takeItem(row)
+                print(f"DEBUG: 已移除源目录: {item.text()}")
+            
+            print(f"DEBUG: 成功移除 {len(selected_items)} 个源目录")
 
     def _load_settings(self):
         """Load all settings from QSettings"""
@@ -1954,6 +2228,21 @@ class SettingsDialog(QDialog):
         # 保存选中的文件类型到成员变量
         self.selected_file_types = selected_file_types
         print("DEBUG: 设置 self.selected_file_types =", self.selected_file_types)
+        
+        # --- ADDED: Load File Type Modes Settings ---
+        # 获取已保存的文件类型模式设置，如果没有则默认都为完整索引
+        saved_file_type_modes = self.settings.value("indexing/fileTypeModes", {})
+        print("DEBUG: 从设置加载文件类型模式 =", saved_file_type_modes)
+        
+        # 为所有文件类型设置模式（优先使用保存的设置，否则默认为完整索引）
+        for type_key, mode_combo in self.file_type_modes.items():
+            saved_mode = saved_file_type_modes.get(type_key, "full")  # 默认完整索引
+            if saved_mode == "filename_only":
+                mode_combo.setCurrentIndex(1)  # 仅文件名
+            else:
+                mode_combo.setCurrentIndex(0)  # 完整索引
+            print(f"DEBUG: 设置文件类型 {type_key} 的模式为 {saved_mode}")
+        # ----------------------------------------------
         
         # 暂时阻断复选框信号
         for checkbox in self.file_type_checkboxes.values():
@@ -2090,7 +2379,12 @@ class SettingsDialog(QDialog):
         selected_file_types = self._save_current_file_types()
         print(f"DEBUG: _apply_settings 保存文件类型 = {selected_file_types}")
         self.settings.setValue("indexing/selectedFileTypes", selected_file_types)
-        # -------------------------------------
+        
+        # --- ADDED: Save File Type Modes Settings ---
+        file_type_modes = self._save_current_file_type_modes()
+        print(f"DEBUG: _apply_settings 保存文件类型模式 = {file_type_modes}")
+        self.settings.setValue("indexing/fileTypeModes", file_type_modes)
+        # ------------------------------------------
         
         # Index Directory
         index_dir = self.index_dir_entry.text().strip()
@@ -2231,6 +2525,17 @@ class SettingsDialog(QDialog):
         
         print(f"DEBUG: _save_current_file_types 返回 {len(selected_types)} 个选中类型")
         return selected_types
+    
+    def _save_current_file_type_modes(self):
+        """收集当前文件类型的索引模式并返回字典"""
+        file_type_modes = {}
+        for type_key, mode_combo in self.file_type_modes.items():
+            selected_mode = mode_combo.currentData()  # 获取当前选中项的data值
+            file_type_modes[type_key] = selected_mode
+            print(f"DEBUG: 文件类型 {type_key} 的索引模式 = {selected_mode}")
+        
+        print(f"DEBUG: _save_current_file_type_modes 返回字典 = {file_type_modes}")
+        return file_type_modes
 
     def _update_button_states(self):
         """更新应用按钮状态"""
@@ -2512,6 +2817,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.min_search_length = 2  # 最小搜索长度
         self.debounce_delay = 500   # 防抖延迟（毫秒）
         self.last_search_text = ""  # 上次搜索文本
+        self._setting_text_from_history = False  # 标志：是否正在从历史记录设置文本
+        self._history_selection_in_progress = False  # 标志：历史记录选择进行中
         
         # 创建防抖计时器
         self.search_debounce_timer = QTimer()
@@ -2610,6 +2917,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.results_text.setOpenExternalLinks(False)  # 禁止外部链接自动打开
         self.results_text.setOpenLinks(False)          # 禁止所有链接自动打开，使用信号处理
         self.results_text.setStyleSheet("border: 1px solid #D0D0D0;")
+        
+        # 启用右键菜单并设置选择模式
+        self.results_text.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.results_text.customContextMenuRequested.connect(self._show_results_context_menu)
+        self.results_text.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         
         # 创建虚拟滚动组件
         self.virtual_results_model = VirtualResultsModel(self)
@@ -3264,6 +3576,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 搜索防抖机制连接 ---
         self.search_line_edit.textChanged.connect(self._on_search_text_changed)
         self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
+        
+        # --- 搜索历史下拉框选择处理 ---
+        self.search_combo.activated.connect(self._on_history_item_selected)
+        
+        # --- 回车键搜索支持 ---
+        self.search_line_edit.returnPressed.connect(self.start_search_slot)
 
         # --- Date fields ---
 
@@ -3690,6 +4008,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         search_scope = 'fulltext' if scope_index == 0 else 'filename'
         print(f"DEBUG: Search scope selected: {search_scope}")
 
+        # --- 清除搜索缓存以确保结果准确性 ---
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.clear_search_cache()
+            print(f"DEBUG: 搜索开始前已清除缓存")
+        
         # --- MODIFIED: Call common search prep with scope ---
         self._start_search_common(mode, query, search_scope)
         # --------------------------------------------------
@@ -3725,7 +4048,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_combo.blockSignals(False) # Unblock signals
         
         # 6. IMPORTANT: Restore the currently searched query in the line edit
+        # 设置标志以表明这是历史记录选择
+        self._setting_text_from_history = True
         self.search_line_edit.setText(query)
+        # 延迟稍长一些确保textChanged信号处理完成后再重置标志
+        QTimer.singleShot(200, lambda: setattr(self, '_setting_text_from_history', False))
         
         # 7. Save updated history to QSettings
         self.settings.setValue("history/searchQueries", updated_history)
@@ -3734,9 +4061,17 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # MODIFIED: Accepts mode and query as arguments
     def _start_search_common(self, mode: str, query: str, search_scope: str):
         """Common logic to start search, now takes mode, query, and scope."""
-        if self.is_busy:
+        # 检查是否为历史记录选择，如果是则优先处理
+        is_history_selection = getattr(self, '_history_selection_in_progress', False)
+        
+        if self.is_busy and not is_history_selection:
             QMessageBox.warning(self, "忙碌中", "请等待当前操作完成。")
             return
+        elif self.is_busy and is_history_selection:
+            # 历史记录选择时，如果有进行中的操作，则取消它
+            print(f"DEBUG: 历史记录选择优先，停止当前操作")
+            if hasattr(self, 'worker') and self.worker:
+                self.worker.stop_requested = True
             
         # --- 检测精确模式下的逻辑操作符和通配符 ---
         if mode == 'phrase' and query:
@@ -3905,6 +4240,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- 增强搜索进度提示 ---
         self.statusBar().showMessage(status_msg + "...", 0)
+        # 清除之前的警告标签
+        if hasattr(self, 'search_warning_label'):
+            self.search_warning_label.setVisible(False)
         # 设置忙碌状态为搜索操作（不显示进度条和取消按钮）
         self.set_busy_state(True, "search")
         # ------------------------------
@@ -3919,10 +4257,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME) # Re-get settings here
         case_sensitive = settings.value("search/caseSensitive", False, type=bool)
         
-        # --- MODIFIED: 将选中的目录传递给后端搜索函数 ---
-        # 只有在有选中的目录且不是全部目录时才传递目录参数
+        # --- MODIFIED: 正确传递目录过滤参数 ---
+        # 获取当前配置的源目录，用于过滤历史索引中已删除目录的结果
         source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
+        
+        # 区分两种目录参数：
+        # 1. current_source_dirs_param: 用于过滤已删除目录，总是传递所有当前配置的源目录
+        # 2. search_dirs_param: 用于搜索范围限制，仅在用户选择特定目录时传递
+        current_source_dirs_param = source_dirs if source_dirs else None
         search_dirs_param = selected_dirs if selected_dirs and len(selected_dirs) < len(source_dirs) else None
+        
+        # 调试信息
+        print(f"DEBUG: 当前配置的源目录: {source_dirs}")
+        print(f"DEBUG: 目录过滤参数(current_source_dirs): {current_source_dirs_param}")
+        print(f"DEBUG: 搜索范围参数(search_dirs): {search_dirs_param}")
+        
+        # 清除搜索缓存以确保目录过滤生效
+        if self.worker:
+            self.worker.clear_search_cache()
+            print("DEBUG: 已清除搜索缓存，确保目录过滤生效")
         
         # --- MODIFIED: Emit Signal to Worker with scope ---
         self.startSearchSignal.emit(query,
@@ -3935,7 +4288,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                     index_dir, # Pass the index_dir_path
                                     case_sensitive,
                                     search_scope, # Pass search scope
-                                    search_dirs_param) # Pass selected directories for filtering
+                                    current_source_dirs_param) # Pass current source directories for filtering
         # -------------------------------------------------
 
         # --- ADDED: Store the current search scope --- 
@@ -3945,41 +4298,135 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # --- 搜索防抖和分组功能方法 ---
     @Slot(str)
     def _on_search_text_changed(self, text):
-        """处理搜索文本变化 - 防抖机制"""
+        """处理搜索文本变化 - 智能防抖机制：历史记录自动搜索，手动输入需要回车"""
+        print(f"DEBUG: _on_search_text_changed 被调用，文本: '{text}'")
+        
         # 重置防抖计时器
         if hasattr(self, 'search_debounce_timer'):
             self.search_debounce_timer.stop()
+            print(f"DEBUG: 防抖计时器已停止")
         
         # 如果搜索文本长度不足最小要求，不触发搜索
         if len(text.strip()) < getattr(self, 'min_search_length', 2):
+            print(f"DEBUG: 文本长度不足，跳过 (长度: {len(text.strip())})")
             return
             
-        # 如果文本与上次相同，不需要重新搜索
-        if text.strip() == getattr(self, 'last_search_text', ''):
+        # 如果文本与上次相同，不需要重新搜索（但历史记录选择除外）
+        is_history_selection = getattr(self, '_setting_text_from_history', False)
+        if text.strip() == getattr(self, 'last_search_text', '') and not is_history_selection:
+            print(f"DEBUG: 文本与上次相同，跳过搜索")
             return
-            
-        # 如果启用了即时搜索，启动防抖计时器
-        if getattr(self, 'instant_search_enabled', False):
-            if hasattr(self, 'search_debounce_timer'):
-                self.search_debounce_timer.start(getattr(self, 'debounce_delay', 300))
         
+        # 检测是否为历史记录选择（通过程序设置文本）
+        is_history_selection = getattr(self, '_setting_text_from_history', False)
+        print(f"DEBUG: 历史记录选择标志: {is_history_selection}")
+        
+        # 如果启用了即时搜索
+        instant_search = getattr(self, 'instant_search_enabled', False)
+        print(f"DEBUG: 即时搜索启用状态: {instant_search}")
+        
+        if instant_search:
+            if is_history_selection:
+                # 历史记录选择：立即重置标志，然后启动短延迟自动搜索
+                self._setting_text_from_history = False  # 立即重置标志避免重复触发
+                print(f"DEBUG: 历史记录选择标志已立即重置")
+                
+                # 历史记录选择时立即执行搜索，不使用计时器
+                print(f"DEBUG: 历史记录选择，立即执行搜索 (文本: '{text}')")
+                # 更新搜索文本记录
+                self.last_search_text = text.strip()
+                # 立即执行搜索
+                self.start_search_slot()
+            else:
+                # 手动输入：不自动搜索，用户需要按回车或点击搜索按钮
+                print(f"DEBUG: 手动输入检测，禁用自动搜索 (文本: '{text}')")
+                # 显示提示信息
+                if len(text.strip()) >= 2:
+                    self.statusBar().showMessage("请按回车键或点击搜索按钮开始搜索", 2000)
+        else:
+            print(f"DEBUG: 即时搜索未启用，跳过防抖逻辑")
+        
+    @Slot(int)
+    def _on_history_item_selected(self, index):
+        """处理历史记录项目选择"""
+        print(f"DEBUG: _on_history_item_selected 被调用，索引: {index}")
+        if index >= 0:
+            selected_text = self.search_combo.itemText(index)
+            if selected_text:
+                print(f"DEBUG: 用户选择历史记录: '{selected_text}' (长度: {len(selected_text)})")
+                
+                # 立即阻止所有当前操作
+                if hasattr(self, 'search_debounce_timer'):
+                    self.search_debounce_timer.stop()
+                
+                # 取消当前搜索操作（如果有）
+                if hasattr(self, 'worker') and self.worker:
+                    self.worker.stop_requested = True
+                
+                # 设置标志以表明这是历史记录选择
+                self._setting_text_from_history = True
+                self._history_selection_in_progress = True  # 额外标志
+                print(f"DEBUG: 历史记录选择标志设置为 True")
+                
+                # 设置文本（这会触发textChanged信号）
+                self.search_line_edit.setText(selected_text)
+                print(f"DEBUG: 文本已设置")
+                
+                # 确保立即执行搜索，不依赖textChanged
+                QTimer.singleShot(50, lambda: self._execute_history_search(selected_text))
+            else:
+                print(f"DEBUG: 选中的文本为空")
+        else:
+            print(f"DEBUG: 索引无效: {index}")
+    
+    def _execute_history_search(self, search_text):
+        """执行历史记录搜索"""
+        print(f"DEBUG: _execute_history_search 被调用，文本: '{search_text}'")
+        # 重置标志
+        self._setting_text_from_history = False
+        self._history_selection_in_progress = False
+        
+        # 确保搜索框文本正确
+        if self.search_line_edit.text().strip() == search_text.strip():
+            # 清除搜索缓存以确保新搜索获得准确结果
+            if hasattr(self, 'worker') and self.worker:
+                self.worker.clear_search_cache()
+                print(f"DEBUG: 已清除搜索缓存以确保准确结果")
+            
+            # 更新搜索历史记录
+            self.last_search_text = search_text.strip()
+            print(f"DEBUG: 历史记录搜索 - 立即执行搜索: '{search_text}'")
+            # 立即执行搜索
+            self.start_search_slot()
+        else:
+            print(f"DEBUG: 搜索框文本不匹配，跳过历史记录搜索")
+    
+    def _reset_history_flag(self):
+        """重置历史记录选择标志"""
+        self._setting_text_from_history = False
+        print(f"DEBUG: 历史记录选择标志已重置为 False")
+    
     @Slot()
     def _perform_debounced_search(self):
         """执行防抖搜索"""
+        print(f"DEBUG: _perform_debounced_search 被调用")
         current_text = self.search_line_edit.text().strip()
+        print(f"DEBUG: 当前文本: '{current_text}'")
         
         # 再次检查长度和变化
         if len(current_text) < getattr(self, 'min_search_length', 2):
+            print(f"DEBUG: 防抖搜索-文本长度不足，跳过 (长度: {len(current_text)})")
             return
             
-        if current_text == getattr(self, 'last_search_text', ''):
-            return
+        # 移除重复检查，因为防抖动机制已经在textChanged中检查过了
+        # 这里直接执行搜索
             
         # 记录当前搜索文本
         self.last_search_text = current_text
+        print(f"DEBUG: 更新 last_search_text 为: '{current_text}'")
         
         # 执行搜索
-        print(f"防抖搜索: {current_text}")
+        print(f"DEBUG: 防抖搜索开始执行: {current_text}")
         self.start_search_slot()
         
     def _toggle_instant_search(self, enabled):
@@ -4491,15 +4938,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self.statusBar().showMessage("未找到结果", 5000)
                 else:
                     # 检查是否可能被截断（接近限制数值）
-                    max_recommended_results = 1000
+                    max_recommended_results = 500
                     if len(results) >= max_recommended_results:
-                        self.statusBar().showMessage(f"🔍 显示 {len(results)} 条结果（已达到推荐上限）建议使用更具体的搜索词或筛选条件", 0)
+                        self.statusBar().showMessage(f"🔍 结果数量超过 {max_recommended_results} 条，建议使用更明确的搜索词重新尝试", 0)
                         
                         # 在界面顶部添加警告横幅
                         if hasattr(self, 'search_warning_label'):
-                            self.search_warning_label.setText(f"⚠️ 结果数量较多（{len(results)} 条），可能已截断。建议使用更具体的搜索词或添加筛选条件以获得更精确的结果。")
+                            self.search_warning_label.setText(f"⚠️ 结果数量超过 {max_recommended_results} 条，建议使用更明确的搜索词重新尝试以获得更精确的结果。")
                             self.search_warning_label.setVisible(True)
-                    elif len(results) >= 1000:
+                    elif len(results) >= 50:
                         self.statusBar().showMessage(f"找到 {len(results)} 个结果 (虚拟滚动模式，性能优化)", 0)
                         # 隐藏警告标签
                         if hasattr(self, 'search_warning_label'):
@@ -4701,7 +5148,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         # (Output chapter header)
                         if current_file_div_open and (is_new_file or is_new_heading):
                             if result.get('excel_sheet') is None: 
-                                chapter_key = f"c::{file_path}::{i}::{original_heading}"
+                                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
                                 is_chapter_collapsed = self.collapse_states.get(chapter_key, False)
                                 toggle_char = "[+]" if is_chapter_collapsed else "[-]"
                                 toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
@@ -4754,13 +5202,13 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     # --- Status update (Corrected Indentation) ---
                     if result_count > 0:
                         # 检查是否可能被截断（接近限制数值）
-                        max_recommended_results = 1000
+                        max_recommended_results = 500
                         if result_count >= max_recommended_results:
-                            self.statusBar().showMessage(f"🔍 显示 {result_count} 条结果（已达到推荐上限）建议使用更具体的搜索词或筛选条件", 0)
+                            self.statusBar().showMessage(f"🔍 结果数量超过 {max_recommended_results} 条，建议使用更明确的搜索词重新尝试", 0)
                             
                             # 在界面顶部添加警告横幅
                             if hasattr(self, 'search_warning_label'):
-                                self.search_warning_label.setText(f"⚠️ 结果数量较多（{result_count} 条），可能已截断。建议使用更具体的搜索词或添加筛选条件以获得更精确的结果。")
+                                self.search_warning_label.setText(f"⚠️ 结果数量超过 {max_recommended_results} 条，建议使用更明确的搜索词重新尝试以获得更精确的结果。")
                                 self.search_warning_label.setVisible(True)
                         else:
                             self.statusBar().showMessage(f"找到 {result_count} 条结果", 0)
@@ -4868,6 +5316,60 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
 
 
     # --- Link Handling Slot ---
+    def _show_results_context_menu(self, position):
+        """显示搜索结果区域的右键菜单"""
+        menu = QMenu(self)
+        
+        # 获取当前选中的文本
+        cursor = self.results_text.textCursor()
+        selected_text = cursor.selectedText()
+        
+        # 复制选中文本选项
+        if selected_text:
+            copy_action = menu.addAction("复制选中文本")
+            copy_action.triggered.connect(lambda: QApplication.clipboard().setText(selected_text))
+        else:
+            # 如果没有选中文本，提供复制全部选项
+            copy_all_action = menu.addAction("复制全部内容")
+            copy_all_action.triggered.connect(lambda: QApplication.clipboard().setText(self.results_text.toPlainText()))
+        
+        menu.addSeparator()
+        
+        # 全选选项
+        select_all_action = menu.addAction("全选")
+        select_all_action.triggered.connect(self.results_text.selectAll)
+        
+        # 查找选项
+        find_action = menu.addAction("查找...")
+        find_action.triggered.connect(self._show_find_dialog)
+        
+        menu.addSeparator()
+        
+        # 刷新搜索结果选项
+        refresh_action = menu.addAction("刷新搜索结果")
+        refresh_action.triggered.connect(self.start_search_slot)
+        
+        # 清空结果选项
+        clear_action = menu.addAction("清空结果")
+        clear_action.triggered.connect(self.clear_results_slot)
+        
+        # 在指定位置显示菜单
+        menu.exec(self.results_text.mapToGlobal(position))
+        
+    def _show_find_dialog(self):
+        """显示查找对话框"""
+        text, ok = QInputDialog.getText(self, "查找", "请输入要查找的文本:")
+        if ok and text:
+            # 在结果中查找文本
+            cursor = self.results_text.textCursor()
+            cursor.movePosition(cursor.Start)
+            self.results_text.setTextCursor(cursor)
+            
+            # 查找并高亮显示文本
+            found = self.results_text.find(text)
+            if not found:
+                QMessageBox.information(self, "查找结果", f"未找到 '{text}'")
+
     @Slot(QUrl)
     def handle_link_clicked_slot(self, url):
         """Handles clicks on file, folder, and toggle links in the results text area."""
@@ -5974,7 +6476,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             return
 
         # --- MODIFIED: Read source directories from settings ---
-        source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
+        source_dirs = self.settings.value("indexing/sourceDirectories", [])
+        if not isinstance(source_dirs, list):
+            source_dirs = [] if source_dirs is None else [source_dirs]
+        
+        print(f"DEBUG: start_indexing_slot 读取源目录 = {source_dirs}")
+        
         if not source_dirs:
              QMessageBox.warning(self, "未配置源目录", "请先前往 \"设置 -> 索引设置\" 添加需要索引的文件夹。")
              return
@@ -6002,23 +6509,39 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # -------------------------------------------------------------------
 
         # --- ADDED: Get OCR Setting --- 
-        enable_ocr = self.settings.value("indexing/enableOcr", True, type=bool)
+        enable_ocr = self.settings.value("indexing/enableOcr", True)
+        if isinstance(enable_ocr, str):
+            enable_ocr = enable_ocr.lower() in ('true', '1', 'yes')
+        enable_ocr = bool(enable_ocr)
         # ------------------------------
 
         # --- ADDED: Get Extraction Timeout Setting ---
-        extraction_timeout = self.settings.value("indexing/extractionTimeout", 120, type=int)
+        extraction_timeout = self.settings.value("indexing/extractionTimeout", 120)
+        try:
+            extraction_timeout = int(extraction_timeout)
+        except (ValueError, TypeError):
+            extraction_timeout = 120
         # ---------------------------------------------
 
         # --- ADDED: Get TXT Content Limit Setting --- 
-        txt_content_limit_kb = self.settings.value("indexing/txtContentLimitKb", 0, type=int) # Default 0
+        txt_content_limit_kb = self.settings.value("indexing/txtContentLimitKb", 1024)
+        try:
+            txt_content_limit_kb = int(txt_content_limit_kb)
+        except (ValueError, TypeError):
+            txt_content_limit_kb = 1024
         # -------------------------------------------
 
-        # --- ADDED: 获取要索引的文件类型设置 ---
-        selected_file_types = self.settings.value("indexing/selectedFileTypes", [], type=list)
+        # --- ADDED: 获取文件类型和模式设置 ---
+        selected_file_types = self.settings.value("indexing/selectedFileTypes", [])
+        if not isinstance(selected_file_types, list):
+            selected_file_types = [] if selected_file_types is None else [selected_file_types]
+            
+        file_type_modes = self.settings.value("indexing/fileTypeModes", {})
+        if not isinstance(file_type_modes, dict):
+            file_type_modes = {}
+        
         print(f"DEBUG: start_indexing_slot 读取 'indexing/selectedFileTypes' = {selected_file_types}")
-        print(f"DEBUG: selected_file_types 类型: {type(selected_file_types)}")
-        print(f"DEBUG: selected_file_types 是空列表?: {len(selected_file_types) == 0}")
-        print(f"DEBUG: selected_file_types 是None?: {selected_file_types is None}")
+        print(f"DEBUG: start_indexing_slot 读取 'indexing/fileTypeModes' = {file_type_modes}")
         
         # 如果文件类型列表为空，询问用户是否使用所有文件类型
         if not selected_file_types:
@@ -6033,14 +6556,38 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             if reply == QMessageBox.Yes:
                 # 用户确认使用所有文件类型
                 selected_file_types = ['txt', 'docx', 'xlsx', 'pptx', 'html', 'rtf', 'zip', 'rar', 'pdf', 'md', 'eml', 'msg']
+                # 为所有类型设置默认完整索引模式
+                file_type_modes = {ft: "full" for ft in selected_file_types}
                 print(f"DEBUG: 用户确认使用所有支持的类型: {selected_file_types}")
             else:
                 # 用户取消操作
                 print(f"DEBUG: 用户取消了索引操作，因为未选择文件类型")
                 return
-            
+        
+        # 分离完整索引和仅文件名索引的文件类型
+        full_index_types = []
+        filename_only_types = []
+        
+        # 遍历所有文件类型模式设置，不仅仅是选中的文件类型
+        all_possible_types = set(selected_file_types)
+        all_possible_types.update(file_type_modes.keys())  # 确保包含所有配置的类型
+        
+        for file_type in all_possible_types:
+            # 首先检查该文件类型是否被用户勾选
+            if file_type not in selected_file_types:
+                continue  # 未勾选的文件类型直接跳过，无论什么模式
+                
+            mode = file_type_modes.get(file_type, "full")  # 默认完整索引
+            if mode == "filename_only":
+                filename_only_types.append(file_type)
+            else:
+                full_index_types.append(file_type)
+        
+        print(f"DEBUG: 完整索引类型: {full_index_types}")
+        print(f"DEBUG: 仅文件名索引类型: {filename_only_types}")
+        
         file_types_str = "所有支持的类型" if len(selected_file_types) == 12 else f"{', '.join(selected_file_types)}"
-        # -------------------------------------
+        # ---------------------------------------
 
         # Updated print to include all settings
         print(f"开始索引 {len(source_dirs)} 个源目录 -> '{index_dir}'")
@@ -6054,7 +6601,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.statusBar().showMessage(f"开始准备索引 {len(source_dirs)} 个源目录...", 3000)
 
         # --- MODIFIED: 传递文件类型过滤参数 --- 
-        self.startIndexingSignal.emit(source_dirs, index_dir, enable_ocr, extraction_timeout, txt_content_limit_kb, selected_file_types)
+        # 将文件类型数据打包传递
+        file_type_config = {
+            'full_index_types': full_index_types,
+            'filename_only_types': filename_only_types
+        }
+        self.startIndexingSignal.emit(source_dirs, index_dir, enable_ocr, extraction_timeout, txt_content_limit_kb, file_type_config)
         # -------------------------------------------------------
     
     def _open_selected_folder(self):

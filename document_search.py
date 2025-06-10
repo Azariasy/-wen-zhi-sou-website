@@ -209,9 +209,68 @@ class ChineseTokenizer(Tokenizer):
                  start_pos=0, start_char=0,
                  mode='', **kwargs):
         assert isinstance(value, str), "ChineseTokenizer expects unicode string"
+        
+        # --- ADDED: 检测是否为精确搜索模式 ---
+        is_phrase_mode = kwargs.get('phrase_mode', False)
+        
+        if is_phrase_mode:
+            # 精确搜索模式：保持原始字符串的完整性，只进行最小分词
+            # 对于包含空格的查询，我们需要特殊处理
+            if ' ' in value.strip():
+                # 包含空格的查询：尝试保持空格前后的词组完整性
+                # 例如："部门 A" 应该被处理为一个整体或合理的分段
+                
+                # 方案1：将整个字符串作为一个token（适用于短查询）
+                if len(value.strip()) <= 20:  # 短查询直接作为整体
+                    token = Token(positions=positions, chars=chars, removestops=removestops, mode=mode, **kwargs)
+                    token.text = value.strip()
+                    token.boost = 1.0
+                    if keeporiginal:
+                        token.original = value.strip()
+                    token.stopped = False
+                    if positions:
+                        token.pos = 0
+                    if chars:
+                        token.startchar = start_char
+                        token.endchar = start_char + len(value.strip())
+                    yield token
+                    return
+                
+                # 方案2：智能分段，保持有意义的词组
+                # 按空格分割，但保持每个部分的完整性
+                parts = [part.strip() for part in value.split() if part.strip()]
+                token_pos = 0
+                current_char = start_char
+                
+                for part in parts:
+                    # 对每个部分进行jieba分词
+                    seglist = jieba.tokenize(part)
+                    for (word, start, end) in seglist:
+                        if word.strip():  # 跳过纯空格token
+                            token = Token(positions=positions, chars=chars, removestops=removestops, mode=mode, **kwargs)
+                            token.text = word
+                            token.boost = 1.0
+                            if keeporiginal:
+                                token.original = word
+                            token.stopped = False
+                            if positions:
+                                token.pos = token_pos
+                            if chars:
+                                token.startchar = current_char + start
+                                token.endchar = current_char + end
+                            yield token
+                            token_pos += 1
+                    current_char += len(part) + 1  # +1 for space
+                return
+        
+        # --- 原始逻辑：用于模糊搜索和索引 ---
         seglist = jieba.tokenize(value)
         token_pos = 0
         for (word, start, end) in seglist:
+            # --- MODIFIED: 在非精确模式下跳过纯空格token ---
+            if not is_phrase_mode and word.strip() == '':
+                continue
+                
             token = Token(positions=positions, chars=chars, removestops=removestops, mode=mode, **kwargs)
             token.text = word
             token.boost = 1.0
@@ -228,7 +287,9 @@ class ChineseTokenizer(Tokenizer):
 
 class ChineseAnalyzer(Analyzer):
     def __call__(self, value, **kwargs):
-        return ChineseTokenizer()(value, **kwargs)
+        # --- FIXED: 正确传递kwargs参数到ChineseTokenizer ---
+        tokenizer = ChineseTokenizer()
+        return tokenizer(value, **kwargs)
 
 # --- HTML Stripper ---
 class MLStripper(HTMLParser):
@@ -341,8 +402,8 @@ class OptimizedSearchEngine:
                 executor, 
                 lambda: search_index(query_str, index_dir_path, **search_params)
             )
-        # 对于简单查询，限制返回结果数（限制到1000条，优化性能）
-        return results[:1000] if len(results) > 1000 else results
+        # 对于简单查询，限制返回结果数（限制到500条，优化性能）
+        return results[:500] if len(results) > 500 else results
         
     async def _parallel_search(self, query_str: str, index_dir_path: str, **search_params) -> list[dict]:
         """并行搜索（适用于中等复杂度查询）"""
@@ -381,7 +442,7 @@ class OptimizedSearchEngine:
                             
                 # 按相关度重新排序
                 merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
-                return merged_results[:1000]  # 限制最多返回1000个结果
+                return merged_results[:500]  # 限制最多返回500个结果
         
         # 如果无法并行化，使用单线程搜索
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -433,7 +494,7 @@ class OptimizedSearchEngine:
                 
         # 按相关度排序
         merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
-        return merged_results[:1000]  # 限制最多返回1000个结果
+        return merged_results[:500]  # 限制最多返回500个结果
         
     def clear_cache(self):
         """清理缓存"""
@@ -1553,9 +1614,17 @@ def search_index(query_str: str,
                  end_date: str | None = None,    # Changed to string (e.g., "2023-12-31")
                  file_type_filter: list[str] | None = None,
                  sort_by: str = 'relevance',
-                 case_sensitive: bool = False) -> list[dict]: # ADDED case_sensitive param
+                 case_sensitive: bool = False,
+                 # --- ADDED: Parameter for current source directories ---
+                 current_source_dirs: list[str] | None = None) -> list[dict]: # Filter results by current directories
     # --- MODIFIED: Include search_scope in debug log ---
-    print(f"--- Starting search --- Query: '{query_str}', Mode: {search_mode}, Scope: {search_scope}")
+    print(f"\n🔍 开始搜索:")
+    print(f"   查询: '{query_str}'")
+    print(f"   模式: {search_mode}")
+    print(f"   范围: {search_scope}")
+    print(f"   索引: {index_dir_path}")
+    if search_mode == 'phrase':
+        print(f"   ⚠️  精确搜索模式: 将只返回包含完整短语 '{query_str}' 的结果")
     # ---------------------------------------------------
     print(f"Filters - Size: {min_size_kb}-{max_size_kb}KB, Date: {start_date}-{end_date}, Types: {file_type_filter}") # Debug
     print(f"Case Sensitive: {case_sensitive} (Note: Currently ignored by backend)") # ADDED Debug for case_sensitive
@@ -1676,7 +1745,8 @@ def search_index(query_str: str,
             print(f"Constructed Wildcard query for filename: {text_query}")
         else: # Handle fulltext search based on search_mode
             target_field = "content"
-            analyzer = ix.schema[target_field].analyzer if target_field in ix.schema else ChineseAnalyzer()
+            # --- FIXED: 强制使用我们修改后的ChineseAnalyzer，支持phrase_mode ---
+            analyzer = ChineseAnalyzer()
             # --- 修改全文模糊搜索中的通配符处理逻辑 --- 
             if search_mode == 'phrase':
                 # 检查是否包含逻辑操作符
@@ -1710,7 +1780,8 @@ def search_index(query_str: str,
                 elif has_logical_operators:
                     # 在精确搜索模式下不处理逻辑操作符，直接使用短语搜索
                     print(f"WARNING: Logical operators detected in phrase mode for query: '{query_str}'. These operators are only supported in fuzzy mode.")
-                    terms = [token.text for token in analyzer(query_str)]
+                    # --- MODIFIED: 为精确搜索传递phrase_mode参数 ---
+                    terms = [token.text for token in analyzer(query_str, phrase_mode=True)]
                     if terms:
                         text_query = Phrase(target_field, terms)
                         print(f"Constructed Phrase query on '{target_field}': {text_query}")
@@ -1720,7 +1791,8 @@ def search_index(query_str: str,
                         print(f"Phrase query for '{target_field}' is empty after analysis.")
                 else:
                     # 没有逻辑操作符，使用普通短语搜索
-                    terms = [token.text for token in analyzer(query_str)]
+                    # --- MODIFIED: 为精确搜索传递phrase_mode参数 ---
+                    terms = [token.text for token in analyzer(query_str, phrase_mode=True)]
                     if terms:
                         text_query = Phrase(target_field, terms)
                         print(f"Constructed Phrase query on '{target_field}': {text_query}")
@@ -1875,10 +1947,39 @@ def search_index(query_str: str,
             file_path = hit.get('path', "(未知文件)")
             file_type = hit.get('file_type', '')
             
+            # --- 检查文件是否还存在 ---
+            if not os.path.exists(file_path):
+                print(f"Skipping result for {file_path} because file no longer exists")
+                continue  # 跳过此结果，文件已被删除
+            # -----------------------------------------
+            
+            # --- 检查文件是否在当前源目录中 ---
+            if current_source_dirs:
+                # 标准化文件路径和源目录路径进行比较
+                file_path_normalized = os.path.normpath(file_path).lower()
+                is_in_current_dirs = False
+                
+                for source_dir in current_source_dirs:
+                    source_dir_normalized = os.path.normpath(source_dir).lower()
+                    # 检查文件是否在这个源目录或其子目录中
+                    if file_path_normalized.startswith(source_dir_normalized + os.sep) or \
+                       file_path_normalized == source_dir_normalized:
+                        is_in_current_dirs = True
+                        break
+                
+                if not is_in_current_dirs:
+                    print(f"Skipping result for {file_path} because it's not in current source directories")
+                    continue  # 跳过此结果，不在当前源目录中
+            # -----------------------------------------
+            
             # --- 检查当前许可证是否允许访问该文件类型 ---
-            if file_type and not any(file_type.endswith(allowed_ext) for allowed_ext in allowed_file_types):
-                print(f"Skipping result for {file_path} due to license restrictions (type: {file_type})")
-                continue  # 跳过此结果，不添加到返回列表
+            if file_type:
+                # 标准化文件类型格式，确保都以点开头
+                normalized_file_type = file_type if file_type.startswith('.') else f'.{file_type}'
+                
+                if normalized_file_type not in allowed_file_types:
+                    print(f"Skipping result for {file_path} due to license restrictions (type: {file_type})")
+                    continue  # 跳过此结果，不添加到返回列表
             # -----------------------------------------
             
             # --- Basic result structure (always included) ---
@@ -1944,8 +2045,14 @@ def search_index(query_str: str,
 
                     # Check if block is relevant based on search mode and content
                     if search_mode == 'phrase':
-                        match = re.search(re.escape(query_str), block_text, flags=re.IGNORECASE)
+                        # 添加精确搜索调试信息
+                        escaped_query = re.escape(query_str)
+                        match = re.search(escaped_query, block_text, flags=re.IGNORECASE)
                         if match:
+                           print(f"🎯 精确匹配找到: 文件 {file_path}, 块类型 {block_type}")
+                           print(f"   查询: '{query_str}' -> 正则: '{escaped_query}'")
+                           print(f"   匹配文本: '{match.group(0)}'")
+                           print(f"   块内容前50字符: '{block_text[:50]}...'")
                            is_relevant_block = True
                            highlighted_block_text = phrase_highlighter(block_text, query_str)
                            if block_type == 'heading' or block_type == 'metadata':
@@ -2041,7 +2148,7 @@ def search_index(query_str: str,
     
     # 智能结果截断和用户友好提示
     original_count = len(processed_results)
-    max_recommended_results = 1000  # 推荐的最大结果数
+    max_recommended_results = 500  # 推荐的最大结果数
     
     if original_count > max_recommended_results:
         # 截断到推荐数量，保留相关度最高的结果
@@ -2088,6 +2195,9 @@ def _extract_worker(worker_args: dict) -> dict:
     # --- ADDED: Get cancel callback ---
     cancel_callback = worker_args.get('cancel_callback')
     # ----------------------------------
+    # --- ADDED: Get filename-only flag ---
+    is_filename_only = worker_args.get('is_filename_only', False)
+    # ------------------------------------
     original_mtime = worker_args['original_mtime']
     original_fsize = worker_args['original_fsize']
     display_name = worker_args.get('display_name', Path(path_key).name if "::" not in path_key else path_key.split("::")[1]) # Use provided or generate
@@ -2105,6 +2215,25 @@ def _extract_worker(worker_args: dict) -> dict:
         # --- MODIFIED: 在开始处理前检查是否需要取消 ---
         check_cancellation(cancel_callback, "文件提取处理开始")
         # ----------------------------------------
+        
+        # --- ADDED: 处理仅文件名索引模式 ---
+        if is_filename_only:
+            print(f"仅文件名索引: {display_name}")
+            return {
+                'path_key': path_key,
+                'text_content': '',  # 空内容
+                'filename': filename_for_index,
+                'structure': [],
+                'mtime': original_mtime,
+                'fsize': original_fsize,
+                'file_type': Path(path_key).suffix.lower().lstrip('.'),
+                'ocr_enabled_for_file': False,
+                'display_name': display_name,
+                'content_source': 'filename_only',  # 标记来源
+                'error': None,
+                'content_truncated': False
+            }
+        # -----------------------------------
         
         # --- Select extraction function based on file type --- 
         if file_type == 'file':
@@ -2740,7 +2869,8 @@ def should_skip_system_file(file_path: Path) -> tuple[bool, str]:
         return True, f"检查系统文件时出错: {e}"
 
 def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100, 
-                           skip_system_files: bool = True, file_types_to_index=None, cancel_callback=None) -> tuple[list[Path], list[dict]]:
+                           skip_system_files: bool = True, file_types_to_index=None, 
+                           filename_only_types=None, cancel_callback=None) -> tuple[list[Path], list[Path], list[dict]]:
     """
     优化的文档扫描函数，支持多个目录和文件过滤
 
@@ -2748,12 +2878,14 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
         directory_paths: 要扫描的目录路径列表（可以是字符串或Path对象）
         max_file_size_mb: 最大文件大小限制（MB）
         skip_system_files: 是否跳过系统文件
-        file_types_to_index: 要索引的文件类型列表，如['txt', 'docx', 'pdf']
+        file_types_to_index: 要完整索引的文件类型列表，如['txt', 'docx']
+        filename_only_types: 只索引文件名的文件类型列表，如['pdf', 'xlsx']
 
     Returns:
-        tuple[list[Path], list[dict]]: (找到的文件列表, 跳过的文件信息列表)
+        tuple[list[Path], list[Path], list[dict]]: (完整索引文件列表, 仅文件名索引文件列表, 跳过的文件信息列表)
     """
-    found_files = []
+    found_files = []  # 需要完整索引的文件
+    filename_only_files = []  # 仅索引文件名的文件
     skipped_files = []
 
     # 转换为Path对象
@@ -2765,18 +2897,27 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
             path_objects.append(dir_path)
 
     # 确定允许的文件扩展名
-    if file_types_to_index:
-        # 用户指定了文件类型，只处理这些类型
+    if file_types_to_index is not None:
+        # 用户明确指定了文件类型（包括空列表）
         allowed_extensions = []
         for file_type in file_types_to_index:
             # 确保扩展名以点开头
             ext = file_type if file_type.startswith('.') else f'.{file_type}'
             allowed_extensions.append(ext.lower())
-        print(f"根据用户选择，只索引以下文件类型: {allowed_extensions}")
+        print(f"根据用户选择，完整索引以下文件类型: {allowed_extensions}")
     else:
         # 使用默认的所有支持的文件类型
         allowed_extensions = ALLOWED_EXTENSIONS
         print(f"使用默认文件类型: {allowed_extensions}")
+    
+    # 确定仅文件名索引的文件扩展名
+    filename_only_extensions = []
+    if filename_only_types:
+        for file_type in filename_only_types:
+            # 确保扩展名以点开头
+            ext = file_type if file_type.startswith('.') else f'.{file_type}'
+            filename_only_extensions.append(ext.lower())
+        print(f"根据用户选择，仅文件名索引以下文件类型: {filename_only_extensions}")
 
     for directory_path in path_objects:
         # 在扫描每个目录前检查是否需要取消
@@ -2798,10 +2939,18 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                 if not item.is_file():
                     continue
 
-                # 检查文件扩展名是否在允许的类型中
-                if item.suffix.lower() not in allowed_extensions:
-                    # 如果用户指定了文件类型，记录跳过的文件
-                    if file_types_to_index:
+                # 检查文件扩展名的处理策略
+                file_ext = item.suffix.lower()
+                
+                if file_ext in allowed_extensions:
+                    # 完整索引
+                    file_category = "full_index"
+                elif file_ext in filename_only_extensions:
+                    # 仅文件名索引
+                    file_category = "filename_only"
+                else:
+                    # 跳过此文件
+                    if file_types_to_index or filename_only_types:
                         skipped_files.append({
                             'path': str(item),
                             'reason': f'文件类型 {item.suffix} 未被选择索引',
@@ -2829,8 +2978,12 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                             'type': 'system_file'
                         })
                         continue
-
-                found_files.append(item)
+                
+                # 根据文件类别添加到相应列表
+                if file_category == "full_index":
+                    found_files.append(item)
+                elif file_category == "filename_only":
+                    filename_only_files.append(item)
 
         except InterruptedError:
             # 重新抛出取消异常
@@ -2839,8 +2992,8 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
             print(f"扫描目录时出错 {directory_path}: {e}")
             continue
 
-    print(f"扫描完成. 找到 {len(found_files)} 个文档, 跳过 {len(skipped_files)} 个文件")
-    return found_files, skipped_files
+    print(f"扫描完成. 完整索引: {len(found_files)} 个文档, 仅文件名索引: {len(filename_only_files)} 个文档, 跳过: {len(skipped_files)} 个文件")
+    return found_files, filename_only_files, skipped_files
 
 def estimate_processing_time(files: list[Path]) -> dict:
     """
@@ -2898,7 +3051,8 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                           extraction_timeout: int = 300, content_limit_kb: int = 1024,
                           max_file_size_mb: int = 100, skip_system_files: bool = True,
                           incremental: bool = True, max_workers: int = None, 
-                          cancel_callback=None, file_types_to_index=None):
+                          cancel_callback=None, file_types_to_index=None, 
+                          filename_only_types=None, preserve_removed_dirs: bool = True):
     """
     创建或更新文档索引（优化版本）
 
@@ -2950,14 +3104,15 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
         # 1. 扫描文件
         print("开始扫描文档...")
-        all_files, skipped_files = scan_documents_optimized(
-            directories, max_file_size_mb, skip_system_files, file_types_to_index, cancel_callback
+        all_files, filename_only_files, skipped_files = scan_documents_optimized(
+            directories, max_file_size_mb, skip_system_files, file_types_to_index, filename_only_types, cancel_callback
         )
 
+        total_files = len(all_files) + len(filename_only_files)
         progress.update({
             'stage': 'scanning_complete',
-            'total': len(all_files),
-            'message': f'扫描完成，找到 {len(all_files)} 个文件，跳过 {len(skipped_files)} 个文件',
+            'total': total_files,
+            'message': f'扫描完成，完整索引: {len(all_files)} 个，仅文件名: {len(filename_only_files)} 个，跳过: {len(skipped_files)} 个文件',
             'files_skipped': len(skipped_files)
         })
         yield progress
@@ -2965,7 +3120,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         # 检查是否需要取消
         check_cancellation(cancel_callback, "扫描完成后检查")
 
-        if not all_files:
+        if not all_files and not filename_only_files:
             progress.update({
                 'stage': 'complete',
                 'message': '没有找到需要索引的文件'
@@ -2975,7 +3130,8 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
         # 2. 加载文件缓存（用于增量索引）
         file_cache = {}
-        files_to_process = all_files
+        # 合并所有需要处理的文件
+        files_to_process = all_files + filename_only_files
 
         if incremental:
             progress.update({
@@ -2989,7 +3145,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                 raise InterruptedError("操作被用户取消")
 
             file_cache = load_file_index_cache(index_dir_path)
-            new_files, modified_files, deleted_files = detect_file_changes(all_files, file_cache)
+            new_files, modified_files, deleted_files = detect_file_changes(all_files, file_cache, filename_only_files)
 
             files_to_process = new_files + modified_files
 
@@ -3060,8 +3216,8 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
             # 准备工作进程参数
             worker_args_list = prepare_worker_arguments_batch(
-                files_to_process, enable_ocr, extraction_timeout, 
-                content_limit_kb, index_dir_path, cancel_callback
+                all_files, enable_ocr, extraction_timeout, 
+                content_limit_kb, index_dir_path, filename_only_files, cancel_callback
             )
 
             # 用于收集进度更新的列表
@@ -3168,9 +3324,13 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
             # 6. 批量索引文档
             with ix.writer() as writer:
-                # 删除已删除的文件
-                if incremental and 'deleted_files' in locals():
+                # 根据preserve_removed_dirs参数决定是否删除文件
+                if incremental and 'deleted_files' in locals() and not preserve_removed_dirs:
+                    print(f"物理删除 {len(deleted_files)} 个索引条目（preserve_removed_dirs=False）")
                     remove_deleted_files_from_index(writer, deleted_files)
+                elif incremental and 'deleted_files' in locals() and preserve_removed_dirs:
+                    print(f"保留 {len(deleted_files)} 个已移除目录的索引条目（preserve_removed_dirs=True）")
+                    print("搜索时将通过目录过滤排除这些结果")
 
                 # 索引提取的文档
                 success_count = 0
@@ -3268,16 +3428,26 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             })
             yield progress
 
-            # 更新缓存
+            # 更新缓存（包含索引模式信息）
             for file_path in all_files:
                 path_str = normalize_path_for_index(str(file_path))
-                file_cache[path_str] = get_file_hash(file_path)
+                file_cache[path_str] = get_file_hash(file_path, "full")
+                
+            for file_path in filename_only_files:
+                path_str = normalize_path_for_index(str(file_path))
+                file_cache[path_str] = get_file_hash(file_path, "filename_only")
 
             save_file_index_cache(index_dir_path, file_cache)
 
         # 8. 记录跳过的文件
-        for file_path, reason in skipped_files:
-            record_skipped_file(index_dir_path, str(file_path), reason)
+        for skip_info in skipped_files:
+            if isinstance(skip_info, dict):
+                # 新格式：字典包含详细信息
+                record_skipped_file(index_dir_path, skip_info['path'], skip_info['reason'])
+            else:
+                # 兼容旧格式：元组 (file_path, reason)
+                file_path, reason = skip_info
+                record_skipped_file(index_dir_path, str(file_path), reason)
 
         # 完成
         progress.update({
@@ -3306,23 +3476,25 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
 # --- 高级索引优化功能 ---
 
-def get_file_hash(file_path: Path) -> str:
+def get_file_hash(file_path: Path, index_mode: str = "full") -> str:
     """
-    获取文件的简单哈希值（基于修改时间和大小）
+    获取文件的简单哈希值（基于修改时间、大小和索引模式）
 
     Args:
         file_path: 文件路径
+        index_mode: 索引模式（"full" 或 "filename_only"）
 
     Returns:
         str: 文件哈希值
     """
     try:
         stat = file_path.stat()
-        # 使用修改时间和文件大小生成简单哈希
-        hash_str = f"{stat.st_mtime}_{stat.st_size}"
+        # 使用修改时间、文件大小和索引模式生成哈希
+        # 这样索引模式变更时会强制重新处理文件
+        hash_str = f"{stat.st_mtime}_{stat.st_size}_{index_mode}"
         return hash_str
     except Exception:
-        return "unknown"
+        return f"unknown_{index_mode}"
 
 def load_file_index_cache(index_dir_path: str) -> dict:
     """
@@ -3358,13 +3530,14 @@ def save_file_index_cache(index_dir_path: str, cache: dict):
     except Exception as e:
         print(f"保存文件缓存失败: {e}")
 
-def detect_file_changes(files: list[Path], cache: dict) -> tuple[list[Path], list[Path], list[str]]:
+def detect_file_changes(files: list[Path], cache: dict, filename_only_files: list[Path] = None) -> tuple[list[Path], list[Path], list[str]]:
     """
-    检测文件变更
+    检测文件变更（支持索引模式感知）
 
     Args:
-        files: 当前文件列表
+        files: 当前完整索引文件列表
         cache: 现有文件缓存
+        filename_only_files: 仅文件名索引文件列表
 
     Returns:
         tuple[list[Path], list[Path], list[str]]: (新文件, 修改的文件, 删除的文件路径)
@@ -3372,17 +3545,33 @@ def detect_file_changes(files: list[Path], cache: dict) -> tuple[list[Path], lis
     current_files = {}
     new_files = []
     modified_files = []
+    
+    if filename_only_files is None:
+        filename_only_files = []
 
-    # 检查当前文件
+    # 检查完整索引文件
     for file_path in files:
         path_str = normalize_path_for_index(str(file_path))
-        current_hash = get_file_hash(file_path)
+        current_hash = get_file_hash(file_path, "full")  # 完整索引模式
         current_files[path_str] = current_hash
 
         if path_str not in cache:
             new_files.append(file_path)
         elif cache[path_str] != current_hash:
             modified_files.append(file_path)
+            print(f"检测到文件变更或索引模式变更: {file_path.name} (可能从仅文件名切换到全文索引)")
+
+    # 检查仅文件名索引文件
+    for file_path in filename_only_files:
+        path_str = normalize_path_for_index(str(file_path))
+        current_hash = get_file_hash(file_path, "filename_only")  # 仅文件名索引模式
+        current_files[path_str] = current_hash
+
+        if path_str not in cache:
+            new_files.append(file_path)
+        elif cache[path_str] != current_hash:
+            modified_files.append(file_path)
+            print(f"检测到文件变更或索引模式变更: {file_path.name} (可能从全文切换到仅文件名索引)")
 
     # 检查删除的文件
     deleted_files = [path for path in cache.keys() if path not in current_files]
@@ -3390,16 +3579,17 @@ def detect_file_changes(files: list[Path], cache: dict) -> tuple[list[Path], lis
     return new_files, modified_files, deleted_files
 
 def prepare_worker_arguments_batch(files: list[Path], enable_ocr: bool, extraction_timeout: int,
-                                 content_limit_kb: int, index_dir_path: str, cancel_callback=None) -> list[dict]:
+                                 content_limit_kb: int, index_dir_path: str, filename_only_files: list[Path] = None, cancel_callback=None) -> list[dict]:
     """
     批量准备工作进程参数
 
     Args:
-        files: 文件列表
+        files: 需要完整索引的文件列表
         enable_ocr: 是否启用OCR
         extraction_timeout: 提取超时时间
         content_limit_kb: 内容大小限制（KB）
         index_dir_path: 索引目录路径
+        filename_only_files: 仅索引文件名的文件列表
         cancel_callback: 取消检查回调函数
 
     Returns:
@@ -3408,6 +3598,7 @@ def prepare_worker_arguments_batch(files: list[Path], enable_ocr: bool, extracti
     worker_args_list = []
     content_limit_bytes = content_limit_kb * 1024 if content_limit_kb > 0 else 0
 
+    # 处理需要完整索引的文件
     for file_path in files:
         # 动态设置PDF OCR超时
         actual_timeout = extraction_timeout
@@ -3440,10 +3631,32 @@ def prepare_worker_arguments_batch(files: list[Path], enable_ocr: bool, extracti
             'original_mtime': file_stat.st_mtime,
             'original_fsize': file_stat.st_size,
             'display_name': file_path.name,
-            'cancel_callback': cancel_callback  # 添加取消回调
+            'cancel_callback': cancel_callback,  # 添加取消回调
+            'is_filename_only': False  # 标记为完整索引
         }
 
         worker_args_list.append(worker_args)
+
+    # 处理仅索引文件名的文件
+    if filename_only_files:
+        for file_path in filename_only_files:
+            file_stat = file_path.stat()
+            
+            worker_args = {
+                'path_key': str(file_path),
+                'file_type': 'file',
+                'enable_ocr': False,  # 仅文件名索引不需要OCR
+                'extraction_timeout': 1,  # 很短的超时，因为不需要提取内容
+                'content_limit_bytes': 0,  # 不限制内容，因为不提取
+                'index_dir_path': index_dir_path,
+                'original_mtime': file_stat.st_mtime,
+                'original_fsize': file_stat.st_size,
+                'display_name': file_path.name,
+                'cancel_callback': cancel_callback,
+                'is_filename_only': True  # 标记为仅文件名索引
+            }
+            
+            worker_args_list.append(worker_args)
 
     return worker_args_list
 
@@ -3619,7 +3832,8 @@ def remove_deleted_files_from_index(writer, deleted_files: list[str]):
 
 def create_or_update_index_legacy(source_directories, index_dir_path, enable_ocr, 
                                  extraction_timeout=300, txt_content_limit_kb=1024, 
-                                 file_types_to_index=None, cancel_callback=None):
+                                 file_types_to_index=None, filename_only_types=None, 
+                                 cancel_callback=None, preserve_removed_dirs=True):
     """
     兼容性包装函数，保持与现有GUI的兼容性
     将旧版本的参数映射到新的优化版本
@@ -3652,7 +3866,9 @@ def create_or_update_index_legacy(source_directories, index_dir_path, enable_ocr
             incremental=True,  # 默认启用增量索引
             max_workers=None,  # 使用自动检测
             cancel_callback=cancel_callback,  # 传递取消回调
-            file_types_to_index=file_types_to_index  # 传递文件类型过滤
+            file_types_to_index=file_types_to_index,  # 传递完整索引文件类型
+            filename_only_types=filename_only_types,  # 新增：传递仅文件名索引文件类型
+            preserve_removed_dirs=preserve_removed_dirs  # 新增：传递目录保留参数
         ):
             # 将新格式的进度信息转换为旧格式
             old_format_progress = convert_progress_to_legacy_format(progress)
