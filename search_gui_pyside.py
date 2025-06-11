@@ -723,6 +723,296 @@ class VirtualResultsModel(QAbstractListModel):
         </div>
         '''
     
+    def set_theme(self, theme_name):
+        """设置主题"""
+        self.current_theme = theme_name
+        # 触发视图更新
+        if self.rowCount() > 0:
+            self.dataChanged.emit(self.index(0), self.index(self.rowCount() - 1))
+    
+    def set_results(self, results):
+        """设置搜索结果"""
+        self.beginResetModel()
+        self.results = results
+        self.display_items = []
+        # 根据是否是文件名搜索选择处理方法
+        if self._is_filename_search():
+            self._process_filename_results(results)
+        else:
+            self._process_fulltext_results(results)
+        self.endResetModel()
+    
+    def _generate_file_group_html(self, item):
+        """生成文件组头部的HTML"""
+        file_path = item['file_path']
+        file_key = item['file_key']
+        file_number = item['file_number']
+        is_collapsed = item['is_collapsed']
+        theme_colors = self._get_theme_colors()
+        
+        import html
+        
+        toggle_char = "[+]" if is_collapsed else "[-]"
+        toggle_href = f'toggle::{html.escape(file_key, quote=True)}'
+        escaped_path = html.escape(file_path)
+        
+        # 计算文件夹路径
+        folder_path_str = ""
+        is_archive_member = "::" in file_path
+        try:
+            if is_archive_member:
+                archive_file_path = file_path.split("::", 1)[0]
+                from pathlib import Path
+                folder_path_str = str(Path(archive_file_path).parent)
+            else:
+                from pathlib import Path
+                path_obj = Path(file_path)
+                if path_obj.is_file():
+                    folder_path_str = str(path_obj.parent)
+        except Exception:
+            pass
+        
+        # 构建现代化操作按钮
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
+        if folder_path_str:
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+
+        # 提取文件名和路径
+        import os
+        file_name = os.path.basename(file_path)
+        file_directory = os.path.dirname(file_path)
+        escaped_file_name = html.escape(file_name)
+        escaped_directory = html.escape(file_directory)
+
+        # 获取文件类型图标
+        from pathlib import Path
+        file_ext = Path(file_path).suffix.lower()
+        type_icon = "📄"
+        if file_ext in ['.docx', '.doc']:
+            type_icon = "📝"
+        elif file_ext in ['.xlsx', '.xls']:
+            type_icon = "📊"
+        elif file_ext in ['.pptx', '.ppt']:
+            type_icon = "📋"
+        elif file_ext in ['.pdf']:
+            type_icon = "📕"
+        elif file_ext in ['.txt', '.md']:
+            type_icon = "📄"
+        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+            type_icon = "🖼️"
+        elif file_ext in ['.mp4', '.avi', '.mov']:
+            type_icon = "🎬"
+        elif file_ext in ['.mp3', '.wav', '.flac']:
+            type_icon = "🎵"
+        
+        return f'''
+        <div style="margin: 15px 5px 5px 5px; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="vertical-align: middle;">
+                        <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: 14px; font-weight: bold; display: inline-block;">
+                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px; font-size: 14px;">{toggle_char}</a>
+                            <span style="font-size: 16px; margin-right: 8px;">{type_icon}</span>
+                            {file_number}. {escaped_path}
+                        </h3>
+                        <div style="margin-left: 38px;">
+                            <p style="margin: 0; color: #6c757d; font-size: 11px; font-family: monospace;">
+                                📁 {escaped_directory}
+                            </p>
+                        </div>
+                    </td>
+                    <td style="text-align: right; vertical-align: top; white-space: nowrap; padding-top: 8px;">
+                        {" ".join(links)}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        '''
+    
+    def _generate_chapter_group_html(self, item):
+        """生成章节组头部的HTML"""
+        chapter_key = item['chapter_key']
+        heading = item['heading']
+        is_collapsed = item['is_collapsed']
+        result = item['result']
+        theme_colors = self._get_theme_colors()
+        
+        import html
+        
+        toggle_char = "[+]" if is_collapsed else "[-]"
+        toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
+        
+        # 处理标记的标题
+        marked_heading = result.get('marked_heading')
+        heading_to_display = marked_heading if marked_heading is not None else heading
+        if heading_to_display is None:
+            heading_to_display = '(无章节标题)'
+        escaped_heading = html.escape(str(heading_to_display))
+        
+        # 处理高亮
+        if marked_heading and "__HIGHLIGHT_START__" in escaped_heading:
+            escaped_heading = escaped_heading.replace(
+                html.escape("__HIGHLIGHT_START__"), 
+                f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
+            )
+            escaped_heading = escaped_heading.replace(html.escape("__HIGHLIGHT_END__"), '</span>')
+        
+        return f'''
+        <div style="margin: 8px 15px 5px 25px; padding: 6px;">
+            <p style="margin: 0; color: {theme_colors["text_color"]};">
+                <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 6px;">{toggle_char}</a>
+                <b>章节:</b> {escaped_heading}
+            </p>
+        </div>
+        '''
+    
+    def _generate_content_html(self, item):
+        """生成内容的HTML（段落或Excel表格）"""
+        result = item['result']
+        theme_colors = self._get_theme_colors()
+        
+        # 检查是否是Excel数据
+        excel_headers = result.get('excel_headers')
+        excel_values = result.get('excel_values')
+        
+        if excel_headers is not None and excel_values is not None:
+            return self._generate_excel_content_html(result, theme_colors)
+        else:
+            return self._generate_paragraph_content_html(result, theme_colors)
+    
+    def _generate_excel_content_html(self, result, theme_colors):
+        """生成Excel内容的HTML"""
+        excel_headers = result.get('excel_headers', [])
+        excel_values = result.get('excel_values', [])
+        excel_sheet = result.get('excel_sheet', '')
+        excel_row_idx = result.get('excel_row_idx', 0)
+        
+        import html
+        
+        html_parts = []
+        html_parts.append(f'''
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #f8f9fa);
+                    border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+            <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
+                        background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
+                        border-left: 4px solid {theme_colors["primary"]};">
+                <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
+                    📊 表格: {html.escape(str(excel_sheet) if excel_sheet is not None else "未知表格")} | 行: {excel_row_idx}
+                </h4>
+            </div>
+        ''')
+
+        # 生成现代化表格
+        html_parts.append(f'''
+            <table style="width: 100%; border-collapse: collapse; background: white;
+                         border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
+                         box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ''')
+
+        # 表头
+        html_parts.append(f"<tr style='background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);'>")
+        for header in excel_headers:
+            header_text = str(header) if header is not None else ''
+            html_parts.append(f'''
+                <th style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
+                          color: {theme_colors["text_color"]}; text-align: left;">
+                    {html.escape(header_text)}
+                </th>
+            ''')
+        html_parts.append("</tr>")
+        
+        # 数据行
+        html_parts.append("<tr style='background: white;'>")
+        escaped_start_marker = html.escape("__HIGHLIGHT_START__")
+        escaped_end_marker = html.escape("__HIGHLIGHT_END__")
+        
+        for value in excel_values:
+            value_text = str(value) if value is not None else ''
+            escaped_value = html.escape(value_text)
+            
+            # 处理高亮
+            if escaped_start_marker in escaped_value:
+                highlighted_value = escaped_value.replace(
+                    escaped_start_marker,
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
+                ).replace(escaped_end_marker, '</mark>')
+            else:
+                highlighted_value = escaped_value
+                
+            html_parts.append(f'''
+                <td style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
+                          border-bottom: 1px solid #f0f0f0;">
+                    {highlighted_value}
+                </td>
+            ''')
+        html_parts.append("</tr>")
+        html_parts.append("</table>")
+        html_parts.append('</div>')
+        
+        return "".join(html_parts)
+    
+    def _generate_paragraph_content_html(self, result, theme_colors):
+        """生成段落内容的HTML"""
+        original_paragraph = result.get('paragraph')
+        marked_paragraph = result.get('marked_paragraph')
+        match_start = result.get('match_start')
+        match_end = result.get('match_end')
+        
+        if original_paragraph is None:
+            return ''
+        
+        # 确定要显示的段落文本
+        paragraph_text_for_highlight = marked_paragraph if marked_paragraph is not None else original_paragraph
+        if paragraph_text_for_highlight is None:
+            paragraph_text_for_highlight = str(original_paragraph) if original_paragraph is not None else ''
+        else:
+            paragraph_text_for_highlight = str(paragraph_text_for_highlight)
+        
+        import html
+        escaped_paragraph = html.escape(paragraph_text_for_highlight)
+        
+        # 处理高亮
+        highlighted_paragraph_display = escaped_paragraph
+        
+        # 短语搜索的精确高亮
+        if match_start is not None and match_end is not None:
+            if 0 <= match_start < match_end <= len(escaped_paragraph):
+                pre = escaped_paragraph[:match_start]
+                mat = escaped_paragraph[match_start:match_end]
+                post = escaped_paragraph[match_end:]
+                highlighted_paragraph_display = f'{pre}<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">{mat}</mark>{post}'
+        # 模糊搜索的标记高亮
+        elif marked_paragraph:
+            escaped_start_marker = html.escape("__HIGHLIGHT_START__")
+            escaped_end_marker = html.escape("__HIGHLIGHT_END__")
+            if escaped_start_marker in escaped_paragraph:
+                highlighted_paragraph_display = escaped_paragraph.replace(
+                    escaped_start_marker,
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">'
+                ).replace(escaped_end_marker, '</mark>')
+        
+        return f'''
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #fafbfc);
+                    border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
+                    border-left: 4px solid {theme_colors["success"]};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="margin-bottom: {UI_SPACING['small']};">
+                <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
+                    📄 段落内容
+                </span>
+            </div>
+            <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
+                        word-wrap: break-word; overflow-wrap: break-word;">
+                {highlighted_paragraph_display}
+            </div>
+        </div>
+        '''
+    
 
 
 
@@ -803,36 +1093,6 @@ except ImportError:
 # -------------------------------------
 
 # --- 添加资源文件路径解析器 ---
-def get_resource_path(relative_path):
-    """获取资源的绝对路径，适用于开发环境和打包后的环境
-    
-    Args:
-        relative_path (str): 相对于应用程序根目录的资源文件路径
-        
-    Returns:
-        str: 资源文件的绝对路径
-    """
-    # 如果路径带有特殊前缀，则移除
-    if relative_path.startswith('qss-resource:'):
-        relative_path = relative_path[len('qss-resource:'):]
-    
-    # 如果路径被引号包围，则移除引号
-    if (relative_path.startswith('"') and relative_path.endswith('"')) or \
-       (relative_path.startswith("'") and relative_path.endswith("'")):
-        relative_path = relative_path[1:-1]
-    
-    # 判断是否在PyInstaller环境中运行
-    if getattr(sys, 'frozen', False):
-        # 在PyInstaller环境中
-        base_path = sys._MEIPASS
-    else:
-        # 在开发环境中
-        base_path = os.path.dirname(__file__)
-    
-    # 组合路径并返回
-    resource_path = os.path.join(base_path, relative_path)
-    print(f"资源路径解析: {relative_path} -> {resource_path}")
-    return resource_path
 # ------------------------------
 
 # ====================
@@ -896,860 +1156,6 @@ UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_versio
 # -------------------------
 
 # === 虚拟滚动相关类实现 ===
-class VirtualResultsModel(QAbstractListModel):
-    """虚拟滚动结果模型，完全兼容传统模式的文件分组和章节折叠功能"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.results = []
-        self.display_items = []  # 存储显示项目列表（文件组/章节组/内容项）
-        self.current_theme = "现代蓝"
-        self.parent_window = parent  # 存储父窗口引用以访问collapse_states
-        
-    def rowCount(self, parent=QModelIndex()):
-        """返回显示项目总数"""
-        return len(self.display_items)
-        
-    def data(self, index, role=Qt.DisplayRole):
-        """返回指定索引的数据"""
-        if not index.isValid() or index.row() >= len(self.display_items):
-            return None
-            
-        if role == Qt.DisplayRole:
-            item = self.display_items[index.row()]
-            return self._generate_item_html(item, index.row())
-        elif role == Qt.UserRole:
-            # 返回原始项目数据
-            return self.display_items[index.row()]
-        
-        return None
-    
-    def _process_results_for_display(self, results):
-        """将原始搜索结果处理成显示项目列表，完全兼容传统模式逻辑"""
-        self.beginResetModel()
-        self.display_items = []
-        
-        if not results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
-            self.endResetModel()
-            return
-            
-        try:
-            # 检查搜索范围
-            if hasattr(self.parent_window, 'last_search_scope') and self.parent_window.last_search_scope == 'filename':
-                # 文件名搜索 - 简化显示
-                self._process_filename_results(results)
-            else:
-                # 全文搜索 - 复杂分组显示
-                self._process_fulltext_results(results)
-                
-        except Exception as e:
-            print(f"Error processing results for virtual display: {e}")
-            # 添加错误显示项
-            self.display_items.append({
-                'type': 'error',
-                'content': f'处理搜索结果时出错: {e}'
-            })
-        
-        self.endResetModel()
-    
-    def _process_grouped_results_for_display(self, grouped_results):
-        """处理分组结果为虚拟滚动显示项目"""
-        self.beginResetModel()
-        self.display_items = []
-        
-        if not grouped_results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
-            self.endResetModel()
-            return
-        
-        # 初始化分组折叠状态（如果不存在）
-        if not hasattr(self.parent_window, 'group_collapse_states'):
-            self.parent_window.group_collapse_states = {}
-        
-        # 处理分组结果
-        for group_name, group_results in grouped_results.items():
-            if not group_results:
-                continue
-                
-            # 检查分组的折叠状态
-            group_key = f"vgroup::{group_name}"
-            is_collapsed = self.parent_window.group_collapse_states.get(group_key, False)
-            
-            # 添加分组标题（带折叠功能）
-            self.display_items.append({
-                'type': 'group_header',
-                'group_name': group_name,
-                'group_key': group_key,
-                'result_count': len(group_results),
-                'is_collapsed': is_collapsed
-            })
-            
-            # 只有在未折叠时才显示分组中的结果
-            if not is_collapsed:
-                if self._is_filename_search():
-                    # 文件名搜索：简化显示
-                    for result in group_results:
-                        self.display_items.append({
-                            'type': 'filename_result',
-                            'result': result
-                        })
-                else:
-                    # 全文搜索：完整显示
-                    self._process_fulltext_group_results(group_results)
-        
-        self.endResetModel()
-    
-    def _process_fulltext_group_results(self, results):
-        """处理全文搜索的分组结果"""
-        # 使用传统模式的逻辑进行文件和章节分组
-        file_groups = {}
-        
-        for result in results:
-            file_path = result.get('file_path', '')
-            
-            if file_path not in file_groups:
-                file_groups[file_path] = []
-            file_groups[file_path].append(result)
-        
-        # 为每个文件组生成显示项
-        for file_path, file_results in file_groups.items():
-            if not file_results:
-                continue
-                
-            file_key = f"f::{file_path}"
-            is_collapsed = self._get_collapse_state(file_key)
-            
-            # 添加文件组头部
-            self.display_items.append({
-                'type': 'file_group',
-                'file_path': file_path,
-                'file_key': file_key,
-                'file_number': len(file_groups),
-                'is_collapsed': is_collapsed
-            })
-            
-            if not is_collapsed:
-                # 文件未折叠，继续处理章节
-                chapter_groups = {}
-                
-                for result in file_results:
-                    # 确定章节键
-                    heading = result.get('heading')
-                    chapter_key = f"c::{file_path}::{heading if heading else '(无章节)'}"
-                    
-                    if chapter_key not in chapter_groups:
-                        chapter_groups[chapter_key] = []
-                    chapter_groups[chapter_key].append(result)
-                
-                # 为每个章节组生成显示项
-                for chapter_key, chapter_results in chapter_groups.items():
-                    if not chapter_results:
-                        continue
-                        
-                    is_chapter_collapsed = self._get_collapse_state(chapter_key)
-                    heading = chapter_results[0].get('heading', '(无章节)')
-                    
-                    # 添加章节组头部
-                    self.display_items.append({
-                        'type': 'chapter_group',
-                        'chapter_key': chapter_key,
-                        'heading': heading,
-                        'is_collapsed': is_chapter_collapsed,
-                        'result': chapter_results[0]  # 用于标题标记
-                    })
-                    
-                    if not is_chapter_collapsed:
-                        # 章节未折叠，添加内容
-                        for result in chapter_results:
-                            self.display_items.append({
-                                'type': 'content',
-                                'result': result
-                            })
-    
-    def _is_filename_search(self):
-        """检查是否为文件名搜索"""
-        return (hasattr(self.parent_window, 'last_search_scope') and 
-                self.parent_window.last_search_scope == 'filename')
-    
-    def _get_collapse_state(self, key):
-        """获取折叠状态"""
-        if self.parent_window and hasattr(self.parent_window, 'collapse_states'):
-            return self.parent_window.collapse_states.get(key, False)
-        return False
-    
-    def _process_filename_results(self, results):
-        """处理文件名搜索结果"""
-        processed_paths = set()
-        
-        # 添加美观的标题项
-        self.display_items.append({
-            'type': 'title',
-            'content': f'📄 文件名搜索结果 ({len(results)} 个文件)'
-        })
-        
-        for result in results:
-            file_path = result.get('file_path', '(未知文件)')
-            if file_path in processed_paths:
-                continue
-            processed_paths.add(file_path)
-            
-            self.display_items.append({
-                'type': 'filename_result',
-                'file_path': file_path,
-                'result': result
-            })
-    
-    def _process_fulltext_results(self, results):
-        """处理全文搜索结果 - 完全兼容传统模式的文件分组和章节折叠"""
-        last_file_path = None
-        last_displayed_heading = None
-        file_group_counter = 0
-        
-        for i, result in enumerate(results):
-            file_path = result.get('file_path', '(未知文件)')
-            original_heading = result.get('heading', '(无章节标题)')
-            
-            is_new_file = (file_path != last_file_path)
-            is_new_heading = (original_heading != last_displayed_heading)
-            
-            # 处理新文件
-            if is_new_file:
-                file_group_counter += 1
-                file_key = f"f::{file_path}"
-                
-                # 创建文件组项
-                file_item = {
-                    'type': 'file_group',
-                    'file_path': file_path,
-                    'file_key': file_key,
-                    'file_number': file_group_counter,
-                    'is_collapsed': self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False,
-                    'result': result
-                }
-                self.display_items.append(file_item)
-                
-                last_displayed_heading = None
-                last_file_path = file_path
-            
-            # 处理章节（如果文件未折叠）
-            file_key = f"f::{file_path}"
-            is_file_collapsed = self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False
-            
-            if not is_file_collapsed and (is_new_file or is_new_heading):
-                # 检查是否是Excel数据
-                if result.get('excel_sheet') is None:
-                    # 修复：统一章节键格式，去除索引以确保同一章节的一致性
-                    chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
-                    is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
-                    
-                    chapter_item = {
-                        'type': 'chapter_group',
-                        'file_path': file_path,
-                        'chapter_key': chapter_key,
-                        'heading': original_heading,
-                        'is_collapsed': is_chapter_collapsed,
-                        'result': result
-                    }
-                    self.display_items.append(chapter_item)
-                    last_displayed_heading = original_heading
-                else:
-                    last_displayed_heading = None
-            
-            # 处理内容（段落或Excel数据）
-            if not is_file_collapsed:
-                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
-                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
-                is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
-                
-                # 修复BUG：无论是否是Excel数据，只要章节被折叠就不显示内容
-                if not is_chapter_collapsed:
-                    content_item = {
-                        'type': 'content',
-                        'file_path': file_path,
-                        'result': result,
-                        'index': i
-                    }
-                    self.display_items.append(content_item)
-    
-    def _generate_item_html(self, item, index):
-        """生成显示项的HTML内容"""
-        try:
-            item_type = item.get('type', 'unknown')
-            
-            if item_type == 'title':
-                theme_colors = self._get_theme_colors()
-                return f'''
-                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
-                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
-                        {item["content"]}
-                    </h3>
-                </div>
-                '''
-                
-            elif item_type == 'filename_result':
-                return self._generate_filename_result_html(item)
-                
-            elif item_type == 'file_group':
-                return self._generate_file_group_html(item)
-                
-            elif item_type == 'chapter_group':
-                return self._generate_chapter_group_html(item)
-                
-            elif item_type == 'content':
-                return self._generate_content_html(item)
-                
-            elif item_type == 'error':
-                return f'<div style="margin: 10px; padding: 10px; background: #ffebee; border: 1px solid #f44336; border-radius: 4px; color: #c62828;">{item["content"]}</div>'
-                
-            elif item_type == 'group_header':
-                theme_colors = self._get_theme_colors()
-                group_name = item.get('group_name', '未知分组')
-                group_key = item.get('group_key', 'unknown')
-                result_count = item.get('result_count', 0)
-                is_collapsed = item.get('is_collapsed', False)
-                
-                import html
-                toggle_char = "▶" if is_collapsed else "▼"
-                toggle_href = f'toggle::{html.escape(group_key, quote=True)}'
-                escaped_group_name = html.escape(str(group_name))
-                
-                return f'''
-                <div style="margin: 15px 10px 10px 10px; padding: 12px 16px; background: linear-gradient(135deg, {theme_colors["link_color"]}22, {theme_colors["link_color"]}11); border-left: 4px solid {theme_colors["link_color"]}; border-radius: 6px;">
-                    <div style="font-size: 16px; font-weight: bold; color: {theme_colors["text_color"]}; margin-bottom: 4px;">
-                        <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px;">{toggle_char}</a>
-                        📂 {escaped_group_name}
-                    </div>
-                    <div style="font-size: 13px; color: #666; font-style: italic;">
-                        {result_count} 个结果
-                    </div>
-                </div>
-                '''
-                
-            elif item_type == 'empty_state':
-                theme_colors = self._get_theme_colors()
-                return f'''
-                <div style="margin: 50px 20px; padding: 40px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
-                    <div style="font-size: 48px; margin-bottom: 20px; color: #6c757d;">{item["content"].split()[0]}</div>
-                    <div style="font-size: 18px; color: {theme_colors["text_color"]}; margin-bottom: 10px;">
-                        {" ".join(item["content"].split()[1:])}
-                    </div>
-                    <div style="font-size: 14px; color: #6c757d; margin-top: 20px;">
-                        请尝试调整搜索词或筛选条件
-                    </div>
-                </div>
-                '''
-                
-            else:
-                return f'<div style="margin: 10px; padding: 10px;">未知项目类型: {item_type}</div>'
-                
-        except Exception as e:
-            print(f"Error generating item HTML: {e}")
-            return f'<div style="margin: 10px; padding: 10px; background: #ffebee;">生成HTML时出错: {str(e)}</div>'
-    
-    def _get_theme_colors(self):
-        """获取当前主题的颜色配置 - 扩展版本包含更多语义颜色"""
-        if self.current_theme == "现代蓝":
-            return {
-                "highlight_bg": "#E3F2FD",
-                "highlight_text": "#1565C0", 
-                "link_color": "#2196F3",
-                "text_color": "#333333",
-                "primary": "#007ACC",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "现代紫":
-            return {
-                "highlight_bg": "#F3E5F5",
-                "highlight_text": "#7B1FA2",
-                "link_color": "#9C27B0", 
-                "text_color": "#333333",
-                "primary": "#8B5CF6",
-                "success": "#10B981",
-                "info": "#8B5CF6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "现代红":
-            return {
-                "highlight_bg": "#FFE0E0",
-                "highlight_text": "#C62828",
-                "link_color": "#E53935",
-                "text_color": "#333333",
-                "primary": "#DC2626",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#DC2626"
-            }
-        elif self.current_theme == "现代橙":
-            return {
-                "highlight_bg": "#FFF3E0",
-                "highlight_text": "#FF6F00",
-                "link_color": "#FF9800",
-                "text_color": "#333333",
-                "primary": "#EA580C",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#EA580C",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "深色模式":
-            return {
-                "highlight_bg": "#374151",
-                "highlight_text": "#60A5FA",
-                "link_color": "#3B82F6",
-                "text_color": "#F9FAFB",
-                "primary": "#3B82F6",
-                "success": "#059669",
-                "info": "#3B82F6",
-                "warning": "#D97706",
-                "danger": "#DC2626"
-            }
-        elif self.current_theme == "护眼绿":
-            return {
-                "highlight_bg": "#DCFCE7",
-                "highlight_text": "#047857",
-                "link_color": "#059669",
-                "text_color": "#1E1E1E",
-                "primary": "#059669",
-                "success": "#059669",
-                "info": "#0891B2",
-                "warning": "#D97706",
-                "danger": "#DC2626"
-            }
-        else:
-            return {
-                "highlight_bg": "#FFECB3",
-                "highlight_text": "#FF6F00",
-                "link_color": "#FF9800",
-                "text_color": "#333333",
-                "primary": "#FF9800",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-    
-    def _generate_filename_result_html(self, item):
-        """生成文件名搜索结果的HTML - 美观现代化样式"""
-        file_path = item['file_path']
-        result = item.get('result', {})
-        theme_colors = self._get_theme_colors()
-        
-        # 计算文件信息
-        import os
-        from pathlib import Path
-        try:
-            file_name = os.path.basename(file_path)
-            file_size = result.get('file_size', result.get('size', 0))
-            mtime = result.get('last_modified', result.get('mtime', 0))
-
-            # 格式化文件大小
-            if file_size > 0:
-                if file_size < 1024:
-                    size_str = f"{file_size} B"
-                elif file_size < 1024 * 1024:
-                    size_str = f"{file_size / 1024:.1f} KB"
-                else:
-                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
-            else:
-                size_str = '未知大小'
-
-            # 格式化修改时间
-            if mtime > 0:
-                import datetime
-                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-            else:
-                mtime_str = '未知时间'
-
-            # 获取文件类型图标
-            file_ext = Path(file_path).suffix.lower()
-            type_icon = "📄"
-            if file_ext in ['.docx', '.doc']:
-                type_icon = "📝"
-            elif file_ext in ['.xlsx', '.xls']:
-                type_icon = "📊"
-            elif file_ext in ['.pptx', '.ppt']:
-                type_icon = "📋"
-            elif file_ext in ['.pdf']:
-                type_icon = "📕"
-            elif file_ext in ['.txt', '.md']:
-                type_icon = "📄"
-            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
-                type_icon = "🖼️"
-            elif file_ext in ['.mp4', '.avi', '.mov']:
-                type_icon = "🎬"
-            elif file_ext in ['.mp3', '.wav', '.flac']:
-                type_icon = "🎵"
-
-        except Exception as e:
-            file_name = file_path
-            size_str = '未知大小'
-            mtime_str = '未知时间'
-            type_icon = "📄"
-        
-        # 计算文件夹路径
-        folder_path_str = ""
-        is_archive_member = "::" in file_path
-        try:
-            if is_archive_member:
-                archive_file_path = file_path.split("::", 1)[0]
-                folder_path_str = str(Path(archive_file_path).parent)
-            else:
-                path_obj = Path(file_path)
-                if path_obj.is_file():
-                    folder_path_str = str(path_obj.parent)
-        except Exception:
-            pass
-        
-        import html
-        escaped_file_name = html.escape(file_name)
-        escaped_file_path = html.escape(file_path)
-        
-        # 构建操作链接 - 使用现代化按钮样式
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
-        if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
-        
-        return f'''
-        <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <div style="display: flex; align-items: center;">
-                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
-                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
-                </div>
-                <div style="white-space: nowrap;">
-                    {" ".join(links)}
-                </div>
-            </div>
-
-            <div style="margin-left: 26px;">
-                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    {escaped_file_path}
-                </p>
-                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
-                    <span style="font-size: 11px; color: #6c757d;">📏 {size_str}</span>
-                    <span style="margin-left: 20px; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</span>
-                </div>
-            </div>
-        </div>
-        '''
-    
-    def _generate_file_group_html(self, item):
-        """生成文件组头部的HTML"""
-        file_path = item['file_path']
-        file_key = item['file_key']
-        file_number = item['file_number']
-        is_collapsed = item['is_collapsed']
-        theme_colors = self._get_theme_colors()
-        
-        import html
-        
-        toggle_char = "[+]" if is_collapsed else "[-]"
-        toggle_href = f'toggle::{html.escape(file_key, quote=True)}'
-        escaped_path = html.escape(file_path)
-        
-        # 计算文件夹路径
-        folder_path_str = ""
-        is_archive_member = "::" in file_path
-        try:
-            if is_archive_member:
-                archive_file_path = file_path.split("::", 1)[0]
-                from pathlib import Path
-                folder_path_str = str(Path(archive_file_path).parent)
-            else:
-                from pathlib import Path
-                path_obj = Path(file_path)
-                if path_obj.is_file():
-                    folder_path_str = str(path_obj.parent)
-        except Exception:
-            pass
-        
-        # 构建现代化操作按钮 - 与文件名搜索保持一致
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
-        if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
-
-        # 提取文件名和路径，类似文件名搜索的处理方式
-        import os
-        file_name = os.path.basename(file_path)
-        file_directory = os.path.dirname(file_path)
-        escaped_file_name = html.escape(file_name)
-        escaped_directory = html.escape(file_directory)
-
-        # 获取文件类型图标
-        from pathlib import Path
-        file_ext = Path(file_path).suffix.lower()
-        type_icon = "📄"
-        if file_ext in ['.docx', '.doc']:
-            type_icon = "📝"
-        elif file_ext in ['.xlsx', '.xls']:
-            type_icon = "📊"
-        elif file_ext in ['.pptx', '.ppt']:
-            type_icon = "📋"
-        elif file_ext in ['.pdf']:
-            type_icon = "📕"
-        elif file_ext in ['.txt', '.md']:
-            type_icon = "📄"
-        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
-            type_icon = "🖼️"
-        elif file_ext in ['.mp4', '.avi', '.mov']:
-            type_icon = "🎬"
-        elif file_ext in ['.mp3', '.wav', '.flac']:
-            type_icon = "🎵"
-        
-        return f'''
-        <div style="margin: 15px 5px 5px 5px; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                    <td style="vertical-align: middle;">
-                                                <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: 14px; font-weight: bold; display: inline-block;">
-                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px; font-size: 14px;">{toggle_char}</a>
-                            <span style="font-size: 16px; margin-right: 8px;">{type_icon}</span>
-                {file_number}. {escaped_path}
-            </h3>
-                        <div style="margin-left: 38px;">
-                            <p style="margin: 0; color: #6c757d; font-size: 11px; font-family: monospace;">
-                                📁 {escaped_directory}
-                            </p>
-            </div>
-                    </td>
-                    <td style="text-align: right; vertical-align: top; white-space: nowrap; padding-top: 8px;">
-                        {" ".join(links)}
-                    </td>
-                </tr>
-            </table>
-        </div>
-        '''
-    
-    def _generate_chapter_group_html(self, item):
-        """生成章节组头部的HTML"""
-        chapter_key = item['chapter_key']
-        heading = item['heading']
-        is_collapsed = item['is_collapsed']
-        result = item['result']
-        theme_colors = self._get_theme_colors()
-        
-        import html
-        
-        toggle_char = "[+]" if is_collapsed else "[-]"
-        toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
-        
-        # 处理标记的标题
-        marked_heading = result.get('marked_heading')
-        heading_to_display = marked_heading if marked_heading is not None else heading
-        if heading_to_display is None:
-            heading_to_display = '(无章节标题)'
-        escaped_heading = html.escape(str(heading_to_display))
-        
-        # 处理高亮
-        if marked_heading and "__HIGHLIGHT_START__" in escaped_heading:
-            escaped_heading = escaped_heading.replace(
-                html.escape("__HIGHLIGHT_START__"), 
-                f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
-            )
-            escaped_heading = escaped_heading.replace(html.escape("__HIGHLIGHT_END__"), '</span>')
-        
-        return f'''
-        <div style="margin: 8px 15px 5px 25px; padding: 6px;">
-            <p style="margin: 0; color: {theme_colors["text_color"]};">
-                <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 6px;">{toggle_char}</a>
-                <b>章节:</b> {escaped_heading}
-            </p>
-        </div>
-        '''
-    
-    def _generate_content_html(self, item):
-        """生成内容的HTML（段落或Excel表格）"""
-        result = item['result']
-        theme_colors = self._get_theme_colors()
-        
-        # 检查是否是Excel数据
-        excel_headers = result.get('excel_headers')
-        excel_values = result.get('excel_values')
-        
-        if excel_headers is not None and excel_values is not None:
-            return self._generate_excel_content_html(result, theme_colors)
-        else:
-            return self._generate_paragraph_content_html(result, theme_colors)
-    
-    def _generate_excel_content_html(self, result, theme_colors):
-        """生成Excel内容的HTML - 现代化样式"""
-        excel_headers = result.get('excel_headers', [])
-        excel_values = result.get('excel_values', [])
-        excel_sheet = result.get('excel_sheet', '')
-        excel_row_idx = result.get('excel_row_idx', 0)
-        
-        import html
-        
-        html_parts = []
-        html_parts.append(f'''
-        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
-                    background: linear-gradient(145deg, #ffffff, #f8f9fa);
-                    border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
-            <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
-                        background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
-                        border-left: 4px solid {theme_colors["primary"]};">
-                <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
-                    📊 表格: {html.escape(str(excel_sheet) if excel_sheet is not None else "未知表格")} | 行: {excel_row_idx}
-                </h4>
-            </div>
-        ''')
-
-        # 生成现代化表格
-        html_parts.append(f'''
-            <table style="width: 100%; border-collapse: collapse; background: white;
-                         border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
-                         box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        ''')
-
-        # 表头
-        html_parts.append(f"<tr style='background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);'>")
-        for header in excel_headers:
-            header_text = str(header) if header is not None else ''
-            html_parts.append(f'''
-                <th style="padding: {UI_SPACING['normal']}; border: none;
-                          font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
-                          color: {theme_colors["text_color"]}; text-align: left;">
-                    {html.escape(header_text)}
-                </th>
-            ''')
-        html_parts.append("</tr>")
-        
-        # 数据行
-        html_parts.append("<tr style='background: white;'>")
-        escaped_start_marker = html.escape("__HIGHLIGHT_START__")
-        escaped_end_marker = html.escape("__HIGHLIGHT_END__")
-        
-        for value in excel_values:
-            value_text = str(value) if value is not None else ''
-            escaped_value = html.escape(value_text)
-            
-            # 处理高亮
-            if escaped_start_marker in escaped_value:
-                highlighted_value = escaped_value.replace(
-                    escaped_start_marker,
-                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
-                ).replace(escaped_end_marker, '</mark>')
-            else:
-                highlighted_value = escaped_value
-                
-            html_parts.append(f'''
-                <td style="padding: {UI_SPACING['normal']}; border: none;
-                          font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
-                          border-bottom: 1px solid #f0f0f0;">
-                    {highlighted_value}
-                </td>
-            ''')
-        html_parts.append("</tr>")
-        html_parts.append("</table>")
-        html_parts.append('</div>')
-        
-        return "".join(html_parts)
-    
-    def _generate_paragraph_content_html(self, result, theme_colors):
-        """生成段落内容的HTML - 现代化样式"""
-        original_paragraph = result.get('paragraph')
-        marked_paragraph = result.get('marked_paragraph')
-        match_start = result.get('match_start')
-        match_end = result.get('match_end')
-        
-        if original_paragraph is None:
-            return ''
-        
-        # 确定要显示的段落文本
-        paragraph_text_for_highlight = marked_paragraph if marked_paragraph is not None else original_paragraph
-        if paragraph_text_for_highlight is None:
-            paragraph_text_for_highlight = str(original_paragraph) if original_paragraph is not None else ''
-        else:
-            paragraph_text_for_highlight = str(paragraph_text_for_highlight)
-        
-        import html
-        escaped_paragraph = html.escape(paragraph_text_for_highlight)
-        
-        # 处理高亮
-        highlighted_paragraph_display = escaped_paragraph
-        
-        # 短语搜索的精确高亮
-        if match_start is not None and match_end is not None:
-            if 0 <= match_start < match_end <= len(escaped_paragraph):
-                pre = escaped_paragraph[:match_start]
-                mat = escaped_paragraph[match_start:match_end]
-                post = escaped_paragraph[match_end:]
-                highlighted_paragraph_display = f'{pre}<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">{mat}</mark>{post}'
-        # 模糊搜索的标记高亮
-        elif marked_paragraph:
-            escaped_start_marker = html.escape("__HIGHLIGHT_START__")
-            escaped_end_marker = html.escape("__HIGHLIGHT_END__")
-            if escaped_start_marker in escaped_paragraph:
-                highlighted_paragraph_display = escaped_paragraph.replace(
-                    escaped_start_marker,
-                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">'
-                ).replace(escaped_end_marker, '</mark>')
-        
-        return f'''
-        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
-                    background: linear-gradient(145deg, #ffffff, #fafbfc);
-                    border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
-                    border-left: 4px solid {theme_colors["success"]};
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="margin-bottom: {UI_SPACING['small']};">
-                <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
-                    📄 段落内容
-                </span>
-            </div>
-            <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
-                        word-wrap: break-word; overflow-wrap: break-word;">
-                {highlighted_paragraph_display}
-            </div>
-        </div>
-        '''
-
-    def set_results(self, results):
-        """设置搜索结果并处理成显示项目 - 支持完整的查看方式"""
-        self.results = results
-        
-        # 从父窗口获取查看方式设置并应用完整的处理流程
-        if self.parent_window:
-            # 使用默认相关性排序（搜索引擎返回顺序）
-            sorted_results = results
-            
-            # 检查是否需要分组显示
-            if (hasattr(self.parent_window, 'grouping_enabled') and 
-                self.parent_window.grouping_enabled and 
-                hasattr(self.parent_window, 'current_grouping_mode') and 
-                self.parent_window.current_grouping_mode != 'none'):
-                
-                # 应用分组，然后转换为虚拟滚动可以处理的格式
-                grouped_results = self.parent_window._group_results(sorted_results, self.parent_window.current_grouping_mode)
-                self._process_grouped_results_for_display(grouped_results)
-            else:
-                # 不分组，直接处理
-                self._process_results_for_display(sorted_results)
-        else:
-            self._process_results_for_display(results)
-        
-    def set_theme(self, theme_name):
-        """设置主题"""
-        self.current_theme = theme_name
-        # 通知视图更新显示
-        if self.display_items:
-            self.dataChanged.emit(self.index(0), self.index(len(self.display_items) - 1))
-
-
 class HtmlItemDelegate(QStyledItemDelegate):
     """HTML内容委托，用于在列表视图中渲染HTML"""
     
@@ -2150,36 +1556,6 @@ except ImportError:
 # -------------------------------------
 
 # --- 添加资源文件路径解析器 ---
-def get_resource_path(relative_path):
-    """获取资源的绝对路径，适用于开发环境和打包后的环境
-    
-    Args:
-        relative_path (str): 相对于应用程序根目录的资源文件路径
-        
-    Returns:
-        str: 资源文件的绝对路径
-    """
-    # 如果路径带有特殊前缀，则移除
-    if relative_path.startswith('qss-resource:'):
-        relative_path = relative_path[len('qss-resource:'):]
-    
-    # 如果路径被引号包围，则移除引号
-    if (relative_path.startswith('"') and relative_path.endswith('"')) or \
-       (relative_path.startswith("'") and relative_path.endswith("'")):
-        relative_path = relative_path[1:-1]
-    
-    # 判断是否在PyInstaller环境中运行
-    if getattr(sys, 'frozen', False):
-        # 在PyInstaller环境中
-        base_path = sys._MEIPASS
-    else:
-        # 在开发环境中
-        base_path = os.path.dirname(__file__)
-    
-    # 组合路径并返回
-    resource_path = os.path.join(base_path, relative_path)
-    print(f"资源路径解析: {relative_path} -> {resource_path}")
-    return resource_path
 # ------------------------------
 
 # ====================
@@ -2243,1179 +1619,6 @@ UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_versio
 # -------------------------
 
 # === 虚拟滚动相关类实现 ===
-class VirtualResultsModel(QAbstractListModel):
-    """虚拟滚动结果模型，完全兼容传统模式的文件分组和章节折叠功能"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.results = []
-        self.display_items = []  # 存储显示项目列表（文件组/章节组/内容项）
-        self.current_theme = "现代蓝"
-        self.parent_window = parent  # 存储父窗口引用以访问collapse_states
-        
-    def rowCount(self, parent=QModelIndex()):
-        """返回显示项目总数"""
-        return len(self.display_items)
-        
-    def data(self, index, role=Qt.DisplayRole):
-        """返回指定索引的数据"""
-        if not index.isValid() or index.row() >= len(self.display_items):
-            return None
-            
-        if role == Qt.DisplayRole:
-            item = self.display_items[index.row()]
-            return self._generate_item_html(item, index.row())
-        elif role == Qt.UserRole:
-            # 返回原始项目数据
-            return self.display_items[index.row()]
-        
-        return None
-    
-    def _process_results_for_display(self, results):
-        """将原始搜索结果处理成显示项目列表，完全兼容传统模式逻辑"""
-        self.beginResetModel()
-        self.display_items = []
-        
-        if not results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
-            self.endResetModel()
-            return
-            
-        try:
-            # 检查搜索范围
-            if hasattr(self.parent_window, 'last_search_scope') and self.parent_window.last_search_scope == 'filename':
-                # 文件名搜索 - 简化显示
-                self._process_filename_results(results)
-            else:
-                # 全文搜索 - 复杂分组显示
-                self._process_fulltext_results(results)
-                
-        except Exception as e:
-            print(f"Error processing results for virtual display: {e}")
-            # 添加错误显示项
-            self.display_items.append({
-                'type': 'error',
-                'content': f'处理搜索结果时出错: {e}'
-            })
-        
-        self.endResetModel()
-    
-    def _process_grouped_results_for_display(self, grouped_results):
-        """处理分组结果为虚拟滚动显示项目"""
-        self.beginResetModel()
-        self.display_items = []
-        
-        if not grouped_results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
-            self.endResetModel()
-            return
-        
-        # 初始化分组折叠状态（如果不存在）
-        if not hasattr(self.parent_window, 'group_collapse_states'):
-            self.parent_window.group_collapse_states = {}
-        
-        # 处理分组结果
-        for group_name, group_results in grouped_results.items():
-            if not group_results:
-                continue
-                
-            # 检查分组的折叠状态
-            group_key = f"vgroup::{group_name}"
-            is_collapsed = self.parent_window.group_collapse_states.get(group_key, False)
-            
-            # 添加分组标题（带折叠功能）
-            self.display_items.append({
-                'type': 'group_header',
-                'group_name': group_name,
-                'group_key': group_key,
-                'result_count': len(group_results),
-                'is_collapsed': is_collapsed
-            })
-            
-            # 只有在未折叠时才显示分组中的结果
-            if not is_collapsed:
-                if self._is_filename_search():
-                    # 文件名搜索：简化显示
-                    for result in group_results:
-                        self.display_items.append({
-                            'type': 'filename_result',
-                            'result': result
-                        })
-                else:
-                    # 全文搜索：完整显示
-                    self._process_fulltext_group_results(group_results)
-        
-        self.endResetModel()
-    
-    def _process_fulltext_group_results(self, results):
-        """处理全文搜索的分组结果"""
-        # 使用传统模式的逻辑进行文件和章节分组
-        file_groups = {}
-        
-        for result in results:
-            file_path = result.get('file_path', '')
-            
-            if file_path not in file_groups:
-                file_groups[file_path] = []
-            file_groups[file_path].append(result)
-        
-        # 为每个文件组生成显示项
-        for file_path, file_results in file_groups.items():
-            if not file_results:
-                continue
-                
-            file_key = f"f::{file_path}"
-            is_collapsed = self._get_collapse_state(file_key)
-            
-            # 添加文件组头部
-            self.display_items.append({
-                'type': 'file_group',
-                'file_path': file_path,
-                'file_key': file_key,
-                'file_number': len(file_groups),
-                'is_collapsed': is_collapsed
-            })
-            
-            if not is_collapsed:
-                # 文件未折叠，继续处理章节
-                chapter_groups = {}
-                
-                for result in file_results:
-                    # 确定章节键
-                    heading = result.get('heading')
-                    chapter_key = f"c::{file_path}::{heading if heading else '(无章节)'}"
-                    
-                    if chapter_key not in chapter_groups:
-                        chapter_groups[chapter_key] = []
-                    chapter_groups[chapter_key].append(result)
-                
-                # 为每个章节组生成显示项
-                for chapter_key, chapter_results in chapter_groups.items():
-                    if not chapter_results:
-                        continue
-                        
-                    is_chapter_collapsed = self._get_collapse_state(chapter_key)
-                    heading = chapter_results[0].get('heading', '(无章节)')
-                    
-                    # 添加章节组头部
-                    self.display_items.append({
-                        'type': 'chapter_group',
-                        'chapter_key': chapter_key,
-                        'heading': heading,
-                        'is_collapsed': is_chapter_collapsed,
-                        'result': chapter_results[0]  # 用于标题标记
-                    })
-                    
-                    if not is_chapter_collapsed:
-                        # 章节未折叠，添加内容
-                        for result in chapter_results:
-                            self.display_items.append({
-                                'type': 'content',
-                                'result': result
-                            })
-    
-    def _is_filename_search(self):
-        """检查是否为文件名搜索"""
-        return (hasattr(self.parent_window, 'last_search_scope') and 
-                self.parent_window.last_search_scope == 'filename')
-    
-    def _get_collapse_state(self, key):
-        """获取折叠状态"""
-        if self.parent_window and hasattr(self.parent_window, 'collapse_states'):
-            return self.parent_window.collapse_states.get(key, False)
-        return False
-    
-    def _process_filename_results(self, results):
-        """处理文件名搜索结果"""
-        processed_paths = set()
-        
-        # 添加美观的标题项
-        self.display_items.append({
-            'type': 'title',
-            'content': f'📄 文件名搜索结果 ({len(results)} 个文件)'
-        })
-        
-        for result in results:
-            file_path = result.get('file_path', '(未知文件)')
-            if file_path in processed_paths:
-                continue
-            processed_paths.add(file_path)
-            
-            self.display_items.append({
-                'type': 'filename_result',
-                'file_path': file_path,
-                'result': result
-            })
-    
-    def _process_fulltext_results(self, results):
-        """处理全文搜索结果 - 完全兼容传统模式的文件分组和章节折叠"""
-        last_file_path = None
-        last_displayed_heading = None
-        file_group_counter = 0
-        
-        for i, result in enumerate(results):
-            file_path = result.get('file_path', '(未知文件)')
-            original_heading = result.get('heading', '(无章节标题)')
-            
-            is_new_file = (file_path != last_file_path)
-            is_new_heading = (original_heading != last_displayed_heading)
-            
-            # 处理新文件
-            if is_new_file:
-                file_group_counter += 1
-                file_key = f"f::{file_path}"
-                
-                # 创建文件组项
-                file_item = {
-                    'type': 'file_group',
-                    'file_path': file_path,
-                    'file_key': file_key,
-                    'file_number': file_group_counter,
-                    'is_collapsed': self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False,
-                    'result': result
-                }
-                self.display_items.append(file_item)
-                
-                last_displayed_heading = None
-                last_file_path = file_path
-            
-            # 处理章节（如果文件未折叠）
-            file_key = f"f::{file_path}"
-            is_file_collapsed = self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False
-            
-            if not is_file_collapsed and (is_new_file or is_new_heading):
-                # 检查是否是Excel数据
-                if result.get('excel_sheet') is None:
-                    # 修复：统一章节键格式，去除索引以确保同一章节的一致性
-                    chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
-                    is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
-                    
-                    chapter_item = {
-                        'type': 'chapter_group',
-                        'file_path': file_path,
-                        'chapter_key': chapter_key,
-                        'heading': original_heading,
-                        'is_collapsed': is_chapter_collapsed,
-                        'result': result
-                    }
-                    self.display_items.append(chapter_item)
-                    last_displayed_heading = original_heading
-                else:
-                    last_displayed_heading = None
-            
-            # 处理内容（段落或Excel数据）
-            if not is_file_collapsed:
-                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
-                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
-                is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
-                
-                # 修复BUG：无论是否是Excel数据，只要章节被折叠就不显示内容
-                if not is_chapter_collapsed:
-                    content_item = {
-                        'type': 'content',
-                        'file_path': file_path,
-                        'result': result,
-                        'index': i
-                    }
-                    self.display_items.append(content_item)
-    
-    def _generate_item_html(self, item, index):
-        """生成显示项的HTML内容"""
-        try:
-            item_type = item.get('type', 'unknown')
-            
-            if item_type == 'title':
-                theme_colors = self._get_theme_colors()
-                return f'''
-                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
-                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
-                        {item["content"]}
-                    </h3>
-                </div>
-                '''
-                
-            elif item_type == 'filename_result':
-                return self._generate_filename_result_html(item)
-                
-            elif item_type == 'file_group':
-                return self._generate_file_group_html(item)
-                
-            elif item_type == 'chapter_group':
-                return self._generate_chapter_group_html(item)
-                
-            elif item_type == 'content':
-                return self._generate_content_html(item)
-                
-            elif item_type == 'error':
-                return f'<div style="margin: 10px; padding: 10px; background: #ffebee; border: 1px solid #f44336; border-radius: 4px; color: #c62828;">{item["content"]}</div>'
-                
-            elif item_type == 'group_header':
-                theme_colors = self._get_theme_colors()
-                group_name = item.get('group_name', '未知分组')
-                group_key = item.get('group_key', 'unknown')
-                result_count = item.get('result_count', 0)
-                is_collapsed = item.get('is_collapsed', False)
-                
-                import html
-                toggle_char = "▶" if is_collapsed else "▼"
-                toggle_href = f'toggle::{html.escape(group_key, quote=True)}'
-                escaped_group_name = html.escape(str(group_name))
-                
-                return f'''
-                <div style="margin: 15px 10px 10px 10px; padding: 12px 16px; background: linear-gradient(135deg, {theme_colors["link_color"]}22, {theme_colors["link_color"]}11); border-left: 4px solid {theme_colors["link_color"]}; border-radius: 6px;">
-                    <div style="font-size: 16px; font-weight: bold; color: {theme_colors["text_color"]}; margin-bottom: 4px;">
-                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px;">{toggle_char}</a>
-                        📂 {escaped_group_name}
-                    </div>
-                    <div style="font-size: 13px; color: #666; font-style: italic;">
-                        {result_count} 个结果
-                    </div>
-                </div>
-                '''
-                
-            elif item_type == 'empty_state':
-                theme_colors = self._get_theme_colors()
-                return f'''
-                <div style="margin: 50px 20px; padding: 40px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
-                    <div style="font-size: 48px; margin-bottom: 20px; color: #6c757d;">{item["content"].split()[0]}</div>
-                    <div style="font-size: 18px; color: {theme_colors["text_color"]}; margin-bottom: 10px;">
-                        {" ".join(item["content"].split()[1:])}
-                    </div>
-                    <div style="font-size: 14px; color: #6c757d; margin-top: 20px;">
-                        请尝试调整搜索词或筛选条件
-                    </div>
-                </div>
-                '''
-                
-            else:
-                return f'<div style="margin: 10px; padding: 10px;">未知项目类型: {item_type}</div>'
-                
-        except Exception as e:
-            print(f"Error generating item HTML: {e}")
-            return f'<div style="margin: 10px; padding: 10px; background: #ffebee;">生成HTML时出错: {str(e)}</div>'
-    
-    def _get_theme_colors(self):
-        """获取当前主题的颜色配置 - 扩展版本包含更多语义颜色"""
-        if self.current_theme == "现代蓝":
-            return {
-                "highlight_bg": "#E3F2FD",
-                "highlight_text": "#1565C0", 
-                "link_color": "#2196F3",
-                "text_color": "#333333",
-                "primary": "#007ACC",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "现代紫":
-            return {
-                "highlight_bg": "#F3E5F5",
-                "highlight_text": "#7B1FA2",
-                "link_color": "#9C27B0", 
-                "text_color": "#333333",
-                "primary": "#8B5CF6",
-                "success": "#10B981",
-                "info": "#8B5CF6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "现代红":
-            return {
-                "highlight_bg": "#FFE0E0",
-                "highlight_text": "#C62828",
-                "link_color": "#E53935",
-                "text_color": "#333333",
-                "primary": "#DC2626",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#DC2626"
-            }
-        elif self.current_theme == "现代橙":
-            return {
-                "highlight_bg": "#FFF3E0",
-                "highlight_text": "#FF6F00",
-                "link_color": "#FF9800",
-                "text_color": "#333333",
-                "primary": "#EA580C",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#EA580C",
-                "danger": "#EF4444"
-            }
-        elif self.current_theme == "深色模式":
-            return {
-                "highlight_bg": "#374151",
-                "highlight_text": "#60A5FA",
-                "link_color": "#3B82F6",
-                "text_color": "#F9FAFB",
-                "primary": "#3B82F6",
-                "success": "#059669",
-                "info": "#3B82F6",
-                "warning": "#D97706",
-                "danger": "#DC2626"
-            }
-        elif self.current_theme == "护眼绿":
-            return {
-                "highlight_bg": "#DCFCE7",
-                "highlight_text": "#047857",
-                "link_color": "#059669",
-                "text_color": "#1E1E1E",
-                "primary": "#059669",
-                "success": "#059669",
-                "info": "#0891B2",
-                "warning": "#D97706",
-                "danger": "#DC2626"
-            }
-        else:
-            return {
-                "highlight_bg": "#FFECB3",
-                "highlight_text": "#FF6F00",
-                "link_color": "#FF9800",
-                "text_color": "#333333",
-                "primary": "#FF9800",
-                "success": "#10B981",
-                "info": "#3B82F6",
-                "warning": "#F59E0B",
-                "danger": "#EF4444"
-            }
-    
-    def _generate_filename_result_html(self, item):
-        """生成文件名搜索结果的HTML - 美观现代化样式"""
-        file_path = item['file_path']
-        result = item.get('result', {})
-        theme_colors = self._get_theme_colors()
-        
-        # 计算文件信息
-        import os
-        from pathlib import Path
-        try:
-            file_name = os.path.basename(file_path)
-            file_size = result.get('file_size', result.get('size', 0))
-            mtime = result.get('last_modified', result.get('mtime', 0))
-
-            # 格式化文件大小
-            if file_size > 0:
-                if file_size < 1024:
-                    size_str = f"{file_size} B"
-                elif file_size < 1024 * 1024:
-                    size_str = f"{file_size / 1024:.1f} KB"
-                else:
-                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
-            else:
-                size_str = '未知大小'
-
-            # 格式化修改时间
-            if mtime > 0:
-                import datetime
-                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-            else:
-                mtime_str = '未知时间'
-
-            # 获取文件类型图标
-            file_ext = Path(file_path).suffix.lower()
-            type_icon = "📄"
-            if file_ext in ['.docx', '.doc']:
-                type_icon = "📝"
-            elif file_ext in ['.xlsx', '.xls']:
-                type_icon = "📊"
-            elif file_ext in ['.pptx', '.ppt']:
-                type_icon = "📋"
-            elif file_ext in ['.pdf']:
-                type_icon = "📕"
-            elif file_ext in ['.txt', '.md']:
-                type_icon = "📄"
-            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
-                type_icon = "🖼️"
-            elif file_ext in ['.mp4', '.avi', '.mov']:
-                type_icon = "🎬"
-            elif file_ext in ['.mp3', '.wav', '.flac']:
-                type_icon = "🎵"
-
-        except Exception as e:
-            file_name = file_path
-            size_str = '未知大小'
-            mtime_str = '未知时间'
-            type_icon = "📄"
-        
-        # 计算文件夹路径
-        folder_path_str = ""
-        is_archive_member = "::" in file_path
-        try:
-            if is_archive_member:
-                archive_file_path = file_path.split("::", 1)[0]
-                folder_path_str = str(Path(archive_file_path).parent)
-            else:
-                path_obj = Path(file_path)
-                if path_obj.is_file():
-                    folder_path_str = str(path_obj.parent)
-        except Exception:
-            pass
-        
-        import html
-        escaped_file_name = html.escape(file_name)
-        escaped_file_path = html.escape(file_path)
-        
-        # 构建操作链接 - 使用现代化按钮样式
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
-        if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
-        
-        return f'''
-        <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <div style="display: flex; align-items: center;">
-                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
-                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
-                </div>
-                <div style="white-space: nowrap;">
-                    {" ".join(links)}
-                </div>
-            </div>
-
-            <div style="margin-left: 26px;">
-                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    {escaped_file_path}
-                </p>
-                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
-                    <span style="font-size: 11px; color: #6c757d;">📏 {size_str}</span>
-                    <span style="margin-left: 20px; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</span>
-                </div>
-            </div>
-        </div>
-        '''
-    
-    def _generate_file_group_html(self, item):
-        """生成文件组头部的HTML"""
-        file_path = item['file_path']
-        file_key = item['file_key']
-        file_number = item['file_number']
-        is_collapsed = item['is_collapsed']
-        theme_colors = self._get_theme_colors()
-        
-        import html
-        
-        toggle_char = "[+]" if is_collapsed else "[-]"
-        toggle_href = f'toggle::{html.escape(file_key, quote=True)}'
-        escaped_path = html.escape(file_path)
-        
-        # 计算文件夹路径
-        folder_path_str = ""
-        is_archive_member = "::" in file_path
-        try:
-            if is_archive_member:
-                archive_file_path = file_path.split("::", 1)[0]
-                from pathlib import Path
-                folder_path_str = str(Path(archive_file_path).parent)
-            else:
-                from pathlib import Path
-                path_obj = Path(file_path)
-                if path_obj.is_file():
-                    folder_path_str = str(path_obj.parent)
-        except Exception:
-            pass
-        
-        # 构建现代化操作按钮 - 与文件名搜索保持一致
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
-        if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
-
-        # 提取文件名和路径，类似文件名搜索的处理方式
-        import os
-        file_name = os.path.basename(file_path)
-        file_directory = os.path.dirname(file_path)
-        escaped_file_name = html.escape(file_name)
-        escaped_directory = html.escape(file_directory)
-
-        # 获取文件类型图标
-        from pathlib import Path
-        file_ext = Path(file_path).suffix.lower()
-        type_icon = "📄"
-        if file_ext in ['.docx', '.doc']:
-            type_icon = "📝"
-        elif file_ext in ['.xlsx', '.xls']:
-            type_icon = "📊"
-        elif file_ext in ['.pptx', '.ppt']:
-            type_icon = "📋"
-        elif file_ext in ['.pdf']:
-            type_icon = "📕"
-        elif file_ext in ['.txt', '.md']:
-            type_icon = "📄"
-        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
-            type_icon = "🖼️"
-        elif file_ext in ['.mp4', '.avi', '.mov']:
-            type_icon = "🎬"
-        elif file_ext in ['.mp3', '.wav', '.flac']:
-            type_icon = "🎵"
-        
-        return f'''
-        <div style="margin: 15px 5px 5px 5px; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                    <td style="vertical-align: middle;">
-                                                <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: 14px; font-weight: bold; display: inline-block;">
-                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px; font-size: 14px;">{toggle_char}</a>
-                            <span style="font-size: 16px; margin-right: 8px;">{type_icon}</span>
-                {file_number}. {escaped_path}
-                        </h3>
-                        <div style="margin-left: 38px;">
-                            <p style="margin: 0; color: #6c757d; font-size: 11px; font-family: monospace;">
-                            📁 {escaped_directory}
-                        </p>
-            </div>
-                    </td>
-                    <td style="text-align: right; vertical-align: top; white-space: nowrap; padding-top: 8px;">
-                        {" ".join(links)}
-                    </td>
-                </tr>
-            </table>
-        </div>
-        '''
-    
-    def _generate_chapter_group_html(self, item):
-        """生成章节组头部的HTML"""
-        chapter_key = item['chapter_key']
-        heading = item['heading']
-        is_collapsed = item['is_collapsed']
-        result = item['result']
-        theme_colors = self._get_theme_colors()
-        
-        import html
-        
-        toggle_char = "[+]" if is_collapsed else "[-]"
-        toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
-        
-        # 处理标记的标题
-        marked_heading = result.get('marked_heading')
-        heading_to_display = marked_heading if marked_heading is not None else heading
-        if heading_to_display is None:
-            heading_to_display = '(无章节标题)'
-        escaped_heading = html.escape(str(heading_to_display))
-        
-        # 处理高亮
-        if marked_heading and "__HIGHLIGHT_START__" in escaped_heading:
-            escaped_heading = escaped_heading.replace(
-                html.escape("__HIGHLIGHT_START__"), 
-                f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
-            )
-            escaped_heading = escaped_heading.replace(html.escape("__HIGHLIGHT_END__"), '</span>')
-        
-        return f'''
-        <div style="margin: 8px 15px 5px 25px; padding: 6px;">
-            <p style="margin: 0; color: {theme_colors["text_color"]};">
-                <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 6px;">{toggle_char}</a>
-                <b>章节:</b> {escaped_heading}
-            </p>
-        </div>
-        '''
-    
-    def _generate_content_html(self, item):
-        """生成内容的HTML（段落或Excel表格）"""
-        result = item['result']
-        theme_colors = self._get_theme_colors()
-        
-        # 检查是否是Excel数据
-        excel_headers = result.get('excel_headers')
-        excel_values = result.get('excel_values')
-        
-        if excel_headers is not None and excel_values is not None:
-            return self._generate_excel_content_html(result, theme_colors)
-        else:
-            return self._generate_paragraph_content_html(result, theme_colors)
-    
-    def _generate_excel_content_html(self, result, theme_colors):
-        """生成Excel内容的HTML - 现代化样式"""
-        excel_headers = result.get('excel_headers', [])
-        excel_values = result.get('excel_values', [])
-        excel_sheet = result.get('excel_sheet', '')
-        excel_row_idx = result.get('excel_row_idx', 0)
-        
-        import html
-        
-        html_parts = []
-        html_parts.append(f'''
-        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
-                    background: linear-gradient(145deg, #ffffff, #f8f9fa);
-                    border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
-            <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
-                        background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
-                        border-left: 4px solid {theme_colors["primary"]};">
-                <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
-                    📊 表格: {html.escape(str(excel_sheet) if excel_sheet is not None else "未知表格")} | 行: {excel_row_idx}
-                </h4>
-            </div>
-        ''')
-
-        # 生成现代化表格
-        html_parts.append(f'''
-            <table style="width: 100%; border-collapse: collapse; background: white;
-                         border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
-                         box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        ''')
-
-        # 表头
-        html_parts.append(f"<tr style='background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);'>")
-        for header in excel_headers:
-            header_text = str(header) if header is not None else ''
-            html_parts.append(f'''
-                <th style="padding: {UI_SPACING['normal']}; border: none;
-                          font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
-                          color: {theme_colors["text_color"]}; text-align: left;">
-                    {html.escape(header_text)}
-                </th>
-            ''')
-        html_parts.append("</tr>")
-        
-        # 数据行
-        html_parts.append("<tr style='background: white;'>")
-        escaped_start_marker = html.escape("__HIGHLIGHT_START__")
-        escaped_end_marker = html.escape("__HIGHLIGHT_END__")
-        
-        for value in excel_values:
-            value_text = str(value) if value is not None else ''
-            escaped_value = html.escape(value_text)
-            
-            # 处理高亮
-            if escaped_start_marker in escaped_value:
-                highlighted_value = escaped_value.replace(
-                    escaped_start_marker,
-                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
-                ).replace(escaped_end_marker, '</mark>')
-            else:
-                highlighted_value = escaped_value
-                
-            html_parts.append(f'''
-                <td style="padding: {UI_SPACING['normal']}; border: none;
-                          font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
-                          border-bottom: 1px solid #f0f0f0;">
-                    {highlighted_value}
-                </td>
-            ''')
-        html_parts.append("</tr>")
-        html_parts.append("</table>")
-        html_parts.append('</div>')
-        
-        return "".join(html_parts)
-    
-    def _generate_paragraph_content_html(self, result, theme_colors):
-        """生成段落内容的HTML - 现代化样式"""
-        original_paragraph = result.get('paragraph')
-        marked_paragraph = result.get('marked_paragraph')
-        match_start = result.get('match_start')
-        match_end = result.get('match_end')
-        
-        if original_paragraph is None:
-            return ''
-        
-        # 确定要显示的段落文本
-        paragraph_text_for_highlight = marked_paragraph if marked_paragraph is not None else original_paragraph
-        if paragraph_text_for_highlight is None:
-            paragraph_text_for_highlight = str(original_paragraph) if original_paragraph is not None else ''
-        else:
-            paragraph_text_for_highlight = str(paragraph_text_for_highlight)
-        
-        import html
-        escaped_paragraph = html.escape(paragraph_text_for_highlight)
-        
-        # 处理高亮
-        highlighted_paragraph_display = escaped_paragraph
-        
-        # 短语搜索的精确高亮
-        if match_start is not None and match_end is not None:
-            if 0 <= match_start < match_end <= len(escaped_paragraph):
-                pre = escaped_paragraph[:match_start]
-                mat = escaped_paragraph[match_start:match_end]
-                post = escaped_paragraph[match_end:]
-                highlighted_paragraph_display = f'{pre}<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">{mat}</mark>{post}'
-        # 模糊搜索的标记高亮
-        elif marked_paragraph:
-            escaped_start_marker = html.escape("__HIGHLIGHT_START__")
-            escaped_end_marker = html.escape("__HIGHLIGHT_END__")
-            if escaped_start_marker in escaped_paragraph:
-                highlighted_paragraph_display = escaped_paragraph.replace(
-                    escaped_start_marker,
-                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">'
-                ).replace(escaped_end_marker, '</mark>')
-        
-        return f'''
-        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
-                    background: linear-gradient(145deg, #ffffff, #fafbfc);
-                    border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
-                    border-left: 4px solid {theme_colors["success"]};
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="margin-bottom: {UI_SPACING['small']};">
-                <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
-                    📄 段落内容
-                </span>
-            </div>
-            <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
-                        word-wrap: break-word; overflow-wrap: break-word;">
-                {highlighted_paragraph_display}
-            </div>
-        </div>
-        '''
-
-    def set_results(self, results):
-        """设置搜索结果并处理成显示项目 - 支持完整的查看方式"""
-        self.results = results
-        
-        # 从父窗口获取查看方式设置并应用完整的处理流程
-        if self.parent_window:
-            # 使用默认相关性排序（搜索引擎返回顺序）
-            sorted_results = results
-            
-            # 检查是否需要分组显示
-            if (hasattr(self.parent_window, 'grouping_enabled') and 
-                self.parent_window.grouping_enabled and 
-                hasattr(self.parent_window, 'current_grouping_mode') and 
-                self.parent_window.current_grouping_mode != 'none'):
-                
-                # 应用分组，然后转换为虚拟滚动可以处理的格式
-                grouped_results = self.parent_window._group_results(sorted_results, self.parent_window.current_grouping_mode)
-                self._process_grouped_results_for_display(grouped_results)
-            else:
-                # 不分组，直接处理
-                self._process_results_for_display(sorted_results)
-        else:
-            self._process_results_for_display(results)
-        
-    def set_theme(self, theme_name):
-        """设置主题"""
-        self.current_theme = theme_name
-        # 通知视图更新显示
-        if self.display_items:
-            self.dataChanged.emit(self.index(0), self.index(len(self.display_items) - 1))
-
-
-class HtmlItemDelegate(QStyledItemDelegate):
-    """HTML内容委托，用于在列表视图中渲染HTML"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        
-    def paint(self, painter, option, index):
-        """绘制HTML内容"""
-        try:
-            html_content = index.data(Qt.DisplayRole)
-            if not html_content:
-                super().paint(painter, option, index)
-                return
-                
-            # 创建QTextDocument来渲染HTML
-            document = QTextDocument()
-            document.setHtml(html_content)
-            document.setTextWidth(option.rect.width())
-            
-            painter.save()
-            painter.translate(option.rect.topLeft())
-            
-            # 如果项被选中，绘制选中背景
-            if option.state & QStyle.State_Selected:
-                painter.fillRect(QRect(0, 0, option.rect.width(), int(document.size().height())), 
-                               option.palette.highlight())
-            
-            # 绘制HTML内容
-            document.drawContents(painter)
-            painter.restore()
-            
-        except Exception as e:
-            print(f"Error painting HTML item: {e}")
-            super().paint(painter, option, index)
-    
-    def sizeHint(self, option, index):
-        """返回项的大小提示"""
-        try:
-            html_content = index.data(Qt.DisplayRole)
-            if not html_content:
-                return super().sizeHint(option, index)
-                
-            document = QTextDocument()
-            document.setHtml(html_content)
-            document.setTextWidth(option.rect.width() if option.rect.width() > 0 else 400)
-            
-            return QSize(int(document.idealWidth()), int(document.size().height()))
-            
-        except Exception as e:
-            print(f"Error calculating size hint: {e}")
-            return QSize(400, 100)  # 默认大小
-
-
-class VirtualResultsView(QListView):
-    """虚拟滚动结果视图"""
-    
-    # 信号定义
-    linkClicked = Signal(QUrl)
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        
-        # 设置基本属性
-        self.setAlternatingRowColors(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        
-        # 启用鼠标跟踪以支持链接悬停
-        self.setMouseTracking(True)
-        self.viewport().setMouseTracking(True)
-
-        # 启用右键菜单
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._show_context_menu)
-        
-        # 设置HTML委托
-        self.html_delegate = HtmlItemDelegate(self)
-        self.setItemDelegate(self.html_delegate)
-        
-        # 连接点击信号
-        self.clicked.connect(self._handle_item_clicked)
-        
-    def _handle_item_clicked(self, index):
-        """处理项点击，目前由mousePressEvent处理链接点击"""
-        pass  # 链接点击由mousePressEvent处理
-    
-    def mousePressEvent(self, event):
-        """处理鼠标点击事件，特别是链接点击"""
-        if event.button() == Qt.LeftButton:
-            index = self.indexAt(event.position().toPoint())
-            if index.isValid():
-                # 使用QTextDocument来精确检测链接点击
-                html_content = index.data(Qt.DisplayRole)
-                if html_content:
-                    clicked_link = self._detect_link_at_position(event.position().toPoint(), index, html_content)
-                    if clicked_link:
-                        self.linkClicked.emit(QUrl(clicked_link))
-                        return
-
-        # 调用父类处理
-        super().mousePressEvent(event)
-
-    def _detect_link_at_position(self, global_pos, index, html_content):
-        """使用QTextDocument精确检测点击位置的链接"""
-        try:
-            # QTextDocument, QTextCursor 已在文件顶部导入
-            from PySide6.QtCore import QPointF
-
-            # 创建临时的QTextDocument来处理HTML
-            doc = QTextDocument()
-            doc.setHtml(html_content)
-
-            # 获取项目的矩形区域
-            item_rect = self.visualRect(index)
-            if not item_rect.isValid():
-                print(f"无效的项目矩形，使用备选方案")
-                return self._find_clicked_link_fallback(html_content)
-
-            # 计算相对于项目的点击位置
-            relative_pos = global_pos - item_rect.topLeft()
-            print(f"点击位置: 全局{global_pos.x()},{global_pos.y()}, 相对{relative_pos.x()},{relative_pos.y()}")
-
-            # 尝试多个hitTest策略
-            hit_strategies = [
-                (Qt.HitTestAccuracy.ExactHit, "精确命中"),
-                (Qt.HitTestAccuracy.FuzzyHit, "模糊命中")
-            ]
-
-            for strategy, strategy_name in hit_strategies:
-                hit_point = QPointF(relative_pos.x(), relative_pos.y())
-                cursor_pos = doc.documentLayout().hitTest(hit_point, strategy)
-                print(f"{strategy_name}测试: 光标位置 {cursor_pos}")
-
-                if cursor_pos >= 0:
-                    # 创建光标并检查格式
-                    cursor = QTextCursor(doc)
-                    cursor.setPosition(cursor_pos)
-
-                    # 获取字符格式
-                    char_format = cursor.charFormat()
-
-                    # 检查是否是链接
-                    if char_format.isAnchor():
-                        anchor_href = char_format.anchorHref()
-                        print(f"检测到链接点击({strategy_name}): {anchor_href}")
-                        return anchor_href
-                    else:
-                        # 尝试扩展选择范围，查找附近的链接
-                        for offset in [-1, 1, -2, 2]:
-                            try_pos = cursor_pos + offset
-                            if try_pos >= 0:
-                                cursor.setPosition(try_pos)
-                                char_format = cursor.charFormat()
-                                if char_format.isAnchor():
-                                    anchor_href = char_format.anchorHref()
-                                    print(f"检测到附近链接({strategy_name}, 偏移{offset}): {anchor_href}")
-                                    return anchor_href
-
-            print(f"精确检测失败，使用备选方案")
-            # 如果精确检测失败，使用备选方案
-            return self._find_clicked_link_fallback(html_content)
-
-        except Exception as e:
-            print(f"链接检测出错，使用备选方案: {e}")
-            return self._find_clicked_link_fallback(html_content)
-
-    def _find_clicked_link_fallback(self, html_content):
-        """备选的链接检测方案"""
-                    import re
-        
-        # 提取所有链接
-        link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
-        links = re.findall(link_pattern, html_content)
-        if not links:
-            return None
-
-        # 使用简单的轮换策略或者随机选择，避免总是选择同一个
-        import time
-        openfile_links = [url for url, text in links if url.startswith('openfile:')]
-        openfolder_links = [url for url, text in links if url.startswith('openfolder:')]
-        toggle_links = [url for url, text in links if url.startswith('toggle::')]
-
-        # 如果同时有文件和目录链接，使用时间戳来轮换选择
-        if openfile_links and openfolder_links:
-            # 使用毫秒数的奇偶性来决定选择哪个
-            ms = int(time.time() * 1000) % 1000
-            if ms % 2 == 0:
-                print(f"备选检测：选择打开文件链接")
-                return openfile_links[0]
-            else:
-                print(f"备选检测：选择打开目录链接")
-                return openfolder_links[0]
-
-        # 如果只有一种类型，直接返回
-        if openfile_links:
-            print(f"备选检测：只有打开文件链接")
-            return openfile_links[0]
-        if openfolder_links:
-            print(f"备选检测：只有打开目录链接")
-            return openfolder_links[0]
-        if toggle_links:
-            print(f"备选检测：只有折叠链接")
-            return toggle_links[0]
-
-        return links[0][0] if links else None
-
-
-
-    def mouseDoubleClickEvent(self, event):
-        """处理双击事件，显示文本选择对话框"""
-        if event.button() == Qt.LeftButton:
-            index = self.indexAt(event.position().toPoint())
-            if index.isValid():
-                # 获取HTML内容
-                html_content = index.data(Qt.DisplayRole)
-                if html_content:
-                    self._show_text_selection_dialog(html_content)
-                    return
-        # 调用父类处理
-        super().mouseDoubleClickEvent(event)
-
-    def _show_text_selection_dialog(self, html_content):
-        """显示文本选择对话框"""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QMessageBox
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("文本选择")
-        dialog.resize(800, 500)
-
-        layout = QVBoxLayout(dialog)
-
-        # 创建文本编辑器显示内容
-        text_edit = QTextEdit()
-        text_edit.setHtml(html_content)
-        text_edit.setReadOnly(False)  # 允许选择
-        layout.addWidget(text_edit)
-
-        # 按钮布局
-        button_layout = QHBoxLayout()
-
-        # 复制全部按钮
-        copy_all_btn = QPushButton("复制全部内容")
-        copy_all_btn.clicked.connect(lambda: self._copy_all_text(text_edit, dialog))
-        button_layout.addWidget(copy_all_btn)
-
-        # 复制选中按钮
-        copy_selected_btn = QPushButton("复制选中文本")
-        copy_selected_btn.clicked.connect(lambda: self._copy_selected_text(text_edit, dialog))
-        button_layout.addWidget(copy_selected_btn)
-
-        # 关闭按钮
-        close_btn = QPushButton("关闭")
-        close_btn.clicked.connect(dialog.close)
-        button_layout.addWidget(close_btn)
-
-        layout.addLayout(button_layout)
-
-        dialog.exec()
-
-    def _copy_all_text(self, text_edit, dialog):
-        """复制全部文本内容"""
-        plain_text = text_edit.toPlainText()
-        clipboard = QApplication.clipboard()
-        clipboard.setText(plain_text)
-        QMessageBox.information(dialog, "复制成功", f"已复制 {len(plain_text)} 个字符到剪贴板")
-
-    def _copy_selected_text(self, text_edit, dialog):
-        """复制选中的文本"""
-        cursor = text_edit.textCursor()
-        selected_text = cursor.selectedText()
-
-        if selected_text:
-            clipboard = QApplication.clipboard()
-            clipboard.setText(selected_text)
-            QMessageBox.information(dialog, "复制成功", f"已复制 {len(selected_text)} 个字符到剪贴板")
-        else:
-            QMessageBox.warning(dialog, "未选择文本", "请先选择要复制的文本")
-
-    def _show_context_menu(self, position):
-        """显示虚拟滚动视图的右键菜单"""
-        index = self.indexAt(position)
-        if not index.isValid():
-            return
-
-        menu = QMenu(self)
-
-        # 获取HTML内容
-        html_content = index.data(Qt.DisplayRole)
-        if html_content:
-            # 复制内容选项
-            copy_action = menu.addAction("复制内容")
-            copy_action.triggered.connect(lambda: self._copy_item_content(html_content))
-
-            menu.addSeparator()
-
-            # 文本选择对话框选项
-            select_action = menu.addAction("文本选择...")
-            select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
-
-            # 显示菜单
-            menu.exec(self.mapToGlobal(position))
-
-    def _copy_item_content(self, html_content):
-        """复制项目的纯文本内容"""
-        from PySide6.QtGui import QTextDocument
-
-        # 将HTML转换为纯文本
-        doc = QTextDocument()
-        doc.setHtml(html_content)
-        plain_text = doc.toPlainText()
-
-        # 复制到剪贴板
-        clipboard = QApplication.clipboard()
-        clipboard.setText(plain_text)
-
-        # 显示成功消息（可选）
-        if hasattr(self, 'parent') and hasattr(self.parent(), 'statusBar'):
-            self.parent().statusBar().showMessage(f"已复制 {len(plain_text)} 个字符到剪贴板", 3000)
-
 # --- Worker Class for Background Tasks ---
 class Worker(QObject):
     # Signals to communicate with the main thread
@@ -4200,7 +2403,7 @@ class SettingsDialog(QDialog):
             grid_layout.addWidget(type_widget, row, 0)
 
             checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
-                row += 1
+            row += 1
         
         # 添加专业版文件类型
         for type_key, type_info in pro_types:
@@ -5746,7 +3949,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             if 'multimedia' in type_config:
                 self.file_type_checkboxes[checkbox] = type_config['multimedia']
             else:
-            self.file_type_checkboxes[checkbox] = type_key
+                self.file_type_checkboxes[checkbox] = type_key
             
             # 设置样式
             if is_pro_feature and not feature_available:
@@ -6270,7 +4473,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if isinstance(type_value, list):
                     checked_types.extend(type_value)
                 else:
-                checked_types.append(type_value)
+                    checked_types.append(type_value)
         
         print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
         
@@ -6826,7 +5029,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 print(f"DEBUG: 用户选择历史记录: '{selected_text}' (长度: {len(selected_text)})")
 
                 # 立即阻止所有当前操作
-            if hasattr(self, 'search_debounce_timer'):
+                if hasattr(self, 'search_debounce_timer'):
                     self.search_debounce_timer.stop()
 
                 # 取消当前搜索操作（如果有）
@@ -6965,10 +5168,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 传统模式：根据分组设置选择显示方式
             print(f"DEBUG: _apply_view_mode_and_display处理传统模式，结果数量: {len(sorted_results)}")
             
-        if getattr(self, 'grouping_enabled', False) and getattr(self, 'current_grouping_mode', 'none') != 'none':
+            if getattr(self, 'grouping_enabled', False) and getattr(self, 'current_grouping_mode', 'none') != 'none':
                 # 应用分组显示
                 print(f"📋 传统模式: 应用分组显示 ({self.current_grouping_mode})")
-            grouped_results = self._group_results(sorted_results, self.current_grouping_mode)
+                grouped_results = self._group_results(sorted_results, self.current_grouping_mode)
                 
                 # 根据搜索范围选择合适的分组显示方法
                 if hasattr(self, 'last_search_scope') and self.last_search_scope == 'filename':
@@ -6976,8 +5179,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self._display_grouped_results_traditional(grouped_results)
                 else:
                     # 全文搜索：使用完整分组显示方法
-            self._display_grouped_results(grouped_results)
-        else:
+                    self._display_grouped_results(grouped_results)
+            else:
                 # 不分组，调用标准显示
                 print("📋 传统模式: 调用标准显示（不分组）")
                 self.display_search_results_slot(sorted_results)
