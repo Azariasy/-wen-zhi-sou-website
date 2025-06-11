@@ -102,7 +102,23 @@ from pdf2image.exceptions import PDFPopplerTimeoutError, PDFPageCountError # Add
 
 # --- Constants ---
 # INDEX_DIR = "indexdir" # Commented out, will be passed as parameter
-ALLOWED_EXTENSIONS = ['.txt', '.docx', '.pdf', '.zip', '.rar', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg']
+ALLOWED_EXTENSIONS = [
+    # 文档类型
+    '.txt', '.docx', '.pdf', '.zip', '.rar', '.pptx', '.xlsx', '.md', '.html', '.htm', '.rtf', '.eml', '.msg',
+    # 视频文件 (仅文件名搜索)
+    '.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.webm', '.m4v',
+    # 音频文件 (仅文件名搜索)
+    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
+    # 图片文件 (仅文件名搜索)
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg'
+]
+
+# 仅进行文件名索引的文件类型（不提取内容）
+FILENAME_ONLY_EXTENSIONS = {
+    '.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.webm', '.m4v',  # 视频
+    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',         # 音频
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg' # 图片
+}
 
 # --- 新增函数用于记录跳过文件的信息 ---
 def record_skipped_file(index_dir_path: str, file_path: str, reason: str) -> None:
@@ -1670,6 +1686,14 @@ def search_index(query_str: str,
     if is_feature_available(Features.EMAIL_SUPPORT):
         allowed_file_types.add('.eml')
         allowed_file_types.add('.msg')
+    if is_feature_available(Features.MULTIMEDIA_SUPPORT):
+        # 添加多媒体文件类型支持
+        # 视频文件
+        allowed_file_types.update(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.rmvb'])
+        # 音频文件  
+        allowed_file_types.update(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus', '.aiff'])
+        # 图片文件
+        allowed_file_types.update(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg', '.ico', '.raw'])
     
     print(f"Current license allows file types: {allowed_file_types}")
     # -------------------------------------------
@@ -1790,16 +1814,54 @@ def search_index(query_str: str,
                     else:
                         print(f"Phrase query for '{target_field}' is empty after analysis.")
                 else:
-                    # 没有逻辑操作符，使用普通短语搜索
-                    # --- MODIFIED: 为精确搜索传递phrase_mode参数 ---
+                    # 重新设计的真正精确搜索：字符串包含匹配
+                    # --- REDESIGNED: 真正的精确搜索实现 ---
+                    
+                    # 精确搜索的核心思想：查找包含完全相同字符串的文档
+                    # 不依赖分词，直接进行字符串匹配
+                    
+                    print(f"精确搜索重新设计：查找包含 '{query_str}' 的文档")
+                    
+                    # 策略1: 尝试完整字符串的Term匹配（适用于索引中恰好有该词汇的情况）
+                    strategies = []
+                    
+                    # 首先尝试将整个查询作为单个Term
+                    strategies.append(Term(target_field, query_str))
+                    print(f"策略1: 完整Term匹配 - {query_str}")
+                    
+                    # 策略2: 前缀匹配（适用于查询是某个更长词汇前缀的情况）
+                    if len(query_str) >= 2:
+                        strategies.append(Prefix(target_field, query_str))
+                        print(f"策略2: 前缀匹配 - {query_str}*")
+                    
+                    # 策略3: 通配符匹配（在查询前后加通配符，寻找包含该字符串的词汇）
+                    if len(query_str) >= 2:
+                        wildcard_pattern = f"*{query_str}*"
+                        strategies.append(Wildcard(target_field, wildcard_pattern))
+                        print(f"策略3: 通配符包含匹配 - {wildcard_pattern}")
+                    
+                    # 策略4: 如果前面都失败，回退到分词短语匹配
                     terms = [token.text for token in analyzer(query_str, phrase_mode=True)]
-                    if terms:
-                        text_query = Phrase(target_field, terms)
-                        print(f"Constructed Phrase query on '{target_field}': {text_query}")
-                        if text_query:
-                            parsed_query_obj = text_query # Store phrase query object
+                    if terms and len(terms) > 1:
+                        strategies.append(Phrase(target_field, terms))
+                        print(f"策略4: 分词短语匹配 - {terms}")
+                    
+                    # 使用OR查询组合所有策略
+                    if len(strategies) > 1:
+                        text_query = Or(strategies)
+                        print(f"构造组合精确搜索查询: {len(strategies)} 种策略")
+                    elif len(strategies) == 1:
+                        text_query = strategies[0]
+                        print(f"使用单一策略精确搜索")
                     else:
-                        print(f"Phrase query for '{target_field}' is empty after analysis.")
+                        print("无法构造精确搜索查询")
+                        text_query = None
+                    
+                    if text_query:
+                        parsed_query_obj = text_query
+                        print(f"最终精确搜索查询: {text_query}")
+                    else:
+                        print(f"精确搜索查询构造失败")
             elif search_mode == 'fuzzy':
                 # --- 使用统一函数处理全文搜索的通配符 --- 
                 if '*' in query_str or '?' in query_str:
@@ -2447,7 +2509,16 @@ def _extract_worker(worker_args: dict) -> dict:
                     text_content = None
                     structure = []
             else: # Corrected structure/indentation
-                error_message = f"Unsupported file extension: {file_ext}"
+                # 检查是否是多媒体文件，如果是则仅索引文件名
+                if file_ext in FILENAME_ONLY_EXTENSIONS:
+                    # 多媒体文件：仅使用文件名作为内容
+                    text_content = filename_for_index
+                    structure = [{'type': 'filename', 'text': filename_for_index}]
+                    print(f"多媒体文件仅索引文件名: {display_name}")
+                else:
+                    error_message = f"Unsupported file extension: {file_ext}"
+                    text_content = ""
+                    structure = []
         
         elif file_type == 'archive':
             # --- ADDED: 在处理压缩包前检查取消状态 ---
@@ -2630,9 +2701,16 @@ def _extract_worker(worker_args: dict) -> dict:
                             elif member_ext == '.msg':
                                 text_content, structure = extract_text_from_msg(temp_file_path, cancel_callback)
                             else: # Corrected indentation
-                                error_message = f"Unsupported file extension in archive: {member_ext}"
-                                text_content = ""
-                                structure = []
+                                # 检查是否是多媒体文件，如果是则仅索引文件名
+                                if member_ext in FILENAME_ONLY_EXTENSIONS:
+                                    # 多媒体文件：仅使用文件名作为内容
+                                    text_content = Path(member_name).name
+                                    structure = [{'type': 'filename', 'text': Path(member_name).name}]
+                                    print(f"压缩包内多媒体文件仅索引文件名: {member_name}")
+                                else:
+                                    error_message = f"Unsupported file extension in archive: {member_ext}"
+                                    text_content = ""
+                                    structure = []
                         elif not error_message:
                             error_message = "Failed to extract member from archive"
                             text_content = "" # Ensure defined
@@ -2887,6 +2965,9 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
     found_files = []  # 需要完整索引的文件
     filename_only_files = []  # 仅索引文件名的文件
     skipped_files = []
+    
+    # 用于去重的集合，防止重复添加同一文件
+    processed_paths = set()  # 存储已处理的规范化路径
 
     # 转换为Path对象
     path_objects = []
@@ -2939,6 +3020,13 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                 if not item.is_file():
                     continue
 
+                # 规范化文件路径用于去重检查
+                normalized_path = normalize_path_for_index(str(item))
+                if normalized_path in processed_paths:
+                    # 跳过重复文件
+                    print(f"跳过重复文件: {item.name} (路径: {normalized_path})")
+                    continue
+                
                 # 检查文件扩展名的处理策略
                 file_ext = item.suffix.lower()
                 
@@ -2982,8 +3070,10 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                 # 根据文件类别添加到相应列表
                 if file_category == "full_index":
                     found_files.append(item)
+                    processed_paths.add(normalized_path)  # 记录已处理的路径
                 elif file_category == "filename_only":
                     filename_only_files.append(item)
+                    processed_paths.add(normalized_path)  # 记录已处理的路径
 
         except InterruptedError:
             # 重新抛出取消异常
@@ -3214,10 +3304,16 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             if cancel_callback and cancel_callback():
                 raise InterruptedError("操作被用户取消")
 
-            # 准备工作进程参数
+            # 准备工作进程参数 - 只处理需要更新的文件
+            # 分离需要处理的完整索引文件和仅文件名索引文件
+            files_to_process_full = [f for f in files_to_process if f in all_files]
+            files_to_process_filename_only = [f for f in files_to_process if f in filename_only_files]
+            
+            print(f"增量处理: 需要全文索引 {len(files_to_process_full)} 个文件, 需要文件名索引 {len(files_to_process_filename_only)} 个文件")
+            
             worker_args_list = prepare_worker_arguments_batch(
-                all_files, enable_ocr, extraction_timeout, 
-                content_limit_kb, index_dir_path, filename_only_files, cancel_callback
+                files_to_process_full, enable_ocr, extraction_timeout, 
+                content_limit_kb, index_dir_path, files_to_process_filename_only, cancel_callback
             )
 
             # 用于收集进度更新的列表
@@ -3237,6 +3333,9 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             total_files = len(worker_args_list)
             
             # 逐个处理文件并实时发送进度
+            processed_count = 0
+            real_processing_total = len(files_to_process_full) + len(files_to_process_filename_only)
+            
             for i, args in enumerate(worker_args_list):
                 # --- MODIFIED: 在每个文件处理前检查是否需要取消 ---
                 if cancel_callback and cancel_callback():
@@ -3251,6 +3350,24 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                         raise InterruptedError("操作被用户取消")
                     # ----------------------------------------
                     
+                    # 检查是否为真正需要处理的文件
+                    file_path = args.get('path_key', args.get('file_path', ''))
+                    is_filename_only = args.get('is_filename_only', False)
+                    
+                    # 只为真正需要处理的文件显示进度
+                    if Path(file_path) in files_to_process_full or Path(file_path) in files_to_process_filename_only:
+                        processed_count += 1
+                        file_name = args.get('display_name', args.get('path_key', 'unknown'))
+                        detail = f"正在处理: {file_name}"
+                        
+                        progress.update({
+                            'stage': 'extracting',
+                            'current': processed_count,
+                            'total': real_processing_total,
+                            'message': detail
+                        })
+                        yield progress
+                    
                     # 处理单个文件
                     result = _extract_worker(args)
                     extraction_results.append(result)
@@ -3260,19 +3377,6 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                         print(f"用户取消操作，已处理 {i+1} 个文件，停止处理剩余文件")
                         raise InterruptedError("操作被用户取消")
                     # ----------------------------------------
-                    
-                    # 实时发送进度更新
-                    current_file = i + 1
-                    file_name = args.get('display_name', args.get('path_key', 'unknown'))
-                    detail = f"正在处理: {file_name}"
-                    
-                    progress.update({
-                        'stage': 'extracting',
-                        'current': current_file,
-                        'total': total_files,
-                        'message': detail
-                    })
-                    yield progress
                     
                 except InterruptedError:
                     # --- ADDED: 专门处理取消异常 ---
@@ -3428,14 +3532,20 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             })
             yield progress
 
-            # 更新缓存（包含索引模式信息）
+            # 更新缓存（使用新的缓存条目格式，包含hash和mode）
+            all_processed_files = set()  # 跟踪已处理的文件，避免重复
+            
             for file_path in all_files:
                 path_str = normalize_path_for_index(str(file_path))
-                file_cache[path_str] = get_file_hash(file_path, "full")
+                if path_str not in all_processed_files:
+                    file_cache[path_str] = get_file_cache_entry(file_path, "full")
+                    all_processed_files.add(path_str)
                 
             for file_path in filename_only_files:
                 path_str = normalize_path_for_index(str(file_path))
-                file_cache[path_str] = get_file_hash(file_path, "filename_only")
+                if path_str not in all_processed_files:
+                    file_cache[path_str] = get_file_cache_entry(file_path, "filename_only")
+                    all_processed_files.add(path_str)
 
             save_file_index_cache(index_dir_path, file_cache)
 
@@ -3478,23 +3588,40 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
 def get_file_hash(file_path: Path, index_mode: str = "full") -> str:
     """
-    获取文件的简单哈希值（基于修改时间、大小和索引模式）
+    获取文件的简单哈希值（基于修改时间和大小，不包含索引模式）
 
     Args:
         file_path: 文件路径
-        index_mode: 索引模式（"full" 或 "filename_only"）
+        index_mode: 索引模式（"full" 或 "filename_only"）- 保留参数兼容性但不用于哈希计算
 
     Returns:
         str: 文件哈希值
     """
     try:
         stat = file_path.stat()
-        # 使用修改时间、文件大小和索引模式生成哈希
-        # 这样索引模式变更时会强制重新处理文件
-        hash_str = f"{stat.st_mtime}_{stat.st_size}_{index_mode}"
+        # 使用整数精度的修改时间和文件大小生成哈希
+        # 不包含索引模式，避免索引模式变更时误判为文件变更
+        mtime_int = int(stat.st_mtime)  # 使用整数精度避免浮点误差
+        hash_str = f"{mtime_int}_{stat.st_size}"
         return hash_str
     except Exception:
-        return f"unknown_{index_mode}"
+        return "unknown"
+
+def get_file_cache_entry(file_path: Path, index_mode: str) -> dict:
+    """
+    获取文件的缓存条目（包含哈希和索引模式）
+
+    Args:
+        file_path: 文件路径
+        index_mode: 索引模式（"full" 或 "filename_only"）
+
+    Returns:
+        dict: 包含hash和mode的缓存条目
+    """
+    return {
+        "hash": get_file_hash(file_path),
+        "mode": index_mode
+    }
 
 def load_file_index_cache(index_dir_path: str) -> dict:
     """
@@ -3552,26 +3679,70 @@ def detect_file_changes(files: list[Path], cache: dict, filename_only_files: lis
     # 检查完整索引文件
     for file_path in files:
         path_str = normalize_path_for_index(str(file_path))
-        current_hash = get_file_hash(file_path, "full")  # 完整索引模式
-        current_files[path_str] = current_hash
+        current_entry = get_file_cache_entry(file_path, "full")
+        current_files[path_str] = current_entry
 
         if path_str not in cache:
             new_files.append(file_path)
-        elif cache[path_str] != current_hash:
-            modified_files.append(file_path)
-            print(f"检测到文件变更或索引模式变更: {file_path.name} (可能从仅文件名切换到全文索引)")
+            print(f"新文件: {file_path.name} (全文索引)")
+        else:
+            cached_entry = cache[path_str]
+            # 兼容旧缓存格式（纯字符串）
+            if isinstance(cached_entry, str):
+                cached_hash = cached_entry
+                cached_mode = "unknown"
+            else:
+                cached_hash = cached_entry.get("hash", "")
+                cached_mode = cached_entry.get("mode", "unknown")
+            
+            current_hash = current_entry["hash"]
+            current_mode = current_entry["mode"]
+            
+            # 检查是否需要重新处理
+            file_changed = cached_hash != current_hash
+            mode_upgraded = cached_mode == "filename_only" and current_mode == "full"
+            
+            if file_changed or mode_upgraded:
+                modified_files.append(file_path)
+                if file_changed:
+                    print(f"检测到文件变更: {file_path.name} (文件时间或大小发生变化)")
+                if mode_upgraded:
+                    print(f"检测到索引模式升级: {file_path.name} (从仅文件名升级到全文索引)")
 
     # 检查仅文件名索引文件
     for file_path in filename_only_files:
         path_str = normalize_path_for_index(str(file_path))
-        current_hash = get_file_hash(file_path, "filename_only")  # 仅文件名索引模式
-        current_files[path_str] = current_hash
+        current_entry = get_file_cache_entry(file_path, "filename_only")
+        current_files[path_str] = current_entry
 
         if path_str not in cache:
             new_files.append(file_path)
-        elif cache[path_str] != current_hash:
-            modified_files.append(file_path)
-            print(f"检测到文件变更或索引模式变更: {file_path.name} (可能从全文切换到仅文件名索引)")
+            print(f"新文件: {file_path.name} (仅文件名索引)")
+        else:
+            cached_entry = cache[path_str]
+            # 兼容旧缓存格式（纯字符串）
+            if isinstance(cached_entry, str):
+                cached_hash = cached_entry
+                cached_mode = "unknown"
+            else:
+                cached_hash = cached_entry.get("hash", "")
+                cached_mode = cached_entry.get("mode", "unknown")
+            
+            current_hash = current_entry["hash"]
+            current_mode = current_entry["mode"]
+            
+            # 检查是否需要重新处理
+            file_changed = cached_hash != current_hash
+            # 注意：从full降级到filename_only不需要重新处理
+            
+            if file_changed:
+                modified_files.append(file_path)
+                print(f"检测到文件变更: {file_path.name} (文件时间或大小发生变化)")
+
+    # CRITICAL FIX REMOVED: 这段代码导致所有缓存文件都被重新处理
+    # 增量索引应该只基于文件本身的变更，而不是配置变更
+    # 如果用户新增文件类型，scan_documents_optimized已经会正确发现这些文件
+    # 并且它们不在缓存中，所以会被正确标记为new_files
 
     # 检查删除的文件
     deleted_files = [path for path in cache.keys() if path not in current_files]

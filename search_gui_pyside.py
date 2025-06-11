@@ -3,6 +3,7 @@
 
 
 
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -36,7 +37,7 @@ from PySide6.QtWidgets import (
     QListView, QStyledItemDelegate, QStackedWidget, QStyle, # 虚拟滚动所需组件
 )
 from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex, QRect, QAbstractListModel # Added QSize, QDir, QModelIndex, QRect, QAbstractListModel 
-from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
+from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QTextCursor, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
 import html  # Import html module for escaping
 
 # --- ADDED: Network and Version Comparison Imports ---
@@ -109,6 +110,45 @@ def get_resource_path(relative_path):
     print(f"资源路径解析: {relative_path} -> {resource_path}")
     return resource_path
 # ------------------------------
+
+# ====================
+# UI设计常量体系
+# ====================
+
+# 字体大小常量
+UI_FONT_SIZES = {
+    'normal': '12px',        # 标准文本
+    'small': '11px',         # 小号文本
+    'large': '14px',         # 大号文本
+    'icon': '14px',          # 图标
+    'extra_small': '10px',   # 额外小号文本
+    'file_header': '16px',   # 文件标题
+    'section_header': '13px', # 章节标题
+    'table_cell': '11px',    # 表格单元格
+    'file_info': '10px'      # 文件信息
+}
+
+# 间距和尺寸常量
+UI_SPACING = {
+    'small': '6px',
+    'normal': '8px',
+    'large': '12px',
+    'extra_large': '16px'
+}
+
+# 圆角常量
+UI_BORDER_RADIUS = {
+    'small': '4px',
+    'normal': '6px',
+    'large': '8px'
+}
+
+# 颜色透明度
+UI_ALPHA = {
+    'light': '0.05',
+    'medium': '0.1',
+    'strong': '0.2'
+}
 
 # --- Constants ---
 ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
@@ -326,10 +366,10 @@ class VirtualResultsModel(QAbstractListModel):
         """处理文件名搜索结果"""
         processed_paths = set()
         
-        # 添加标题项
+        # 添加美观的标题项
         self.display_items.append({
             'type': 'title',
-            'content': '文件名搜索结果:'
+            'content': f'📄 文件名搜索结果 ({len(results)} 个文件)'
         })
         
         for result in results:
@@ -422,7 +462,14 @@ class VirtualResultsModel(QAbstractListModel):
             item_type = item.get('type', 'unknown')
             
             if item_type == 'title':
-                return f'<h4 style="margin: 10px; color: #333;">{item["content"]}</h4>'
+                theme_colors = self._get_theme_colors()
+                return f'''
+                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
+                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
+                        {item["content"]}
+                    </h3>
+                </div>
+                '''
                 
             elif item_type == 'filename_result':
                 return self._generate_filename_result_html(item)
@@ -485,58 +532,158 @@ class VirtualResultsModel(QAbstractListModel):
             return f'<div style="margin: 10px; padding: 10px; background: #ffebee;">生成HTML时出错: {str(e)}</div>'
     
     def _get_theme_colors(self):
-        """获取当前主题的颜色配置"""
+        """获取当前主题的颜色配置 - 扩展版本包含更多语义颜色"""
         if self.current_theme == "现代蓝":
             return {
                 "highlight_bg": "#E3F2FD",
                 "highlight_text": "#1565C0", 
                 "link_color": "#2196F3",
-                "text_color": "#333333"
+                "text_color": "#333333",
+                "primary": "#007ACC",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
             }
         elif self.current_theme == "现代紫":
             return {
                 "highlight_bg": "#F3E5F5",
                 "highlight_text": "#7B1FA2",
                 "link_color": "#9C27B0", 
-                "text_color": "#333333"
+                "text_color": "#333333",
+                "primary": "#8B5CF6",
+                "success": "#10B981",
+                "info": "#8B5CF6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
             }
         elif self.current_theme == "现代红":
             return {
                 "highlight_bg": "#FFE0E0",
                 "highlight_text": "#C62828",
                 "link_color": "#E53935",
-                "text_color": "#333333"
+                "text_color": "#333333",
+                "primary": "#DC2626",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#DC2626"
             }
         elif self.current_theme == "现代橙":
             return {
                 "highlight_bg": "#FFF3E0",
                 "highlight_text": "#FF6F00",
                 "link_color": "#FF9800",
-                "text_color": "#333333"
+                "text_color": "#333333",
+                "primary": "#EA580C",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#EA580C",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "深色模式":
+            return {
+                "highlight_bg": "#374151",
+                "highlight_text": "#60A5FA",
+                "link_color": "#3B82F6",
+                "text_color": "#F9FAFB",
+                "primary": "#3B82F6",
+                "success": "#059669",
+                "info": "#3B82F6",
+                "warning": "#D97706",
+                "danger": "#DC2626"
+            }
+        elif self.current_theme == "护眼绿":
+            return {
+                "highlight_bg": "#DCFCE7",
+                "highlight_text": "#047857",
+                "link_color": "#059669",
+                "text_color": "#1E1E1E",
+                "primary": "#059669",
+                "success": "#059669",
+                "info": "#0891B2",
+                "warning": "#D97706",
+                "danger": "#DC2626"
             }
         else:
             return {
                 "highlight_bg": "#FFECB3",
                 "highlight_text": "#FF6F00",
                 "link_color": "#FF9800",
-                "text_color": "#333333"
+                "text_color": "#333333",
+                "primary": "#FF9800",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
             }
     
     def _generate_filename_result_html(self, item):
-        """生成文件名搜索结果的HTML"""
+        """生成文件名搜索结果的HTML - 美观现代化样式"""
         file_path = item['file_path']
+        result = item.get('result', {})
         theme_colors = self._get_theme_colors()
         
+        # 计算文件信息
+        import os
+        from pathlib import Path
+        try:
+            file_name = os.path.basename(file_path)
+            file_size = result.get('file_size', result.get('size', 0))
+            mtime = result.get('last_modified', result.get('mtime', 0))
+
+            # 格式化文件大小
+            if file_size > 0:
+                if file_size < 1024:
+                    size_str = f"{file_size} B"
+                elif file_size < 1024 * 1024:
+                    size_str = f"{file_size / 1024:.1f} KB"
+                else:
+                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            else:
+                size_str = '未知大小'
+
+            # 格式化修改时间
+            if mtime > 0:
+                import datetime
+                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+            else:
+                mtime_str = '未知时间'
+
+            # 获取文件类型图标
+            file_ext = Path(file_path).suffix.lower()
+            type_icon = "📄"
+            if file_ext in ['.docx', '.doc']:
+                type_icon = "📝"
+            elif file_ext in ['.xlsx', '.xls']:
+                type_icon = "📊"
+            elif file_ext in ['.pptx', '.ppt']:
+                type_icon = "📋"
+            elif file_ext in ['.pdf']:
+                type_icon = "📕"
+            elif file_ext in ['.txt', '.md']:
+                type_icon = "📄"
+            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+                type_icon = "🖼️"
+            elif file_ext in ['.mp4', '.avi', '.mov']:
+                type_icon = "🎬"
+            elif file_ext in ['.mp3', '.wav', '.flac']:
+                type_icon = "🎵"
+
+        except Exception as e:
+            file_name = file_path
+            size_str = '未知大小'
+            mtime_str = '未知时间'
+            type_icon = "📄"
+
         # 计算文件夹路径
         folder_path_str = ""
         is_archive_member = "::" in file_path
         try:
             if is_archive_member:
                 archive_file_path = file_path.split("::", 1)[0]
-                from pathlib import Path
                 folder_path_str = str(Path(archive_file_path).parent)
             else:
-                from pathlib import Path
                 path_obj = Path(file_path)
                 if path_obj.is_file():
                     folder_path_str = str(path_obj.parent)
@@ -544,18 +691,758 @@ class VirtualResultsModel(QAbstractListModel):
             pass
         
         import html
-        escaped_path = html.escape(file_path)
+        escaped_file_name = html.escape(file_name)
+        escaped_file_path = html.escape(file_path)
         
-        # 构建链接
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold;">[打开文件]</a>']
+        # 构建操作链接 - 使用现代化按钮样式
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
         if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold;">[打开目录]</a>')
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
         
         return f'''
-        <div style="margin: 5px 10px; padding: 8px; border-left: 3px solid {theme_colors["link_color"]};">
-            <span style="color: {theme_colors["text_color"]};">{escaped_path}</span>
-            <div style="margin-top: 5px;">
-                {" &nbsp; ".join(links)}
+        <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <div style="display: flex; align-items: center;">
+                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
+                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
+                </div>
+                <div style="white-space: nowrap;">
+                    {" ".join(links)}
+                </div>
+            </div>
+
+            <div style="margin-left: 26px;">
+                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {escaped_file_path}
+                </p>
+                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
+                    <span style="font-size: 11px; color: #6c757d;">📏 {size_str}</span>
+                    <span style="margin-left: 20px; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</span>
+                </div>
+            </div>
+        </div>
+        '''
+    
+
+
+
+
+
+# --- 导入统一路径处理工具 ---
+from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
+
+# --- 导入统一主题管理工具 ---
+from theme_manager import ThemeManager
+# ------------------------
+
+import sys
+import io # 新增导入
+
+# 确保 stdout 和 stderr 在非控制台模式下是可写的
+# 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
+if sys.stdout is None:
+    sys.stdout = io.StringIO()  # 重定向到一个内存字符串缓冲区
+if sys.stderr is None:
+    sys.stderr = io.StringIO()  # 同样重定向到内存缓冲区，避免与您后续的文件重定向冲突
+
+# Import necessary classes from PySide6
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QTextBrowser, QProgressBar,
+    QFileDialog, QMessageBox, QDateEdit, QCheckBox, QComboBox, QRadioButton, QDialog, QDialogButtonBox, QSpinBox,
+    QButtonGroup, QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar, # ADDED QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar
+    QStatusBar, # Ensure QProgressBar is imported if not already
+    QTableWidget, QHeaderView, QTableWidgetItem,
+    QTreeView, QSplitter, # 添加文件夹树视图所需的组件
+    QSizePolicy, QFrame,
+    QInputDialog,
+    QTabWidget, QScrollArea, QTabBar, QTabWidget,
+    QGridLayout, QMenu, # 添加QMenu用于右键菜单
+    QListView, QStyledItemDelegate, QStackedWidget, QStyle, # 虚拟滚动所需组件
+)
+from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex, QRect, QAbstractListModel # Added QSize, QDir, QModelIndex, QRect, QAbstractListModel 
+from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QTextCursor, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
+import html  # Import html module for escaping
+
+# --- ADDED: Network and Version Comparison Imports ---
+import requests
+from packaging import version
+# -----------------------------------------------------
+
+# Standard library imports
+from pathlib import Path  # Added
+import document_search  # Uncommented backend import
+import traceback  # Keep for worker error reporting
+import json  # Needed for structure map parsing
+import functools # ADDED for LRU cache
+import os  # Added for os.path.normpath
+import time # Added for sleep
+import datetime
+import logging # Import logging module
+import re
+import subprocess
+import shutil
+import math
+import codecs
+import webbrowser
+import requests.adapters  # 添加requests的适配器和重试策略导入
+import urllib3.util  # 替换过时的requests.packages导入
+
+# --- ADDED: 导入许可证管理器和对话框 ---
+from license_manager import get_license_manager, Features, LicenseStatus
+from license_dialog import LicenseDialog
+# --------------------------------------
+
+# --- ADDED: Try importing qdarkstyle --- 
+_qdarkstyle_available = False
+try:
+    import qdarkstyle
+    _qdarkstyle_available = True
+except ImportError:
+    pass # qdarkstyle not installed, will use basic dark theme
+# -------------------------------------
+
+# --- 添加资源文件路径解析器 ---
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，适用于开发环境和打包后的环境
+    
+    Args:
+        relative_path (str): 相对于应用程序根目录的资源文件路径
+        
+    Returns:
+        str: 资源文件的绝对路径
+    """
+    # 如果路径带有特殊前缀，则移除
+    if relative_path.startswith('qss-resource:'):
+        relative_path = relative_path[len('qss-resource:'):]
+    
+    # 如果路径被引号包围，则移除引号
+    if (relative_path.startswith('"') and relative_path.endswith('"')) or \
+       (relative_path.startswith("'") and relative_path.endswith("'")):
+        relative_path = relative_path[1:-1]
+    
+    # 判断是否在PyInstaller环境中运行
+    if getattr(sys, 'frozen', False):
+        # 在PyInstaller环境中
+        base_path = sys._MEIPASS
+    else:
+        # 在开发环境中
+        base_path = os.path.dirname(__file__)
+    
+    # 组合路径并返回
+    resource_path = os.path.join(base_path, relative_path)
+    print(f"资源路径解析: {relative_path} -> {resource_path}")
+    return resource_path
+# ------------------------------
+
+# ====================
+# UI设计常量体系
+# ====================
+
+# 字体大小常量
+UI_FONT_SIZES = {
+    'normal': '12px',        # 标准文本
+    'small': '11px',         # 小号文本
+    'large': '14px',         # 大号文本
+    'icon': '14px',          # 图标
+    'extra_small': '10px',   # 额外小号文本
+    'file_header': '16px',   # 文件标题
+    'section_header': '13px', # 章节标题
+    'table_cell': '11px',    # 表格单元格
+    'file_info': '10px'      # 文件信息
+}
+
+# 间距和尺寸常量
+UI_SPACING = {
+    'small': '6px',
+    'normal': '8px',
+    'large': '12px',
+    'extra_large': '16px'
+}
+
+# 圆角常量
+UI_BORDER_RADIUS = {
+    'small': '4px',
+    'normal': '6px',
+    'large': '8px'
+}
+
+# 颜色透明度
+UI_ALPHA = {
+    'light': '0.05',
+    'medium': '0.1',
+    'strong': '0.2'
+}
+
+# --- Constants ---
+ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
+APPLICATION_NAME = "DocumentSearchToolPySide"
+CONFIG_FILE = 'search_config.ini'  # Keep for reference, but QSettings handles location
+DEFAULT_DOC_DIR = ""
+
+# --- Settings Keys --- (Define keys for QSettings)
+SETTINGS_LAST_SEARCH_DIR = "history/lastSearchDirectory"
+SETTINGS_WINDOW_GEOMETRY = "window/geometry"
+SETTINGS_INDEX_DIRECTORY = "indexing/indexDirectory" # New key for index path
+SETTINGS_SOURCE_DIRECTORIES = "indexing/sourceDirectories"
+SETTINGS_ENABLE_OCR = "indexing/enableOcr"
+SETTINGS_EXTRACTION_TIMEOUT = "indexing/extractionTimeout"
+SETTINGS_TXT_CONTENT_LIMIT = "indexing/txtContentLimitKb"
+SETTINGS_CASE_SENSITIVE = "search/caseSensitive"
+
+# --- ADDED: Version Info ---
+CURRENT_VERSION = "1.0.0"  # <--- Update this for each new release!
+UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_version.json" # URL to your version info file
+# -------------------------
+
+# === 虚拟滚动相关类实现 ===
+class VirtualResultsModel(QAbstractListModel):
+    """虚拟滚动结果模型，完全兼容传统模式的文件分组和章节折叠功能"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.results = []
+        self.display_items = []  # 存储显示项目列表（文件组/章节组/内容项）
+        self.current_theme = "现代蓝"
+        self.parent_window = parent  # 存储父窗口引用以访问collapse_states
+        
+    def rowCount(self, parent=QModelIndex()):
+        """返回显示项目总数"""
+        return len(self.display_items)
+        
+    def data(self, index, role=Qt.DisplayRole):
+        """返回指定索引的数据"""
+        if not index.isValid() or index.row() >= len(self.display_items):
+            return None
+            
+        if role == Qt.DisplayRole:
+            item = self.display_items[index.row()]
+            return self._generate_item_html(item, index.row())
+        elif role == Qt.UserRole:
+            # 返回原始项目数据
+            return self.display_items[index.row()]
+        
+        return None
+    
+    def _process_results_for_display(self, results):
+        """将原始搜索结果处理成显示项目列表，完全兼容传统模式逻辑"""
+        self.beginResetModel()
+        self.display_items = []
+        
+        if not results:
+            # 添加一个友好的空状态显示项
+            self.display_items.append({
+                'type': 'empty_state',
+                'content': '🔍 未找到匹配的搜索结果'
+            })
+            self.endResetModel()
+            return
+            
+        try:
+            # 检查搜索范围
+            if hasattr(self.parent_window, 'last_search_scope') and self.parent_window.last_search_scope == 'filename':
+                # 文件名搜索 - 简化显示
+                self._process_filename_results(results)
+            else:
+                # 全文搜索 - 复杂分组显示
+                self._process_fulltext_results(results)
+                
+        except Exception as e:
+            print(f"Error processing results for virtual display: {e}")
+            # 添加错误显示项
+            self.display_items.append({
+                'type': 'error',
+                'content': f'处理搜索结果时出错: {e}'
+            })
+        
+        self.endResetModel()
+    
+    def _process_grouped_results_for_display(self, grouped_results):
+        """处理分组结果为虚拟滚动显示项目"""
+        self.beginResetModel()
+        self.display_items = []
+        
+        if not grouped_results:
+            # 添加一个友好的空状态显示项
+            self.display_items.append({
+                'type': 'empty_state',
+                'content': '🔍 未找到匹配的搜索结果'
+            })
+            self.endResetModel()
+            return
+        
+        # 初始化分组折叠状态（如果不存在）
+        if not hasattr(self.parent_window, 'group_collapse_states'):
+            self.parent_window.group_collapse_states = {}
+        
+        # 处理分组结果
+        for group_name, group_results in grouped_results.items():
+            if not group_results:
+                continue
+                
+            # 检查分组的折叠状态
+            group_key = f"vgroup::{group_name}"
+            is_collapsed = self.parent_window.group_collapse_states.get(group_key, False)
+            
+            # 添加分组标题（带折叠功能）
+            self.display_items.append({
+                'type': 'group_header',
+                'group_name': group_name,
+                'group_key': group_key,
+                'result_count': len(group_results),
+                'is_collapsed': is_collapsed
+            })
+            
+            # 只有在未折叠时才显示分组中的结果
+            if not is_collapsed:
+                if self._is_filename_search():
+                    # 文件名搜索：简化显示
+                    for result in group_results:
+                        self.display_items.append({
+                            'type': 'filename_result',
+                            'result': result
+                        })
+                else:
+                    # 全文搜索：完整显示
+                    self._process_fulltext_group_results(group_results)
+        
+        self.endResetModel()
+    
+    def _process_fulltext_group_results(self, results):
+        """处理全文搜索的分组结果"""
+        # 使用传统模式的逻辑进行文件和章节分组
+        file_groups = {}
+        
+        for result in results:
+            file_path = result.get('file_path', '')
+            
+            if file_path not in file_groups:
+                file_groups[file_path] = []
+            file_groups[file_path].append(result)
+        
+        # 为每个文件组生成显示项
+        for file_path, file_results in file_groups.items():
+            if not file_results:
+                continue
+                
+            file_key = f"f::{file_path}"
+            is_collapsed = self._get_collapse_state(file_key)
+            
+            # 添加文件组头部
+            self.display_items.append({
+                'type': 'file_group',
+                'file_path': file_path,
+                'file_key': file_key,
+                'file_number': len(file_groups),
+                'is_collapsed': is_collapsed
+            })
+            
+            if not is_collapsed:
+                # 文件未折叠，继续处理章节
+                chapter_groups = {}
+                
+                for result in file_results:
+                    # 确定章节键
+                    heading = result.get('heading')
+                    chapter_key = f"c::{file_path}::{heading if heading else '(无章节)'}"
+                    
+                    if chapter_key not in chapter_groups:
+                        chapter_groups[chapter_key] = []
+                    chapter_groups[chapter_key].append(result)
+                
+                # 为每个章节组生成显示项
+                for chapter_key, chapter_results in chapter_groups.items():
+                    if not chapter_results:
+                        continue
+                        
+                    is_chapter_collapsed = self._get_collapse_state(chapter_key)
+                    heading = chapter_results[0].get('heading', '(无章节)')
+                    
+                    # 添加章节组头部
+                    self.display_items.append({
+                        'type': 'chapter_group',
+                        'chapter_key': chapter_key,
+                        'heading': heading,
+                        'is_collapsed': is_chapter_collapsed,
+                        'result': chapter_results[0]  # 用于标题标记
+                    })
+                    
+                    if not is_chapter_collapsed:
+                        # 章节未折叠，添加内容
+                        for result in chapter_results:
+                            self.display_items.append({
+                                'type': 'content',
+                                'result': result
+                            })
+    
+    def _is_filename_search(self):
+        """检查是否为文件名搜索"""
+        return (hasattr(self.parent_window, 'last_search_scope') and 
+                self.parent_window.last_search_scope == 'filename')
+    
+    def _get_collapse_state(self, key):
+        """获取折叠状态"""
+        if self.parent_window and hasattr(self.parent_window, 'collapse_states'):
+            return self.parent_window.collapse_states.get(key, False)
+        return False
+    
+    def _process_filename_results(self, results):
+        """处理文件名搜索结果"""
+        processed_paths = set()
+        
+        # 添加美观的标题项
+        self.display_items.append({
+            'type': 'title',
+            'content': f'📄 文件名搜索结果 ({len(results)} 个文件)'
+        })
+        
+        for result in results:
+            file_path = result.get('file_path', '(未知文件)')
+            if file_path in processed_paths:
+                continue
+            processed_paths.add(file_path)
+            
+            self.display_items.append({
+                'type': 'filename_result',
+                'file_path': file_path,
+                'result': result
+            })
+    
+    def _process_fulltext_results(self, results):
+        """处理全文搜索结果 - 完全兼容传统模式的文件分组和章节折叠"""
+        last_file_path = None
+        last_displayed_heading = None
+        file_group_counter = 0
+        
+        for i, result in enumerate(results):
+            file_path = result.get('file_path', '(未知文件)')
+            original_heading = result.get('heading', '(无章节标题)')
+            
+            is_new_file = (file_path != last_file_path)
+            is_new_heading = (original_heading != last_displayed_heading)
+            
+            # 处理新文件
+            if is_new_file:
+                file_group_counter += 1
+                file_key = f"f::{file_path}"
+                
+                # 创建文件组项
+                file_item = {
+                    'type': 'file_group',
+                    'file_path': file_path,
+                    'file_key': file_key,
+                    'file_number': file_group_counter,
+                    'is_collapsed': self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False,
+                    'result': result
+                }
+                self.display_items.append(file_item)
+                
+                last_displayed_heading = None
+                last_file_path = file_path
+            
+            # 处理章节（如果文件未折叠）
+            file_key = f"f::{file_path}"
+            is_file_collapsed = self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False
+            
+            if not is_file_collapsed and (is_new_file or is_new_heading):
+                # 检查是否是Excel数据
+                if result.get('excel_sheet') is None:
+                    # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                    chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
+                    is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
+                    
+                    chapter_item = {
+                        'type': 'chapter_group',
+                        'file_path': file_path,
+                        'chapter_key': chapter_key,
+                        'heading': original_heading,
+                        'is_collapsed': is_chapter_collapsed,
+                        'result': result
+                    }
+                    self.display_items.append(chapter_item)
+                    last_displayed_heading = original_heading
+                else:
+                    last_displayed_heading = None
+            
+            # 处理内容（段落或Excel数据）
+            if not is_file_collapsed:
+                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
+                is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
+                
+                # 修复BUG：无论是否是Excel数据，只要章节被折叠就不显示内容
+                if not is_chapter_collapsed:
+                    content_item = {
+                        'type': 'content',
+                        'file_path': file_path,
+                        'result': result,
+                        'index': i
+                    }
+                    self.display_items.append(content_item)
+    
+    def _generate_item_html(self, item, index):
+        """生成显示项的HTML内容"""
+        try:
+            item_type = item.get('type', 'unknown')
+            
+            if item_type == 'title':
+                theme_colors = self._get_theme_colors()
+                return f'''
+                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
+                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
+                        {item["content"]}
+                    </h3>
+                </div>
+                '''
+                
+            elif item_type == 'filename_result':
+                return self._generate_filename_result_html(item)
+                
+            elif item_type == 'file_group':
+                return self._generate_file_group_html(item)
+                
+            elif item_type == 'chapter_group':
+                return self._generate_chapter_group_html(item)
+                
+            elif item_type == 'content':
+                return self._generate_content_html(item)
+                
+            elif item_type == 'error':
+                return f'<div style="margin: 10px; padding: 10px; background: #ffebee; border: 1px solid #f44336; border-radius: 4px; color: #c62828;">{item["content"]}</div>'
+                
+            elif item_type == 'group_header':
+                theme_colors = self._get_theme_colors()
+                group_name = item.get('group_name', '未知分组')
+                group_key = item.get('group_key', 'unknown')
+                result_count = item.get('result_count', 0)
+                is_collapsed = item.get('is_collapsed', False)
+                
+                import html
+                toggle_char = "▶" if is_collapsed else "▼"
+                toggle_href = f'toggle::{html.escape(group_key, quote=True)}'
+                escaped_group_name = html.escape(str(group_name))
+                
+                return f'''
+                <div style="margin: 15px 10px 10px 10px; padding: 12px 16px; background: linear-gradient(135deg, {theme_colors["link_color"]}22, {theme_colors["link_color"]}11); border-left: 4px solid {theme_colors["link_color"]}; border-radius: 6px;">
+                    <div style="font-size: 16px; font-weight: bold; color: {theme_colors["text_color"]}; margin-bottom: 4px;">
+                        <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px;">{toggle_char}</a>
+                        📂 {escaped_group_name}
+                    </div>
+                    <div style="font-size: 13px; color: #666; font-style: italic;">
+                        {result_count} 个结果
+                    </div>
+                </div>
+                '''
+                
+            elif item_type == 'empty_state':
+                theme_colors = self._get_theme_colors()
+                return f'''
+                <div style="margin: 50px 20px; padding: 40px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+                    <div style="font-size: 48px; margin-bottom: 20px; color: #6c757d;">{item["content"].split()[0]}</div>
+                    <div style="font-size: 18px; color: {theme_colors["text_color"]}; margin-bottom: 10px;">
+                        {" ".join(item["content"].split()[1:])}
+                    </div>
+                    <div style="font-size: 14px; color: #6c757d; margin-top: 20px;">
+                        请尝试调整搜索词或筛选条件
+                    </div>
+                </div>
+                '''
+                
+            else:
+                return f'<div style="margin: 10px; padding: 10px;">未知项目类型: {item_type}</div>'
+                
+        except Exception as e:
+            print(f"Error generating item HTML: {e}")
+            return f'<div style="margin: 10px; padding: 10px; background: #ffebee;">生成HTML时出错: {str(e)}</div>'
+    
+    def _get_theme_colors(self):
+        """获取当前主题的颜色配置 - 扩展版本包含更多语义颜色"""
+        if self.current_theme == "现代蓝":
+            return {
+                "highlight_bg": "#E3F2FD",
+                "highlight_text": "#1565C0", 
+                "link_color": "#2196F3",
+                "text_color": "#333333",
+                "primary": "#007ACC",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "现代紫":
+            return {
+                "highlight_bg": "#F3E5F5",
+                "highlight_text": "#7B1FA2",
+                "link_color": "#9C27B0", 
+                "text_color": "#333333",
+                "primary": "#8B5CF6",
+                "success": "#10B981",
+                "info": "#8B5CF6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "现代红":
+            return {
+                "highlight_bg": "#FFE0E0",
+                "highlight_text": "#C62828",
+                "link_color": "#E53935",
+                "text_color": "#333333",
+                "primary": "#DC2626",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#DC2626"
+            }
+        elif self.current_theme == "现代橙":
+            return {
+                "highlight_bg": "#FFF3E0",
+                "highlight_text": "#FF6F00",
+                "link_color": "#FF9800",
+                "text_color": "#333333",
+                "primary": "#EA580C",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#EA580C",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "深色模式":
+            return {
+                "highlight_bg": "#374151",
+                "highlight_text": "#60A5FA",
+                "link_color": "#3B82F6",
+                "text_color": "#F9FAFB",
+                "primary": "#3B82F6",
+                "success": "#059669",
+                "info": "#3B82F6",
+                "warning": "#D97706",
+                "danger": "#DC2626"
+            }
+        elif self.current_theme == "护眼绿":
+            return {
+                "highlight_bg": "#DCFCE7",
+                "highlight_text": "#047857",
+                "link_color": "#059669",
+                "text_color": "#1E1E1E",
+                "primary": "#059669",
+                "success": "#059669",
+                "info": "#0891B2",
+                "warning": "#D97706",
+                "danger": "#DC2626"
+            }
+        else:
+            return {
+                "highlight_bg": "#FFECB3",
+                "highlight_text": "#FF6F00",
+                "link_color": "#FF9800",
+                "text_color": "#333333",
+                "primary": "#FF9800",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+    
+    def _generate_filename_result_html(self, item):
+        """生成文件名搜索结果的HTML - 美观现代化样式"""
+        file_path = item['file_path']
+        result = item.get('result', {})
+        theme_colors = self._get_theme_colors()
+        
+        # 计算文件信息
+        import os
+        from pathlib import Path
+        try:
+            file_name = os.path.basename(file_path)
+            file_size = result.get('file_size', result.get('size', 0))
+            mtime = result.get('last_modified', result.get('mtime', 0))
+
+            # 格式化文件大小
+            if file_size > 0:
+                if file_size < 1024:
+                    size_str = f"{file_size} B"
+                elif file_size < 1024 * 1024:
+                    size_str = f"{file_size / 1024:.1f} KB"
+                else:
+                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            else:
+                size_str = '未知大小'
+
+            # 格式化修改时间
+            if mtime > 0:
+                import datetime
+                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+            else:
+                mtime_str = '未知时间'
+
+            # 获取文件类型图标
+            file_ext = Path(file_path).suffix.lower()
+            type_icon = "📄"
+            if file_ext in ['.docx', '.doc']:
+                type_icon = "📝"
+            elif file_ext in ['.xlsx', '.xls']:
+                type_icon = "📊"
+            elif file_ext in ['.pptx', '.ppt']:
+                type_icon = "📋"
+            elif file_ext in ['.pdf']:
+                type_icon = "📕"
+            elif file_ext in ['.txt', '.md']:
+                type_icon = "📄"
+            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+                type_icon = "🖼️"
+            elif file_ext in ['.mp4', '.avi', '.mov']:
+                type_icon = "🎬"
+            elif file_ext in ['.mp3', '.wav', '.flac']:
+                type_icon = "🎵"
+
+        except Exception as e:
+            file_name = file_path
+            size_str = '未知大小'
+            mtime_str = '未知时间'
+            type_icon = "📄"
+        
+        # 计算文件夹路径
+        folder_path_str = ""
+        is_archive_member = "::" in file_path
+        try:
+            if is_archive_member:
+                archive_file_path = file_path.split("::", 1)[0]
+                folder_path_str = str(Path(archive_file_path).parent)
+            else:
+                path_obj = Path(file_path)
+                if path_obj.is_file():
+                    folder_path_str = str(path_obj.parent)
+        except Exception:
+            pass
+        
+        import html
+        escaped_file_name = html.escape(file_name)
+        escaped_file_path = html.escape(file_path)
+        
+        # 构建操作链接 - 使用现代化按钮样式
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
+        if folder_path_str:
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+        
+        return f'''
+        <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <div style="display: flex; align-items: center;">
+                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
+                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
+                </div>
+                <div style="white-space: nowrap;">
+                    {" ".join(links)}
+                </div>
+            </div>
+
+            <div style="margin-left: 26px;">
+                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {escaped_file_path}
+                </p>
+                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
+                    <span style="font-size: 11px; color: #6c757d;">📏 {size_str}</span>
+                    <span style="margin-left: 20px; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</span>
+                </div>
             </div>
         </div>
         '''
@@ -590,20 +1477,60 @@ class VirtualResultsModel(QAbstractListModel):
         except Exception:
             pass
         
-        # 构建操作链接
-        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold;">[打开文件]</a>']
+        # 构建现代化操作按钮 - 与文件名搜索保持一致
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
         if folder_path_str:
-            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold;">[打开目录]</a>')
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+
+        # 提取文件名和路径，类似文件名搜索的处理方式
+        import os
+        file_name = os.path.basename(file_path)
+        file_directory = os.path.dirname(file_path)
+        escaped_file_name = html.escape(file_name)
+        escaped_directory = html.escape(file_directory)
+
+        # 获取文件类型图标
+        from pathlib import Path
+        file_ext = Path(file_path).suffix.lower()
+        type_icon = "📄"
+        if file_ext in ['.docx', '.doc']:
+            type_icon = "📝"
+        elif file_ext in ['.xlsx', '.xls']:
+            type_icon = "📊"
+        elif file_ext in ['.pptx', '.ppt']:
+            type_icon = "📋"
+        elif file_ext in ['.pdf']:
+            type_icon = "📕"
+        elif file_ext in ['.txt', '.md']:
+            type_icon = "📄"
+        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+            type_icon = "🖼️"
+        elif file_ext in ['.mp4', '.avi', '.mov']:
+            type_icon = "🎬"
+        elif file_ext in ['.mp3', '.wav', '.flac']:
+            type_icon = "🎵"
         
         return f'''
-        <div style="margin: 15px 5px 5px 5px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-            <h3 style="margin: 0 0 8px 0; color: {theme_colors["text_color"]};">
-                <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px;">{toggle_char}</a>
+        <div style="margin: 15px 5px 5px 5px; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="vertical-align: middle;">
+                                                <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: 14px; font-weight: bold; display: inline-block;">
+                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px; font-size: 14px;">{toggle_char}</a>
+                            <span style="font-size: 16px; margin-right: 8px;">{type_icon}</span>
                 {file_number}. {escaped_path}
             </h3>
-            <div style="margin-left: 25px;">
-                {" &nbsp; ".join(links)}
+                        <div style="margin-left: 38px;">
+                            <p style="margin: 0; color: #6c757d; font-size: 11px; font-family: monospace;">
+                                📁 {escaped_directory}
+                            </p>
             </div>
+                    </td>
+                    <td style="text-align: right; vertical-align: top; white-space: nowrap; padding-top: 8px;">
+                        {" ".join(links)}
+                    </td>
+                </tr>
+            </table>
         </div>
         '''
     
@@ -659,7 +1586,7 @@ class VirtualResultsModel(QAbstractListModel):
             return self._generate_paragraph_content_html(result, theme_colors)
     
     def _generate_excel_content_html(self, result, theme_colors):
-        """生成Excel内容的HTML"""
+        """生成Excel内容的HTML - 现代化样式"""
         excel_headers = result.get('excel_headers', [])
         excel_values = result.get('excel_values', [])
         excel_sheet = result.get('excel_sheet', '')
@@ -668,23 +1595,42 @@ class VirtualResultsModel(QAbstractListModel):
         import html
         
         html_parts = []
-        html_parts.append(f'<div style="margin: 5px 30px; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">')
-        html_parts.append(f'<p style="margin: 0 0 8px 0; font-weight: bold; color: {theme_colors["text_color"]};">')
-        html_parts.append(f'<b>表:</b> {html.escape(str(excel_sheet) if excel_sheet is not None else "")} - <b>行:</b> {excel_row_idx}')
-        html_parts.append('</p>')
-        
-        # 生成表格
-        html_parts.append('<table border="1" style="border-collapse: collapse; font-size: 9pt; width: 100%;">')
-        
+        html_parts.append(f'''
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #f8f9fa);
+                    border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+            <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
+                        background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
+                        border-left: 4px solid {theme_colors["primary"]};">
+                <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
+                    📊 表格: {html.escape(str(excel_sheet) if excel_sheet is not None else "未知表格")} | 行: {excel_row_idx}
+                </h4>
+            </div>
+        ''')
+
+        # 生成现代化表格
+        html_parts.append(f'''
+            <table style="width: 100%; border-collapse: collapse; background: white;
+                         border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
+                         box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ''')
+
         # 表头
-        html_parts.append("<tr style='background: #f5f5f5;'>")
+        html_parts.append(f"<tr style='background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);'>")
         for header in excel_headers:
             header_text = str(header) if header is not None else ''
-            html_parts.append(f"<th style='padding: 4px; border: 1px solid #ccc;'>{html.escape(header_text)}</th>")
+            html_parts.append(f'''
+                <th style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
+                          color: {theme_colors["text_color"]}; text-align: left;">
+                    {html.escape(header_text)}
+                </th>
+            ''')
         html_parts.append("</tr>")
         
         # 数据行
-        html_parts.append("<tr>")
+        html_parts.append("<tr style='background: white;'>")
         escaped_start_marker = html.escape("__HIGHLIGHT_START__")
         escaped_end_marker = html.escape("__HIGHLIGHT_END__")
         
@@ -696,12 +1642,18 @@ class VirtualResultsModel(QAbstractListModel):
             if escaped_start_marker in escaped_value:
                 highlighted_value = escaped_value.replace(
                     escaped_start_marker,
-                    f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
-                ).replace(escaped_end_marker, '</span>')
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
+                ).replace(escaped_end_marker, '</mark>')
             else:
                 highlighted_value = escaped_value
                 
-            html_parts.append(f"<td style='padding: 4px; border: 1px solid #ccc;'>{highlighted_value}</td>")
+            html_parts.append(f'''
+                <td style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
+                          border-bottom: 1px solid #f0f0f0;">
+                    {highlighted_value}
+                </td>
+            ''')
         html_parts.append("</tr>")
         html_parts.append("</table>")
         html_parts.append('</div>')
@@ -709,7 +1661,7 @@ class VirtualResultsModel(QAbstractListModel):
         return "".join(html_parts)
     
     def _generate_paragraph_content_html(self, result, theme_colors):
-        """生成段落内容的HTML"""
+        """生成段落内容的HTML - 现代化样式"""
         original_paragraph = result.get('paragraph')
         marked_paragraph = result.get('marked_paragraph')
         match_start = result.get('match_start')
@@ -737,7 +1689,7 @@ class VirtualResultsModel(QAbstractListModel):
                 pre = escaped_paragraph[:match_start]
                 mat = escaped_paragraph[match_start:match_end]
                 post = escaped_paragraph[match_end:]
-                highlighted_paragraph_display = f"{pre}<span style=\"background-color: {theme_colors['highlight_bg']}; color: {theme_colors['highlight_text']};\">{mat}</span>{post}"
+                highlighted_paragraph_display = f'{pre}<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">{mat}</mark>{post}'
         # 模糊搜索的标记高亮
         elif marked_paragraph:
             escaped_start_marker = html.escape("__HIGHLIGHT_START__")
@@ -745,14 +1697,24 @@ class VirtualResultsModel(QAbstractListModel):
             if escaped_start_marker in escaped_paragraph:
                 highlighted_paragraph_display = escaped_paragraph.replace(
                     escaped_start_marker,
-                    f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
-                ).replace(escaped_end_marker, '</span>')
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">'
+                ).replace(escaped_end_marker, '</mark>')
         
         return f'''
-        <div style="margin: 5px 40px; padding: 8px; background: #fafafa; border-left: 2px solid {theme_colors["link_color"]};">
-            <p style="margin: 0; color: {theme_colors["text_color"]};">
-                <b>段落:</b> {highlighted_paragraph_display}
-            </p>
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #fafbfc);
+                    border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
+                    border-left: 4px solid {theme_colors["success"]};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="margin-bottom: {UI_SPACING['small']};">
+                <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
+                    📄 段落内容
+                </span>
+            </div>
+            <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
+                        word-wrap: break-word; overflow-wrap: break-word;">
+                {highlighted_paragraph_display}
+            </div>
         </div>
         '''
 
@@ -858,7 +1820,7 @@ class VirtualResultsView(QListView):
         # 启用鼠标跟踪以支持链接悬停
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
-        
+
         # 启用右键菜单
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
@@ -879,24 +1841,123 @@ class VirtualResultsView(QListView):
         if event.button() == Qt.LeftButton:
             index = self.indexAt(event.position().toPoint())
             if index.isValid():
-                # 获取HTML内容
+                # 使用QTextDocument来精确检测链接点击
                 html_content = index.data(Qt.DisplayRole)
                 if html_content:
-                    # 简单的链接检测和处理
-                    import re
-                    link_pattern = r'href="([^"]*)"'
-                    links = re.findall(link_pattern, html_content)
-                    
-                    if links:
-                        # 如果有多个链接，我们需要更精确的检测
-                        # 目前简化处理，发射第一个找到的链接
-                        link_url = links[0]
-                        self.linkClicked.emit(QUrl(link_url))
+                    clicked_link = self._detect_link_at_position(event.position().toPoint(), index, html_content)
+                    if clicked_link:
+                        self.linkClicked.emit(QUrl(clicked_link))
                         return
-        
+
         # 调用父类处理
         super().mousePressEvent(event)
+
+    def _detect_link_at_position(self, global_pos, index, html_content):
+        """使用QTextDocument精确检测点击位置的链接"""
+        try:
+            # QTextDocument, QTextCursor 已在文件顶部导入
+            from PySide6.QtCore import QPointF
+
+            # 创建临时的QTextDocument来处理HTML
+            doc = QTextDocument()
+            doc.setHtml(html_content)
+
+            # 获取项目的矩形区域
+            item_rect = self.visualRect(index)
+            if not item_rect.isValid():
+                print(f"无效的项目矩形，使用备选方案")
+                return self._find_clicked_link_fallback(html_content)
+
+            # 计算相对于项目的点击位置
+            relative_pos = global_pos - item_rect.topLeft()
+            print(f"点击位置: 全局{global_pos.x()},{global_pos.y()}, 相对{relative_pos.x()},{relative_pos.y()}")
+
+            # 尝试多个hitTest策略
+            hit_strategies = [
+                (Qt.HitTestAccuracy.ExactHit, "精确命中"),
+                (Qt.HitTestAccuracy.FuzzyHit, "模糊命中")
+            ]
+
+            for strategy, strategy_name in hit_strategies:
+                hit_point = QPointF(relative_pos.x(), relative_pos.y())
+                cursor_pos = doc.documentLayout().hitTest(hit_point, strategy)
+                print(f"{strategy_name}测试: 光标位置 {cursor_pos}")
+
+                if cursor_pos >= 0:
+                    # 创建光标并检查格式
+                    cursor = QTextCursor(doc)
+                    cursor.setPosition(cursor_pos)
+
+                    # 获取字符格式
+                    char_format = cursor.charFormat()
+
+                    # 检查是否是链接
+                    if char_format.isAnchor():
+                        anchor_href = char_format.anchorHref()
+                        print(f"检测到链接点击({strategy_name}): {anchor_href}")
+                        return anchor_href
+                    else:
+                        # 尝试扩展选择范围，查找附近的链接
+                        for offset in [-1, 1, -2, 2]:
+                            try_pos = cursor_pos + offset
+                            if try_pos >= 0:
+                                cursor.setPosition(try_pos)
+                                char_format = cursor.charFormat()
+                                if char_format.isAnchor():
+                                    anchor_href = char_format.anchorHref()
+                                    print(f"检测到附近链接({strategy_name}, 偏移{offset}): {anchor_href}")
+                                    return anchor_href
+
+            print(f"精确检测失败，使用备选方案")
+            # 如果精确检测失败，使用备选方案
+            return self._find_clicked_link_fallback(html_content)
+
+        except Exception as e:
+            print(f"链接检测出错，使用备选方案: {e}")
+            return self._find_clicked_link_fallback(html_content)
+
+    def _find_clicked_link_fallback(self, html_content):
+        """备选的链接检测方案"""
+        import re
         
+        # 提取所有链接
+        link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
+        links = re.findall(link_pattern, html_content)
+        if not links:
+            return None
+
+        # 使用简单的轮换策略或者随机选择，避免总是选择同一个
+        import time
+        openfile_links = [url for url, text in links if url.startswith('openfile:')]
+        openfolder_links = [url for url, text in links if url.startswith('openfolder:')]
+        toggle_links = [url for url, text in links if url.startswith('toggle::')]
+
+        # 如果同时有文件和目录链接，使用时间戳来轮换选择
+        if openfile_links and openfolder_links:
+            # 使用毫秒数的奇偶性来决定选择哪个
+            ms = int(time.time() * 1000) % 1000
+            if ms % 2 == 0:
+                print(f"备选检测：选择打开文件链接")
+                return openfile_links[0]
+            else:
+                print(f"备选检测：选择打开目录链接")
+                return openfolder_links[0]
+
+        # 如果只有一种类型，直接返回
+        if openfile_links:
+            print(f"备选检测：只有打开文件链接")
+            return openfile_links[0]
+        if openfolder_links:
+            print(f"备选检测：只有打开目录链接")
+            return openfolder_links[0]
+        if toggle_links:
+            print(f"备选检测：只有折叠链接")
+            return toggle_links[0]
+
+        return links[0][0] if links else None
+
+
+
     def mouseDoubleClickEvent(self, event):
         """处理双击事件，显示文本选择对话框"""
         if event.button() == Qt.LeftButton:
@@ -907,104 +1968,1450 @@ class VirtualResultsView(QListView):
                 if html_content:
                     self._show_text_selection_dialog(html_content)
                     return
-        
         # 调用父类处理
         super().mouseDoubleClickEvent(event)
-        
+
     def _show_text_selection_dialog(self, html_content):
         """显示文本选择对话框"""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QMessageBox
-        
+
         dialog = QDialog(self)
         dialog.setWindowTitle("文本选择")
         dialog.resize(800, 500)
-        
+
         layout = QVBoxLayout(dialog)
-        
+
         # 创建文本编辑器显示内容
         text_edit = QTextEdit()
         text_edit.setHtml(html_content)
         text_edit.setReadOnly(False)  # 允许选择
         layout.addWidget(text_edit)
-        
+
         # 按钮布局
         button_layout = QHBoxLayout()
-        
+
         # 复制全部按钮
         copy_all_btn = QPushButton("复制全部内容")
         copy_all_btn.clicked.connect(lambda: self._copy_all_text(text_edit, dialog))
         button_layout.addWidget(copy_all_btn)
-        
+
         # 复制选中按钮
         copy_selected_btn = QPushButton("复制选中文本")
         copy_selected_btn.clicked.connect(lambda: self._copy_selected_text(text_edit, dialog))
         button_layout.addWidget(copy_selected_btn)
-        
+
         # 关闭按钮
         close_btn = QPushButton("关闭")
         close_btn.clicked.connect(dialog.close)
         button_layout.addWidget(close_btn)
-        
+
         layout.addLayout(button_layout)
-        
+
         dialog.exec()
-    
+
     def _copy_all_text(self, text_edit, dialog):
         """复制全部文本内容"""
         plain_text = text_edit.toPlainText()
         clipboard = QApplication.clipboard()
         clipboard.setText(plain_text)
         QMessageBox.information(dialog, "复制成功", f"已复制 {len(plain_text)} 个字符到剪贴板")
-        
+
     def _copy_selected_text(self, text_edit, dialog):
         """复制选中的文本"""
         cursor = text_edit.textCursor()
         selected_text = cursor.selectedText()
-        
+
         if selected_text:
             clipboard = QApplication.clipboard()
             clipboard.setText(selected_text)
             QMessageBox.information(dialog, "复制成功", f"已复制 {len(selected_text)} 个字符到剪贴板")
         else:
             QMessageBox.warning(dialog, "未选择文本", "请先选择要复制的文本")
-            
+
     def _show_context_menu(self, position):
         """显示虚拟滚动视图的右键菜单"""
         index = self.indexAt(position)
         if not index.isValid():
             return
-            
+
         menu = QMenu(self)
-        
+
         # 获取HTML内容
         html_content = index.data(Qt.DisplayRole)
         if html_content:
             # 复制内容选项
             copy_action = menu.addAction("复制内容")
             copy_action.triggered.connect(lambda: self._copy_item_content(html_content))
-            
+
             menu.addSeparator()
-            
+
             # 文本选择对话框选项
             select_action = menu.addAction("文本选择...")
             select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
-            
+
             # 显示菜单
             menu.exec(self.mapToGlobal(position))
-            
+
     def _copy_item_content(self, html_content):
         """复制项目的纯文本内容"""
         from PySide6.QtGui import QTextDocument
-        
+
         # 将HTML转换为纯文本
         doc = QTextDocument()
         doc.setHtml(html_content)
         plain_text = doc.toPlainText()
-        
+
         # 复制到剪贴板
         clipboard = QApplication.clipboard()
         clipboard.setText(plain_text)
+
+        # 显示成功消息（可选）
+        if hasattr(self, 'parent') and hasattr(self.parent(), 'statusBar'):
+            self.parent().statusBar().showMessage(f"已复制 {len(plain_text)} 个字符到剪贴板", 3000)
+
+
+
+
+
+
+
+# --- 导入统一路径处理工具 ---
+from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
+
+# --- 导入统一主题管理工具 ---
+from theme_manager import ThemeManager
+# ------------------------
+
+import sys
+import io # 新增导入
+
+# 确保 stdout 和 stderr 在非控制台模式下是可写的
+# 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
+if sys.stdout is None:
+    sys.stdout = io.StringIO()  # 重定向到一个内存字符串缓冲区
+if sys.stderr is None:
+    sys.stderr = io.StringIO()  # 同样重定向到内存缓冲区，避免与您后续的文件重定向冲突
+
+# Import necessary classes from PySide6
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QTextBrowser, QProgressBar,
+    QFileDialog, QMessageBox, QDateEdit, QCheckBox, QComboBox, QRadioButton, QDialog, QDialogButtonBox, QSpinBox,
+    QButtonGroup, QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar, # ADDED QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar
+    QStatusBar, # Ensure QProgressBar is imported if not already
+    QTableWidget, QHeaderView, QTableWidgetItem,
+    QTreeView, QSplitter, # 添加文件夹树视图所需的组件
+    QSizePolicy, QFrame,
+    QInputDialog,
+    QTabWidget, QScrollArea, QTabBar, QTabWidget,
+    QGridLayout, QMenu, # 添加QMenu用于右键菜单
+    QListView, QStyledItemDelegate, QStackedWidget, QStyle, # 虚拟滚动所需组件
+)
+from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex, QRect, QAbstractListModel # Added QSize, QDir, QModelIndex, QRect, QAbstractListModel 
+from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QTextCursor, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
+import html  # Import html module for escaping
+
+# --- ADDED: Network and Version Comparison Imports ---
+import requests
+from packaging import version
+# -----------------------------------------------------
+
+# Standard library imports
+from pathlib import Path  # Added
+import document_search  # Uncommented backend import
+import traceback  # Keep for worker error reporting
+import json  # Needed for structure map parsing
+import functools # ADDED for LRU cache
+import os  # Added for os.path.normpath
+import time # Added for sleep
+import datetime
+import logging # Import logging module
+import re
+import subprocess
+import shutil
+import math
+import codecs
+import webbrowser
+import requests.adapters  # 添加requests的适配器和重试策略导入
+import urllib3.util  # 替换过时的requests.packages导入
+
+# --- ADDED: 导入许可证管理器和对话框 ---
+from license_manager import get_license_manager, Features, LicenseStatus
+from license_dialog import LicenseDialog
+# --------------------------------------
+
+# --- ADDED: Try importing qdarkstyle --- 
+_qdarkstyle_available = False
+try:
+    import qdarkstyle
+    _qdarkstyle_available = True
+except ImportError:
+    pass # qdarkstyle not installed, will use basic dark theme
+# -------------------------------------
+
+# --- 添加资源文件路径解析器 ---
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，适用于开发环境和打包后的环境
+    
+    Args:
+        relative_path (str): 相对于应用程序根目录的资源文件路径
         
+    Returns:
+        str: 资源文件的绝对路径
+    """
+    # 如果路径带有特殊前缀，则移除
+    if relative_path.startswith('qss-resource:'):
+        relative_path = relative_path[len('qss-resource:'):]
+    
+    # 如果路径被引号包围，则移除引号
+    if (relative_path.startswith('"') and relative_path.endswith('"')) or \
+       (relative_path.startswith("'") and relative_path.endswith("'")):
+        relative_path = relative_path[1:-1]
+    
+    # 判断是否在PyInstaller环境中运行
+    if getattr(sys, 'frozen', False):
+        # 在PyInstaller环境中
+        base_path = sys._MEIPASS
+    else:
+        # 在开发环境中
+        base_path = os.path.dirname(__file__)
+    
+    # 组合路径并返回
+    resource_path = os.path.join(base_path, relative_path)
+    print(f"资源路径解析: {relative_path} -> {resource_path}")
+    return resource_path
+# ------------------------------
+
+# ====================
+# UI设计常量体系
+# ====================
+
+# 字体大小常量
+UI_FONT_SIZES = {
+    'normal': '12px',        # 标准文本
+    'small': '11px',         # 小号文本
+    'large': '14px',         # 大号文本
+    'icon': '14px',          # 图标
+    'extra_small': '10px',   # 额外小号文本
+    'file_header': '16px',   # 文件标题
+    'section_header': '13px', # 章节标题
+    'table_cell': '11px',    # 表格单元格
+    'file_info': '10px'      # 文件信息
+}
+
+# 间距和尺寸常量
+UI_SPACING = {
+    'small': '6px',
+    'normal': '8px',
+    'large': '12px',
+    'extra_large': '16px'
+}
+
+# 圆角常量
+UI_BORDER_RADIUS = {
+    'small': '4px',
+    'normal': '6px',
+    'large': '8px'
+}
+
+# 颜色透明度
+UI_ALPHA = {
+    'light': '0.05',
+    'medium': '0.1',
+    'strong': '0.2'
+}
+
+# --- Constants ---
+ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
+APPLICATION_NAME = "DocumentSearchToolPySide"
+CONFIG_FILE = 'search_config.ini'  # Keep for reference, but QSettings handles location
+DEFAULT_DOC_DIR = ""
+
+# --- Settings Keys --- (Define keys for QSettings)
+SETTINGS_LAST_SEARCH_DIR = "history/lastSearchDirectory"
+SETTINGS_WINDOW_GEOMETRY = "window/geometry"
+SETTINGS_INDEX_DIRECTORY = "indexing/indexDirectory" # New key for index path
+SETTINGS_SOURCE_DIRECTORIES = "indexing/sourceDirectories"
+SETTINGS_ENABLE_OCR = "indexing/enableOcr"
+SETTINGS_EXTRACTION_TIMEOUT = "indexing/extractionTimeout"
+SETTINGS_TXT_CONTENT_LIMIT = "indexing/txtContentLimitKb"
+SETTINGS_CASE_SENSITIVE = "search/caseSensitive"
+
+# --- ADDED: Version Info ---
+CURRENT_VERSION = "1.0.0"  # <--- Update this for each new release!
+UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_version.json" # URL to your version info file
+# -------------------------
+
+# === 虚拟滚动相关类实现 ===
+class VirtualResultsModel(QAbstractListModel):
+    """虚拟滚动结果模型，完全兼容传统模式的文件分组和章节折叠功能"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.results = []
+        self.display_items = []  # 存储显示项目列表（文件组/章节组/内容项）
+        self.current_theme = "现代蓝"
+        self.parent_window = parent  # 存储父窗口引用以访问collapse_states
+        
+    def rowCount(self, parent=QModelIndex()):
+        """返回显示项目总数"""
+        return len(self.display_items)
+        
+    def data(self, index, role=Qt.DisplayRole):
+        """返回指定索引的数据"""
+        if not index.isValid() or index.row() >= len(self.display_items):
+            return None
+            
+        if role == Qt.DisplayRole:
+            item = self.display_items[index.row()]
+            return self._generate_item_html(item, index.row())
+        elif role == Qt.UserRole:
+            # 返回原始项目数据
+            return self.display_items[index.row()]
+        
+        return None
+    
+    def _process_results_for_display(self, results):
+        """将原始搜索结果处理成显示项目列表，完全兼容传统模式逻辑"""
+        self.beginResetModel()
+        self.display_items = []
+        
+        if not results:
+            # 添加一个友好的空状态显示项
+            self.display_items.append({
+                'type': 'empty_state',
+                'content': '🔍 未找到匹配的搜索结果'
+            })
+            self.endResetModel()
+            return
+            
+        try:
+            # 检查搜索范围
+            if hasattr(self.parent_window, 'last_search_scope') and self.parent_window.last_search_scope == 'filename':
+                # 文件名搜索 - 简化显示
+                self._process_filename_results(results)
+            else:
+                # 全文搜索 - 复杂分组显示
+                self._process_fulltext_results(results)
+                
+        except Exception as e:
+            print(f"Error processing results for virtual display: {e}")
+            # 添加错误显示项
+            self.display_items.append({
+                'type': 'error',
+                'content': f'处理搜索结果时出错: {e}'
+            })
+        
+        self.endResetModel()
+    
+    def _process_grouped_results_for_display(self, grouped_results):
+        """处理分组结果为虚拟滚动显示项目"""
+        self.beginResetModel()
+        self.display_items = []
+        
+        if not grouped_results:
+            # 添加一个友好的空状态显示项
+            self.display_items.append({
+                'type': 'empty_state',
+                'content': '🔍 未找到匹配的搜索结果'
+            })
+            self.endResetModel()
+            return
+        
+        # 初始化分组折叠状态（如果不存在）
+        if not hasattr(self.parent_window, 'group_collapse_states'):
+            self.parent_window.group_collapse_states = {}
+        
+        # 处理分组结果
+        for group_name, group_results in grouped_results.items():
+            if not group_results:
+                continue
+                
+            # 检查分组的折叠状态
+            group_key = f"vgroup::{group_name}"
+            is_collapsed = self.parent_window.group_collapse_states.get(group_key, False)
+            
+            # 添加分组标题（带折叠功能）
+            self.display_items.append({
+                'type': 'group_header',
+                'group_name': group_name,
+                'group_key': group_key,
+                'result_count': len(group_results),
+                'is_collapsed': is_collapsed
+            })
+            
+            # 只有在未折叠时才显示分组中的结果
+            if not is_collapsed:
+                if self._is_filename_search():
+                    # 文件名搜索：简化显示
+                    for result in group_results:
+                        self.display_items.append({
+                            'type': 'filename_result',
+                            'result': result
+                        })
+                else:
+                    # 全文搜索：完整显示
+                    self._process_fulltext_group_results(group_results)
+        
+        self.endResetModel()
+    
+    def _process_fulltext_group_results(self, results):
+        """处理全文搜索的分组结果"""
+        # 使用传统模式的逻辑进行文件和章节分组
+        file_groups = {}
+        
+        for result in results:
+            file_path = result.get('file_path', '')
+            
+            if file_path not in file_groups:
+                file_groups[file_path] = []
+            file_groups[file_path].append(result)
+        
+        # 为每个文件组生成显示项
+        for file_path, file_results in file_groups.items():
+            if not file_results:
+                continue
+                
+            file_key = f"f::{file_path}"
+            is_collapsed = self._get_collapse_state(file_key)
+            
+            # 添加文件组头部
+            self.display_items.append({
+                'type': 'file_group',
+                'file_path': file_path,
+                'file_key': file_key,
+                'file_number': len(file_groups),
+                'is_collapsed': is_collapsed
+            })
+            
+            if not is_collapsed:
+                # 文件未折叠，继续处理章节
+                chapter_groups = {}
+                
+                for result in file_results:
+                    # 确定章节键
+                    heading = result.get('heading')
+                    chapter_key = f"c::{file_path}::{heading if heading else '(无章节)'}"
+                    
+                    if chapter_key not in chapter_groups:
+                        chapter_groups[chapter_key] = []
+                    chapter_groups[chapter_key].append(result)
+                
+                # 为每个章节组生成显示项
+                for chapter_key, chapter_results in chapter_groups.items():
+                    if not chapter_results:
+                        continue
+                        
+                    is_chapter_collapsed = self._get_collapse_state(chapter_key)
+                    heading = chapter_results[0].get('heading', '(无章节)')
+                    
+                    # 添加章节组头部
+                    self.display_items.append({
+                        'type': 'chapter_group',
+                        'chapter_key': chapter_key,
+                        'heading': heading,
+                        'is_collapsed': is_chapter_collapsed,
+                        'result': chapter_results[0]  # 用于标题标记
+                    })
+                    
+                    if not is_chapter_collapsed:
+                        # 章节未折叠，添加内容
+                        for result in chapter_results:
+                            self.display_items.append({
+                                'type': 'content',
+                                'result': result
+                            })
+    
+    def _is_filename_search(self):
+        """检查是否为文件名搜索"""
+        return (hasattr(self.parent_window, 'last_search_scope') and 
+                self.parent_window.last_search_scope == 'filename')
+    
+    def _get_collapse_state(self, key):
+        """获取折叠状态"""
+        if self.parent_window and hasattr(self.parent_window, 'collapse_states'):
+            return self.parent_window.collapse_states.get(key, False)
+        return False
+    
+    def _process_filename_results(self, results):
+        """处理文件名搜索结果"""
+        processed_paths = set()
+        
+        # 添加美观的标题项
+        self.display_items.append({
+            'type': 'title',
+            'content': f'📄 文件名搜索结果 ({len(results)} 个文件)'
+        })
+        
+        for result in results:
+            file_path = result.get('file_path', '(未知文件)')
+            if file_path in processed_paths:
+                continue
+            processed_paths.add(file_path)
+            
+            self.display_items.append({
+                'type': 'filename_result',
+                'file_path': file_path,
+                'result': result
+            })
+    
+    def _process_fulltext_results(self, results):
+        """处理全文搜索结果 - 完全兼容传统模式的文件分组和章节折叠"""
+        last_file_path = None
+        last_displayed_heading = None
+        file_group_counter = 0
+        
+        for i, result in enumerate(results):
+            file_path = result.get('file_path', '(未知文件)')
+            original_heading = result.get('heading', '(无章节标题)')
+            
+            is_new_file = (file_path != last_file_path)
+            is_new_heading = (original_heading != last_displayed_heading)
+            
+            # 处理新文件
+            if is_new_file:
+                file_group_counter += 1
+                file_key = f"f::{file_path}"
+                
+                # 创建文件组项
+                file_item = {
+                    'type': 'file_group',
+                    'file_path': file_path,
+                    'file_key': file_key,
+                    'file_number': file_group_counter,
+                    'is_collapsed': self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False,
+                    'result': result
+                }
+                self.display_items.append(file_item)
+                
+                last_displayed_heading = None
+                last_file_path = file_path
+            
+            # 处理章节（如果文件未折叠）
+            file_key = f"f::{file_path}"
+            is_file_collapsed = self.parent_window.collapse_states.get(file_key, False) if self.parent_window else False
+            
+            if not is_file_collapsed and (is_new_file or is_new_heading):
+                # 检查是否是Excel数据
+                if result.get('excel_sheet') is None:
+                    # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                    chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
+                    is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
+                    
+                    chapter_item = {
+                        'type': 'chapter_group',
+                        'file_path': file_path,
+                        'chapter_key': chapter_key,
+                        'heading': original_heading,
+                        'is_collapsed': is_chapter_collapsed,
+                        'result': result
+                    }
+                    self.display_items.append(chapter_item)
+                    last_displayed_heading = original_heading
+                else:
+                    last_displayed_heading = None
+            
+            # 处理内容（段落或Excel数据）
+            if not is_file_collapsed:
+                # 修复：统一章节键格式，去除索引以确保同一章节的一致性
+                chapter_key = f"c::{file_path}::{original_heading if original_heading else '(无章节)'}"
+                is_chapter_collapsed = self.parent_window.collapse_states.get(chapter_key, False) if self.parent_window else False
+                
+                # 修复BUG：无论是否是Excel数据，只要章节被折叠就不显示内容
+                if not is_chapter_collapsed:
+                    content_item = {
+                        'type': 'content',
+                        'file_path': file_path,
+                        'result': result,
+                        'index': i
+                    }
+                    self.display_items.append(content_item)
+    
+    def _generate_item_html(self, item, index):
+        """生成显示项的HTML内容"""
+        try:
+            item_type = item.get('type', 'unknown')
+            
+            if item_type == 'title':
+                theme_colors = self._get_theme_colors()
+                return f'''
+                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
+                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
+                        {item["content"]}
+                    </h3>
+                </div>
+                '''
+                
+            elif item_type == 'filename_result':
+                return self._generate_filename_result_html(item)
+                
+            elif item_type == 'file_group':
+                return self._generate_file_group_html(item)
+                
+            elif item_type == 'chapter_group':
+                return self._generate_chapter_group_html(item)
+                
+            elif item_type == 'content':
+                return self._generate_content_html(item)
+                
+            elif item_type == 'error':
+                return f'<div style="margin: 10px; padding: 10px; background: #ffebee; border: 1px solid #f44336; border-radius: 4px; color: #c62828;">{item["content"]}</div>'
+                
+            elif item_type == 'group_header':
+                theme_colors = self._get_theme_colors()
+                group_name = item.get('group_name', '未知分组')
+                group_key = item.get('group_key', 'unknown')
+                result_count = item.get('result_count', 0)
+                is_collapsed = item.get('is_collapsed', False)
+                
+                import html
+                toggle_char = "▶" if is_collapsed else "▼"
+                toggle_href = f'toggle::{html.escape(group_key, quote=True)}'
+                escaped_group_name = html.escape(str(group_name))
+                
+                return f'''
+                <div style="margin: 15px 10px 10px 10px; padding: 12px 16px; background: linear-gradient(135deg, {theme_colors["link_color"]}22, {theme_colors["link_color"]}11); border-left: 4px solid {theme_colors["link_color"]}; border-radius: 6px;">
+                    <div style="font-size: 16px; font-weight: bold; color: {theme_colors["text_color"]}; margin-bottom: 4px;">
+                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px;">{toggle_char}</a>
+                        📂 {escaped_group_name}
+                    </div>
+                    <div style="font-size: 13px; color: #666; font-style: italic;">
+                        {result_count} 个结果
+                    </div>
+                </div>
+                '''
+                
+            elif item_type == 'empty_state':
+                theme_colors = self._get_theme_colors()
+                return f'''
+                <div style="margin: 50px 20px; padding: 40px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+                    <div style="font-size: 48px; margin-bottom: 20px; color: #6c757d;">{item["content"].split()[0]}</div>
+                    <div style="font-size: 18px; color: {theme_colors["text_color"]}; margin-bottom: 10px;">
+                        {" ".join(item["content"].split()[1:])}
+                    </div>
+                    <div style="font-size: 14px; color: #6c757d; margin-top: 20px;">
+                        请尝试调整搜索词或筛选条件
+                    </div>
+                </div>
+                '''
+                
+            else:
+                return f'<div style="margin: 10px; padding: 10px;">未知项目类型: {item_type}</div>'
+                
+        except Exception as e:
+            print(f"Error generating item HTML: {e}")
+            return f'<div style="margin: 10px; padding: 10px; background: #ffebee;">生成HTML时出错: {str(e)}</div>'
+    
+    def _get_theme_colors(self):
+        """获取当前主题的颜色配置 - 扩展版本包含更多语义颜色"""
+        if self.current_theme == "现代蓝":
+            return {
+                "highlight_bg": "#E3F2FD",
+                "highlight_text": "#1565C0", 
+                "link_color": "#2196F3",
+                "text_color": "#333333",
+                "primary": "#007ACC",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "现代紫":
+            return {
+                "highlight_bg": "#F3E5F5",
+                "highlight_text": "#7B1FA2",
+                "link_color": "#9C27B0", 
+                "text_color": "#333333",
+                "primary": "#8B5CF6",
+                "success": "#10B981",
+                "info": "#8B5CF6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "现代红":
+            return {
+                "highlight_bg": "#FFE0E0",
+                "highlight_text": "#C62828",
+                "link_color": "#E53935",
+                "text_color": "#333333",
+                "primary": "#DC2626",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#DC2626"
+            }
+        elif self.current_theme == "现代橙":
+            return {
+                "highlight_bg": "#FFF3E0",
+                "highlight_text": "#FF6F00",
+                "link_color": "#FF9800",
+                "text_color": "#333333",
+                "primary": "#EA580C",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#EA580C",
+                "danger": "#EF4444"
+            }
+        elif self.current_theme == "深色模式":
+            return {
+                "highlight_bg": "#374151",
+                "highlight_text": "#60A5FA",
+                "link_color": "#3B82F6",
+                "text_color": "#F9FAFB",
+                "primary": "#3B82F6",
+                "success": "#059669",
+                "info": "#3B82F6",
+                "warning": "#D97706",
+                "danger": "#DC2626"
+            }
+        elif self.current_theme == "护眼绿":
+            return {
+                "highlight_bg": "#DCFCE7",
+                "highlight_text": "#047857",
+                "link_color": "#059669",
+                "text_color": "#1E1E1E",
+                "primary": "#059669",
+                "success": "#059669",
+                "info": "#0891B2",
+                "warning": "#D97706",
+                "danger": "#DC2626"
+            }
+        else:
+            return {
+                "highlight_bg": "#FFECB3",
+                "highlight_text": "#FF6F00",
+                "link_color": "#FF9800",
+                "text_color": "#333333",
+                "primary": "#FF9800",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444"
+            }
+    
+    def _generate_filename_result_html(self, item):
+        """生成文件名搜索结果的HTML - 美观现代化样式"""
+        file_path = item['file_path']
+        result = item.get('result', {})
+        theme_colors = self._get_theme_colors()
+        
+        # 计算文件信息
+        import os
+        from pathlib import Path
+        try:
+            file_name = os.path.basename(file_path)
+            file_size = result.get('file_size', result.get('size', 0))
+            mtime = result.get('last_modified', result.get('mtime', 0))
+
+            # 格式化文件大小
+            if file_size > 0:
+                if file_size < 1024:
+                    size_str = f"{file_size} B"
+                elif file_size < 1024 * 1024:
+                    size_str = f"{file_size / 1024:.1f} KB"
+                else:
+                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            else:
+                size_str = '未知大小'
+
+            # 格式化修改时间
+            if mtime > 0:
+                import datetime
+                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+            else:
+                mtime_str = '未知时间'
+
+            # 获取文件类型图标
+            file_ext = Path(file_path).suffix.lower()
+            type_icon = "📄"
+            if file_ext in ['.docx', '.doc']:
+                type_icon = "📝"
+            elif file_ext in ['.xlsx', '.xls']:
+                type_icon = "📊"
+            elif file_ext in ['.pptx', '.ppt']:
+                type_icon = "📋"
+            elif file_ext in ['.pdf']:
+                type_icon = "📕"
+            elif file_ext in ['.txt', '.md']:
+                type_icon = "📄"
+            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+                type_icon = "🖼️"
+            elif file_ext in ['.mp4', '.avi', '.mov']:
+                type_icon = "🎬"
+            elif file_ext in ['.mp3', '.wav', '.flac']:
+                type_icon = "🎵"
+
+        except Exception as e:
+            file_name = file_path
+            size_str = '未知大小'
+            mtime_str = '未知时间'
+            type_icon = "📄"
+        
+        # 计算文件夹路径
+        folder_path_str = ""
+        is_archive_member = "::" in file_path
+        try:
+            if is_archive_member:
+                archive_file_path = file_path.split("::", 1)[0]
+                folder_path_str = str(Path(archive_file_path).parent)
+            else:
+                path_obj = Path(file_path)
+                if path_obj.is_file():
+                    folder_path_str = str(path_obj.parent)
+        except Exception:
+            pass
+        
+        import html
+        escaped_file_name = html.escape(file_name)
+        escaped_file_path = html.escape(file_path)
+        
+        # 构建操作链接 - 使用现代化按钮样式
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
+        if folder_path_str:
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+        
+        return f'''
+        <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <div style="display: flex; align-items: center;">
+                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
+                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
+                </div>
+                <div style="white-space: nowrap;">
+                    {" ".join(links)}
+                </div>
+            </div>
+
+            <div style="margin-left: 26px;">
+                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {escaped_file_path}
+                </p>
+                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
+                    <span style="font-size: 11px; color: #6c757d;">📏 {size_str}</span>
+                    <span style="margin-left: 20px; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</span>
+                </div>
+            </div>
+        </div>
+        '''
+    
+    def _generate_file_group_html(self, item):
+        """生成文件组头部的HTML"""
+        file_path = item['file_path']
+        file_key = item['file_key']
+        file_number = item['file_number']
+        is_collapsed = item['is_collapsed']
+        theme_colors = self._get_theme_colors()
+        
+        import html
+        
+        toggle_char = "[+]" if is_collapsed else "[-]"
+        toggle_href = f'toggle::{html.escape(file_key, quote=True)}'
+        escaped_path = html.escape(file_path)
+        
+        # 计算文件夹路径
+        folder_path_str = ""
+        is_archive_member = "::" in file_path
+        try:
+            if is_archive_member:
+                archive_file_path = file_path.split("::", 1)[0]
+                from pathlib import Path
+                folder_path_str = str(Path(archive_file_path).parent)
+            else:
+                from pathlib import Path
+                path_obj = Path(file_path)
+                if path_obj.is_file():
+                    folder_path_str = str(path_obj.parent)
+        except Exception:
+            pass
+        
+        # 构建现代化操作按钮 - 与文件名搜索保持一致
+        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
+        if folder_path_str:
+            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+
+        # 提取文件名和路径，类似文件名搜索的处理方式
+        import os
+        file_name = os.path.basename(file_path)
+        file_directory = os.path.dirname(file_path)
+        escaped_file_name = html.escape(file_name)
+        escaped_directory = html.escape(file_directory)
+
+        # 获取文件类型图标
+        from pathlib import Path
+        file_ext = Path(file_path).suffix.lower()
+        type_icon = "📄"
+        if file_ext in ['.docx', '.doc']:
+            type_icon = "📝"
+        elif file_ext in ['.xlsx', '.xls']:
+            type_icon = "📊"
+        elif file_ext in ['.pptx', '.ppt']:
+            type_icon = "📋"
+        elif file_ext in ['.pdf']:
+            type_icon = "📕"
+        elif file_ext in ['.txt', '.md']:
+            type_icon = "📄"
+        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+            type_icon = "🖼️"
+        elif file_ext in ['.mp4', '.avi', '.mov']:
+            type_icon = "🎬"
+        elif file_ext in ['.mp3', '.wav', '.flac']:
+            type_icon = "🎵"
+        
+        return f'''
+        <div style="margin: 15px 5px 5px 5px; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="vertical-align: middle;">
+                                                <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: 14px; font-weight: bold; display: inline-block;">
+                            <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 8px; font-size: 14px;">{toggle_char}</a>
+                            <span style="font-size: 16px; margin-right: 8px;">{type_icon}</span>
+                {file_number}. {escaped_path}
+                        </h3>
+                        <div style="margin-left: 38px;">
+                            <p style="margin: 0; color: #6c757d; font-size: 11px; font-family: monospace;">
+                            📁 {escaped_directory}
+                        </p>
+            </div>
+                    </td>
+                    <td style="text-align: right; vertical-align: top; white-space: nowrap; padding-top: 8px;">
+                        {" ".join(links)}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        '''
+    
+    def _generate_chapter_group_html(self, item):
+        """生成章节组头部的HTML"""
+        chapter_key = item['chapter_key']
+        heading = item['heading']
+        is_collapsed = item['is_collapsed']
+        result = item['result']
+        theme_colors = self._get_theme_colors()
+        
+        import html
+        
+        toggle_char = "[+]" if is_collapsed else "[-]"
+        toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
+        
+        # 处理标记的标题
+        marked_heading = result.get('marked_heading')
+        heading_to_display = marked_heading if marked_heading is not None else heading
+        if heading_to_display is None:
+            heading_to_display = '(无章节标题)'
+        escaped_heading = html.escape(str(heading_to_display))
+        
+        # 处理高亮
+        if marked_heading and "__HIGHLIGHT_START__" in escaped_heading:
+            escaped_heading = escaped_heading.replace(
+                html.escape("__HIGHLIGHT_START__"), 
+                f'<span style="background-color: {theme_colors["highlight_bg"]}; color: {theme_colors["highlight_text"]};">'
+            )
+            escaped_heading = escaped_heading.replace(html.escape("__HIGHLIGHT_END__"), '</span>')
+        
+        return f'''
+        <div style="margin: 8px 15px 5px 25px; padding: 6px;">
+            <p style="margin: 0; color: {theme_colors["text_color"]};">
+                <a href="{toggle_href}" style="color: {theme_colors["link_color"]}; text-decoration:none; font-weight:bold; margin-right: 6px;">{toggle_char}</a>
+                <b>章节:</b> {escaped_heading}
+            </p>
+        </div>
+        '''
+    
+    def _generate_content_html(self, item):
+        """生成内容的HTML（段落或Excel表格）"""
+        result = item['result']
+        theme_colors = self._get_theme_colors()
+        
+        # 检查是否是Excel数据
+        excel_headers = result.get('excel_headers')
+        excel_values = result.get('excel_values')
+        
+        if excel_headers is not None and excel_values is not None:
+            return self._generate_excel_content_html(result, theme_colors)
+        else:
+            return self._generate_paragraph_content_html(result, theme_colors)
+    
+    def _generate_excel_content_html(self, result, theme_colors):
+        """生成Excel内容的HTML - 现代化样式"""
+        excel_headers = result.get('excel_headers', [])
+        excel_values = result.get('excel_values', [])
+        excel_sheet = result.get('excel_sheet', '')
+        excel_row_idx = result.get('excel_row_idx', 0)
+        
+        import html
+        
+        html_parts = []
+        html_parts.append(f'''
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #f8f9fa);
+                    border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+            <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
+                        background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
+                        border-left: 4px solid {theme_colors["primary"]};">
+                <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
+                    📊 表格: {html.escape(str(excel_sheet) if excel_sheet is not None else "未知表格")} | 行: {excel_row_idx}
+                </h4>
+            </div>
+        ''')
+
+        # 生成现代化表格
+        html_parts.append(f'''
+            <table style="width: 100%; border-collapse: collapse; background: white;
+                         border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
+                         box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ''')
+
+        # 表头
+        html_parts.append(f"<tr style='background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);'>")
+        for header in excel_headers:
+            header_text = str(header) if header is not None else ''
+            html_parts.append(f'''
+                <th style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
+                          color: {theme_colors["text_color"]}; text-align: left;">
+                    {html.escape(header_text)}
+                </th>
+            ''')
+        html_parts.append("</tr>")
+        
+        # 数据行
+        html_parts.append("<tr style='background: white;'>")
+        escaped_start_marker = html.escape("__HIGHLIGHT_START__")
+        escaped_end_marker = html.escape("__HIGHLIGHT_END__")
+        
+        for value in excel_values:
+            value_text = str(value) if value is not None else ''
+            escaped_value = html.escape(value_text)
+            
+            # 处理高亮
+            if escaped_start_marker in escaped_value:
+                highlighted_value = escaped_value.replace(
+                    escaped_start_marker,
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
+                ).replace(escaped_end_marker, '</mark>')
+            else:
+                highlighted_value = escaped_value
+                
+            html_parts.append(f'''
+                <td style="padding: {UI_SPACING['normal']}; border: none;
+                          font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
+                          border-bottom: 1px solid #f0f0f0;">
+                    {highlighted_value}
+                </td>
+            ''')
+        html_parts.append("</tr>")
+        html_parts.append("</table>")
+        html_parts.append('</div>')
+        
+        return "".join(html_parts)
+    
+    def _generate_paragraph_content_html(self, result, theme_colors):
+        """生成段落内容的HTML - 现代化样式"""
+        original_paragraph = result.get('paragraph')
+        marked_paragraph = result.get('marked_paragraph')
+        match_start = result.get('match_start')
+        match_end = result.get('match_end')
+        
+        if original_paragraph is None:
+            return ''
+        
+        # 确定要显示的段落文本
+        paragraph_text_for_highlight = marked_paragraph if marked_paragraph is not None else original_paragraph
+        if paragraph_text_for_highlight is None:
+            paragraph_text_for_highlight = str(original_paragraph) if original_paragraph is not None else ''
+        else:
+            paragraph_text_for_highlight = str(paragraph_text_for_highlight)
+        
+        import html
+        escaped_paragraph = html.escape(paragraph_text_for_highlight)
+        
+        # 处理高亮
+        highlighted_paragraph_display = escaped_paragraph
+        
+        # 短语搜索的精确高亮
+        if match_start is not None and match_end is not None:
+            if 0 <= match_start < match_end <= len(escaped_paragraph):
+                pre = escaped_paragraph[:match_start]
+                mat = escaped_paragraph[match_start:match_end]
+                post = escaped_paragraph[match_end:]
+                highlighted_paragraph_display = f'{pre}<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">{mat}</mark>{post}'
+        # 模糊搜索的标记高亮
+        elif marked_paragraph:
+            escaped_start_marker = html.escape("__HIGHLIGHT_START__")
+            escaped_end_marker = html.escape("__HIGHLIGHT_END__")
+            if escaped_start_marker in escaped_paragraph:
+                highlighted_paragraph_display = escaped_paragraph.replace(
+                    escaped_start_marker,
+                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">'
+                ).replace(escaped_end_marker, '</mark>')
+        
+        return f'''
+        <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                    background: linear-gradient(145deg, #ffffff, #fafbfc);
+                    border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
+                    border-left: 4px solid {theme_colors["success"]};
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="margin-bottom: {UI_SPACING['small']};">
+                <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
+                    📄 段落内容
+                </span>
+            </div>
+            <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
+                        word-wrap: break-word; overflow-wrap: break-word;">
+                {highlighted_paragraph_display}
+            </div>
+        </div>
+        '''
+
+    def set_results(self, results):
+        """设置搜索结果并处理成显示项目 - 支持完整的查看方式"""
+        self.results = results
+        
+        # 从父窗口获取查看方式设置并应用完整的处理流程
+        if self.parent_window:
+            # 使用默认相关性排序（搜索引擎返回顺序）
+            sorted_results = results
+            
+            # 检查是否需要分组显示
+            if (hasattr(self.parent_window, 'grouping_enabled') and 
+                self.parent_window.grouping_enabled and 
+                hasattr(self.parent_window, 'current_grouping_mode') and 
+                self.parent_window.current_grouping_mode != 'none'):
+                
+                # 应用分组，然后转换为虚拟滚动可以处理的格式
+                grouped_results = self.parent_window._group_results(sorted_results, self.parent_window.current_grouping_mode)
+                self._process_grouped_results_for_display(grouped_results)
+            else:
+                # 不分组，直接处理
+                self._process_results_for_display(sorted_results)
+        else:
+            self._process_results_for_display(results)
+        
+    def set_theme(self, theme_name):
+        """设置主题"""
+        self.current_theme = theme_name
+        # 通知视图更新显示
+        if self.display_items:
+            self.dataChanged.emit(self.index(0), self.index(len(self.display_items) - 1))
+
+
+class HtmlItemDelegate(QStyledItemDelegate):
+    """HTML内容委托，用于在列表视图中渲染HTML"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+    def paint(self, painter, option, index):
+        """绘制HTML内容"""
+        try:
+            html_content = index.data(Qt.DisplayRole)
+            if not html_content:
+                super().paint(painter, option, index)
+                return
+                
+            # 创建QTextDocument来渲染HTML
+            document = QTextDocument()
+            document.setHtml(html_content)
+            document.setTextWidth(option.rect.width())
+            
+            painter.save()
+            painter.translate(option.rect.topLeft())
+            
+            # 如果项被选中，绘制选中背景
+            if option.state & QStyle.State_Selected:
+                painter.fillRect(QRect(0, 0, option.rect.width(), int(document.size().height())), 
+                               option.palette.highlight())
+            
+            # 绘制HTML内容
+            document.drawContents(painter)
+            painter.restore()
+            
+        except Exception as e:
+            print(f"Error painting HTML item: {e}")
+            super().paint(painter, option, index)
+    
+    def sizeHint(self, option, index):
+        """返回项的大小提示"""
+        try:
+            html_content = index.data(Qt.DisplayRole)
+            if not html_content:
+                return super().sizeHint(option, index)
+                
+            document = QTextDocument()
+            document.setHtml(html_content)
+            document.setTextWidth(option.rect.width() if option.rect.width() > 0 else 400)
+            
+            return QSize(int(document.idealWidth()), int(document.size().height()))
+            
+        except Exception as e:
+            print(f"Error calculating size hint: {e}")
+            return QSize(400, 100)  # 默认大小
+
+
+class VirtualResultsView(QListView):
+    """虚拟滚动结果视图"""
+    
+    # 信号定义
+    linkClicked = Signal(QUrl)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # 设置基本属性
+        self.setAlternatingRowColors(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # 启用鼠标跟踪以支持链接悬停
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+
+        # 启用右键菜单
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+        
+        # 设置HTML委托
+        self.html_delegate = HtmlItemDelegate(self)
+        self.setItemDelegate(self.html_delegate)
+        
+        # 连接点击信号
+        self.clicked.connect(self._handle_item_clicked)
+        
+    def _handle_item_clicked(self, index):
+        """处理项点击，目前由mousePressEvent处理链接点击"""
+        pass  # 链接点击由mousePressEvent处理
+    
+    def mousePressEvent(self, event):
+        """处理鼠标点击事件，特别是链接点击"""
+        if event.button() == Qt.LeftButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid():
+                # 使用QTextDocument来精确检测链接点击
+                html_content = index.data(Qt.DisplayRole)
+                if html_content:
+                    clicked_link = self._detect_link_at_position(event.position().toPoint(), index, html_content)
+                    if clicked_link:
+                        self.linkClicked.emit(QUrl(clicked_link))
+                        return
+
+        # 调用父类处理
+        super().mousePressEvent(event)
+
+    def _detect_link_at_position(self, global_pos, index, html_content):
+        """使用QTextDocument精确检测点击位置的链接"""
+        try:
+            # QTextDocument, QTextCursor 已在文件顶部导入
+            from PySide6.QtCore import QPointF
+
+            # 创建临时的QTextDocument来处理HTML
+            doc = QTextDocument()
+            doc.setHtml(html_content)
+
+            # 获取项目的矩形区域
+            item_rect = self.visualRect(index)
+            if not item_rect.isValid():
+                print(f"无效的项目矩形，使用备选方案")
+                return self._find_clicked_link_fallback(html_content)
+
+            # 计算相对于项目的点击位置
+            relative_pos = global_pos - item_rect.topLeft()
+            print(f"点击位置: 全局{global_pos.x()},{global_pos.y()}, 相对{relative_pos.x()},{relative_pos.y()}")
+
+            # 尝试多个hitTest策略
+            hit_strategies = [
+                (Qt.HitTestAccuracy.ExactHit, "精确命中"),
+                (Qt.HitTestAccuracy.FuzzyHit, "模糊命中")
+            ]
+
+            for strategy, strategy_name in hit_strategies:
+                hit_point = QPointF(relative_pos.x(), relative_pos.y())
+                cursor_pos = doc.documentLayout().hitTest(hit_point, strategy)
+                print(f"{strategy_name}测试: 光标位置 {cursor_pos}")
+
+                if cursor_pos >= 0:
+                    # 创建光标并检查格式
+                    cursor = QTextCursor(doc)
+                    cursor.setPosition(cursor_pos)
+
+                    # 获取字符格式
+                    char_format = cursor.charFormat()
+
+                    # 检查是否是链接
+                    if char_format.isAnchor():
+                        anchor_href = char_format.anchorHref()
+                        print(f"检测到链接点击({strategy_name}): {anchor_href}")
+                        return anchor_href
+                    else:
+                        # 尝试扩展选择范围，查找附近的链接
+                        for offset in [-1, 1, -2, 2]:
+                            try_pos = cursor_pos + offset
+                            if try_pos >= 0:
+                                cursor.setPosition(try_pos)
+                                char_format = cursor.charFormat()
+                                if char_format.isAnchor():
+                                    anchor_href = char_format.anchorHref()
+                                    print(f"检测到附近链接({strategy_name}, 偏移{offset}): {anchor_href}")
+                                    return anchor_href
+
+            print(f"精确检测失败，使用备选方案")
+            # 如果精确检测失败，使用备选方案
+            return self._find_clicked_link_fallback(html_content)
+
+        except Exception as e:
+            print(f"链接检测出错，使用备选方案: {e}")
+            return self._find_clicked_link_fallback(html_content)
+
+    def _find_clicked_link_fallback(self, html_content):
+        """备选的链接检测方案"""
+                    import re
+        
+        # 提取所有链接
+        link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
+        links = re.findall(link_pattern, html_content)
+        if not links:
+            return None
+
+        # 使用简单的轮换策略或者随机选择，避免总是选择同一个
+        import time
+        openfile_links = [url for url, text in links if url.startswith('openfile:')]
+        openfolder_links = [url for url, text in links if url.startswith('openfolder:')]
+        toggle_links = [url for url, text in links if url.startswith('toggle::')]
+
+        # 如果同时有文件和目录链接，使用时间戳来轮换选择
+        if openfile_links and openfolder_links:
+            # 使用毫秒数的奇偶性来决定选择哪个
+            ms = int(time.time() * 1000) % 1000
+            if ms % 2 == 0:
+                print(f"备选检测：选择打开文件链接")
+                return openfile_links[0]
+            else:
+                print(f"备选检测：选择打开目录链接")
+                return openfolder_links[0]
+
+        # 如果只有一种类型，直接返回
+        if openfile_links:
+            print(f"备选检测：只有打开文件链接")
+            return openfile_links[0]
+        if openfolder_links:
+            print(f"备选检测：只有打开目录链接")
+            return openfolder_links[0]
+        if toggle_links:
+            print(f"备选检测：只有折叠链接")
+            return toggle_links[0]
+
+        return links[0][0] if links else None
+
+
+
+    def mouseDoubleClickEvent(self, event):
+        """处理双击事件，显示文本选择对话框"""
+        if event.button() == Qt.LeftButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid():
+                # 获取HTML内容
+                html_content = index.data(Qt.DisplayRole)
+                if html_content:
+                    self._show_text_selection_dialog(html_content)
+                    return
+        # 调用父类处理
+        super().mouseDoubleClickEvent(event)
+
+    def _show_text_selection_dialog(self, html_content):
+        """显示文本选择对话框"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QMessageBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("文本选择")
+        dialog.resize(800, 500)
+
+        layout = QVBoxLayout(dialog)
+
+        # 创建文本编辑器显示内容
+        text_edit = QTextEdit()
+        text_edit.setHtml(html_content)
+        text_edit.setReadOnly(False)  # 允许选择
+        layout.addWidget(text_edit)
+
+        # 按钮布局
+        button_layout = QHBoxLayout()
+
+        # 复制全部按钮
+        copy_all_btn = QPushButton("复制全部内容")
+        copy_all_btn.clicked.connect(lambda: self._copy_all_text(text_edit, dialog))
+        button_layout.addWidget(copy_all_btn)
+
+        # 复制选中按钮
+        copy_selected_btn = QPushButton("复制选中文本")
+        copy_selected_btn.clicked.connect(lambda: self._copy_selected_text(text_edit, dialog))
+        button_layout.addWidget(copy_selected_btn)
+
+        # 关闭按钮
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(dialog.close)
+        button_layout.addWidget(close_btn)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec()
+
+    def _copy_all_text(self, text_edit, dialog):
+        """复制全部文本内容"""
+        plain_text = text_edit.toPlainText()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(plain_text)
+        QMessageBox.information(dialog, "复制成功", f"已复制 {len(plain_text)} 个字符到剪贴板")
+
+    def _copy_selected_text(self, text_edit, dialog):
+        """复制选中的文本"""
+        cursor = text_edit.textCursor()
+        selected_text = cursor.selectedText()
+
+        if selected_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(selected_text)
+            QMessageBox.information(dialog, "复制成功", f"已复制 {len(selected_text)} 个字符到剪贴板")
+        else:
+            QMessageBox.warning(dialog, "未选择文本", "请先选择要复制的文本")
+
+    def _show_context_menu(self, position):
+        """显示虚拟滚动视图的右键菜单"""
+        index = self.indexAt(position)
+        if not index.isValid():
+            return
+
+        menu = QMenu(self)
+
+        # 获取HTML内容
+        html_content = index.data(Qt.DisplayRole)
+        if html_content:
+            # 复制内容选项
+            copy_action = menu.addAction("复制内容")
+            copy_action.triggered.connect(lambda: self._copy_item_content(html_content))
+
+            menu.addSeparator()
+
+            # 文本选择对话框选项
+            select_action = menu.addAction("文本选择...")
+            select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
+
+            # 显示菜单
+            menu.exec(self.mapToGlobal(position))
+
+    def _copy_item_content(self, html_content):
+        """复制项目的纯文本内容"""
+        from PySide6.QtGui import QTextDocument
+
+        # 将HTML转换为纯文本
+        doc = QTextDocument()
+        doc.setHtml(html_content)
+        plain_text = doc.toPlainText()
+
+        # 复制到剪贴板
+        clipboard = QApplication.clipboard()
+        clipboard.setText(plain_text)
+
         # 显示成功消息（可选）
         if hasattr(self, 'parent') and hasattr(self.parent(), 'statusBar'):
             self.parent().statusBar().showMessage(f"已复制 {len(plain_text)} 个字符到剪贴板", 3000)
@@ -1071,7 +3478,7 @@ class Worker(QObject):
             # Extract file type configuration if provided
             full_index_types = []
             filename_only_types = []
-            
+
             if file_type_config and isinstance(file_type_config, dict):
                 full_index_types = file_type_config.get('full_index_types', [])
                 filename_only_types = file_type_config.get('filename_only_types', [])
@@ -1288,7 +3695,7 @@ class Worker(QObject):
             print(f"   区分大小写: {case_sensitive}")
             if search_mode == 'phrase':
                 print(f"   精确搜索: 将查找包含完整短语 '{query_str}' 的内容")
-            
+
             # 添加可选参数
             if min_size is not None:
                 search_params['min_size_kb'] = min_size
@@ -1384,7 +3791,7 @@ class Worker(QObject):
                             is_in_selected_dir = True
                             print(f"DEBUG: 文件 {file_path} 匹配目录 {search_dir}")
                             break
-                    
+                            
                     if not is_in_selected_dir:
                         print(f"DEBUG: 过滤掉文件 {file_path}（不在当前源目录中）")
                     
@@ -1599,17 +4006,17 @@ class SettingsDialog(QDialog):
 
         # --- Populate Index Settings Container ---
         index_layout = QVBoxLayout(self.index_settings_widget)
-        index_layout.setContentsMargins(5,5,5,5) 
-        
+        index_layout.setContentsMargins(5,5,5,5)
+
         # 创建标签页控件来组织设置
         tab_widget = QTabWidget()
         index_layout.addWidget(tab_widget)
-        
+
         # === 基本设置标签页 ===
         basic_tab = QWidget()
         basic_layout = QVBoxLayout(basic_tab)
         basic_layout.setSpacing(15)
-        
+
         # 基本设置分组
         basic_group = QGroupBox("📁 基本设置")
         basic_group_layout = QVBoxLayout(basic_group)
@@ -1617,9 +4024,9 @@ class SettingsDialog(QDialog):
         # --- Source Directories Management ---
         source_dirs_label = QLabel("要索引的文件夹:")
         source_dirs_label.setStyleSheet("font-weight: bold; color: #333;")
-        
+
         self.source_dirs_list = QListWidget()
-        self.source_dirs_list.setSelectionMode(QAbstractItemView.ExtendedSelection) 
+        self.source_dirs_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.source_dirs_list.setToolTip("指定一个或多个需要建立索引的根文件夹。")
         self.source_dirs_list.setMaximumHeight(120)  # 限制高度
 
@@ -1630,7 +4037,7 @@ class SettingsDialog(QDialog):
         self.remove_source_dir_button.setMaximumWidth(100)
         source_dirs_button_layout.addWidget(self.add_source_dir_button)
         source_dirs_button_layout.addWidget(self.remove_source_dir_button)
-        source_dirs_button_layout.addStretch() 
+        source_dirs_button_layout.addStretch()
 
         basic_group_layout.addWidget(source_dirs_label)
         basic_group_layout.addWidget(self.source_dirs_list)
@@ -1639,7 +4046,7 @@ class SettingsDialog(QDialog):
         # OCR设置分组
         ocr_group = QGroupBox("🔍 OCR设置")
         ocr_group_layout = QVBoxLayout(ocr_group)
-        
+
         ocr_layout = QHBoxLayout()
         self.enable_ocr_checkbox = QCheckBox("启用 OCR 光学字符识别")
         self.pro_feature_ocr_label = QLabel("🔒 专业版专享")
@@ -1647,12 +4054,12 @@ class SettingsDialog(QDialog):
         ocr_layout.addWidget(self.enable_ocr_checkbox)
         ocr_layout.addWidget(self.pro_feature_ocr_label)
         ocr_layout.addStretch()
-        
+
         # OCR说明
         ocr_info = QLabel("💡 OCR可以识别PDF中的图像文字，但会显著增加索引时间")
         ocr_info.setStyleSheet("color: #666; font-size: 11px; margin-top: 5px;")
         ocr_info.setWordWrap(True)
-        
+
         ocr_group_layout.addLayout(ocr_layout)
         ocr_group_layout.addWidget(ocr_info)
         
@@ -1664,7 +4071,7 @@ class SettingsDialog(QDialog):
         # 添加提示信息
         self.enable_ocr_checkbox.setToolTip("OCR功能需要专业版授权才能使用" if not pdf_support_available else 
                                        "启用OCR可以识别PDF中的图像文字，但会显著增加索引时间")
-        
+
         basic_layout.addWidget(basic_group)
         basic_layout.addWidget(ocr_group)
         basic_layout.addStretch()
@@ -1679,19 +4086,19 @@ class SettingsDialog(QDialog):
         file_types_group = QGroupBox("📄 文件类型与索引模式")
         file_types_group.setToolTip("选择需要创建索引的文件类型，未勾选的类型将被跳过")
         file_types_group_layout = QVBoxLayout(file_types_group)
-        
+
         # 添加说明信息
         info_widget = QWidget()
         info_widget.setStyleSheet("background-color: #e8f4fd; border: 1px solid #bee5eb; border-radius: 4px; padding: 8px;")
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(8, 8, 8, 8)
-        
+
         info_title = QLabel("💡 索引模式说明")
         info_title.setStyleSheet("font-weight: bold; color: #0c5460; margin-bottom: 4px;")
         info_content = QLabel("• 完整索引：提取并索引文件完整内容，支持全文搜索\n• 仅文件名：只索引文件名信息，适合大文件或归档文件")
         info_content.setStyleSheet("color: #0c5460; font-size: 11px; line-height: 1.4;")
         info_content.setWordWrap(True)
-        
+
         info_layout.addWidget(info_title)
         info_layout.addWidget(info_content)
         file_types_group_layout.addWidget(info_widget)
@@ -1704,19 +4111,20 @@ class SettingsDialog(QDialog):
         controls_layout.addWidget(self.select_all_types_checkbox)
         controls_layout.addStretch()
         file_types_group_layout.addLayout(controls_layout)
-        
+
         # 创建滚动区域用于文件类型列表
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setMaximumHeight(300)
-        
+
         scroll_widget = QWidget()
         scroll_area.setWidget(scroll_widget)
         
         # 定义支持的文件类型
         supported_types = {
+            # 文档类型
             'txt': {'display': '📝 文本文件 (.txt)', 'pro_feature': None},
             'docx': {'display': '📄 Word文档 (.docx)', 'pro_feature': None},
             'xlsx': {'display': '📊 Excel表格 (.xlsx)', 'pro_feature': None},
@@ -1729,6 +4137,11 @@ class SettingsDialog(QDialog):
             'msg': {'display': '📧 Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
             'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
             'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
+
+            # 多媒体文件类型（仅文件名索引）
+            'mp4': {'display': '🎬 视频文件 (.mp4, .mkv, .avi等)', 'pro_feature': None, 'filename_only': True},
+            'mp3': {'display': '🎵 音频文件 (.mp3, .wav, .flac等)', 'pro_feature': None, 'filename_only': True},
+            'jpg': {'display': '🖼️ 图片文件 (.jpg, .png, .gif等)', 'pro_feature': None, 'filename_only': True},
         }
         
         # 将文件类型分为基础版和专业版两组
@@ -1754,32 +4167,40 @@ class SettingsDialog(QDialog):
         for i, (type_key, type_info) in enumerate(free_types):
             type_layout = QHBoxLayout()
             type_layout.setSpacing(8)
-            
+
             # 复选框
             checkbox = QCheckBox(type_info['display'])
             checkbox.setChecked(True)
             self.file_type_checkboxes[type_key] = checkbox
-            
+
             # 索引模式选择下拉框
             mode_combo = QComboBox()
             mode_combo.addItem("完整索引", "full")
             mode_combo.addItem("仅文件名", "filename_only")
-            mode_combo.setCurrentIndex(0)
+
+            # 检查是否为仅文件名类型（多媒体文件）
+            if type_info.get('filename_only', False):
+                mode_combo.setCurrentIndex(1)  # 设置为"仅文件名"
+                mode_combo.setEnabled(False)   # 禁用选择
+                mode_combo.setToolTip("多媒体文件只支持文件名索引")
+            else:
+                mode_combo.setCurrentIndex(0)  # 默认为"完整索引"
+
             mode_combo.setMinimumWidth(85)
             mode_combo.setMaximumWidth(85)
             mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
             self.file_type_modes[type_key] = mode_combo
-            
+
             type_layout.addWidget(checkbox)
             type_layout.addStretch()
             type_layout.addWidget(mode_combo)
-            
+
             type_widget = QWidget()
             type_widget.setLayout(type_layout)
             grid_layout.addWidget(type_widget, row, 0)
-            
+
             checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
-            row += 1
+                row += 1
         
         # 添加专业版文件类型
         for type_key, type_info in pro_types:
@@ -1788,7 +4209,7 @@ class SettingsDialog(QDialog):
             
             type_layout = QHBoxLayout()
             type_layout.setSpacing(8)
-            
+
             # 复选框
             checkbox = QCheckBox(type_info['display'])
             checkbox.setChecked(feature_available)
@@ -1797,42 +4218,48 @@ class SettingsDialog(QDialog):
                 checkbox.setEnabled(False)
                 checkbox.setToolTip(f"此文件类型需要专业版授权才能使用")
                 checkbox.setStyleSheet("color: #999;")
-            
+
             # 索引模式选择下拉框
             mode_combo = QComboBox()
             mode_combo.addItem("完整索引", "full")
             mode_combo.addItem("仅文件名", "filename_only")
-            mode_combo.setCurrentIndex(0)
+
+            # 检查是否为仅文件名类型（多媒体文件）
+            if type_info.get('filename_only', False):
+                mode_combo.setCurrentIndex(1)  # 设置为"仅文件名"
+                mode_combo.setEnabled(False)   # 禁用选择
+                mode_combo.setToolTip("多媒体文件只支持文件名索引")
+            else:
+                mode_combo.setCurrentIndex(0)  # 默认为"完整索引"
+                if not feature_available:
+                    mode_combo.setEnabled(False)
+                    mode_combo.setToolTip(f"此文件类型需要专业版授权才能使用")
+
             mode_combo.setMinimumWidth(85)
             mode_combo.setMaximumWidth(85)
             mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
-            
-            if not feature_available:
-                mode_combo.setEnabled(False)
-                mode_combo.setToolTip(f"此文件类型需要专业版授权才能使用")
-            
+
             self.file_type_modes[type_key] = mode_combo
-            
+
             type_layout.addWidget(checkbox)
             type_layout.addStretch()
             type_layout.addWidget(mode_combo)
-            
+
             # 添加专业版标记
             if not feature_available:
                 pro_label = QLabel("🔒")
                 pro_label.setStyleSheet("color: #FF6600; font-size: 12px;")
                 pro_label.setToolTip("专业版功能")
                 type_layout.addWidget(pro_label)
-            
-            type_widget = QWidget()
+
+            row += 1
             type_widget.setLayout(type_layout)
             grid_layout.addWidget(type_widget, row, 0)
-            
+
             if feature_available:
                 checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
             
             self.file_type_checkboxes[type_key] = checkbox
-            row += 1
         
         file_types_group_layout.addWidget(scroll_area)
         file_types_layout.addWidget(file_types_group)
@@ -1845,7 +4272,7 @@ class SettingsDialog(QDialog):
         advanced_tab = QWidget()
         advanced_layout = QVBoxLayout(advanced_tab)
         advanced_layout.setSpacing(15)
-        
+
         # 性能设置分组
         performance_group = QGroupBox("⚡ 性能设置")
         performance_layout = QVBoxLayout(performance_group)
@@ -1879,13 +4306,13 @@ class SettingsDialog(QDialog):
         txt_limit_layout.addWidget(self.txt_content_limit_spinbox)
         txt_limit_layout.addStretch()
         performance_layout.addLayout(txt_limit_layout)
-        
+
         advanced_layout.addWidget(performance_group)
-        
+
         # 索引存储位置设置
         storage_group = QGroupBox("💾 存储设置")
         storage_layout = QVBoxLayout(storage_group)
-        
+
         index_dir_layout = QHBoxLayout()
         index_dir_label = QLabel("📁 索引文件存储位置:")
         index_dir_label.setStyleSheet("font-weight: bold; color: #333;")
@@ -1897,7 +4324,7 @@ class SettingsDialog(QDialog):
         index_dir_layout.addWidget(self.index_dir_entry, 1)
         index_dir_layout.addWidget(self.browse_index_button)
         storage_layout.addLayout(index_dir_layout)
-        
+
         advanced_layout.addWidget(storage_group)
         advanced_layout.addStretch()
         tab_widget.addTab(advanced_tab, "⚙️ 高级设置")
@@ -2192,14 +4619,14 @@ class SettingsDialog(QDialog):
         if confirm == QMessageBox.Yes:
             # 收集要移除的项目文本，避免在移除过程中索引变化
             items_to_remove = [(item, self.source_dirs_list.row(item)) for item in selected_items]
-            
+
             # 按行号从大到小排序，确保移除时不会影响索引
             items_to_remove.sort(key=lambda x: x[1], reverse=True)
-            
+
             for item, row in items_to_remove:
                 self.source_dirs_list.takeItem(row)
                 print(f"DEBUG: 已移除源目录: {item.text()}")
-            
+
             print(f"DEBUG: 成功移除 {len(selected_items)} 个源目录")
 
     def _load_settings(self):
@@ -2228,20 +4655,49 @@ class SettingsDialog(QDialog):
         # 保存选中的文件类型到成员变量
         self.selected_file_types = selected_file_types
         print("DEBUG: 设置 self.selected_file_types =", self.selected_file_types)
-        
+
         # --- ADDED: Load File Type Modes Settings ---
         # 获取已保存的文件类型模式设置，如果没有则默认都为完整索引
         saved_file_type_modes = self.settings.value("indexing/fileTypeModes", {})
         print("DEBUG: 从设置加载文件类型模式 =", saved_file_type_modes)
-        
-        # 为所有文件类型设置模式（优先使用保存的设置，否则默认为完整索引）
+
+        # 为所有文件类型设置模式（多媒体文件强制为仅文件名，其他使用保存的设置）
+        supported_types = {
+            'txt': {'display': '📝 文本文件 (.txt)', 'pro_feature': None},
+            'docx': {'display': '📄 Word文档 (.docx)', 'pro_feature': None},
+            'xlsx': {'display': '📊 Excel表格 (.xlsx)', 'pro_feature': None},
+            'pptx': {'display': '📺 PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
+            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
+            'html': {'display': '🌐 HTML网页 (.html, .htm)', 'pro_feature': None},
+            'rtf': {'display': '📄 RTF富文本 (.rtf)', 'pro_feature': None},
+            'md': {'display': '📝 Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
+            'eml': {'display': '📧 电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'msg': {'display': '📧 Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
+            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
+            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
+            'mp4': {'display': '🎬 视频文件 (.mp4, .mkv, .avi等)', 'pro_feature': None, 'filename_only': True},
+            'mp3': {'display': '🎵 音频文件 (.mp3, .wav, .flac等)', 'pro_feature': None, 'filename_only': True},
+            'jpg': {'display': '🖼️ 图片文件 (.jpg, .png, .gif等)', 'pro_feature': None, 'filename_only': True},
+        }
+
         for type_key, mode_combo in self.file_type_modes.items():
-            saved_mode = saved_file_type_modes.get(type_key, "full")  # 默认完整索引
-            if saved_mode == "filename_only":
+            # 检查是否为多媒体文件类型
+            type_info = supported_types.get(type_key, {})
+            is_multimedia = type_info.get('filename_only', False)
+
+            if is_multimedia:
+                # 多媒体文件强制设置为"仅文件名"
                 mode_combo.setCurrentIndex(1)  # 仅文件名
+                mode_combo.setEnabled(False)   # 禁用选择
+                print(f"DEBUG: 设置多媒体文件类型 {type_key} 强制为 filename_only")
             else:
-                mode_combo.setCurrentIndex(0)  # 完整索引
-            print(f"DEBUG: 设置文件类型 {type_key} 的模式为 {saved_mode}")
+                # 非多媒体文件使用保存的设置
+                saved_mode = saved_file_type_modes.get(type_key, "full")  # 默认完整索引
+                if saved_mode == "filename_only":
+                    mode_combo.setCurrentIndex(1)  # 仅文件名
+                else:
+                    mode_combo.setCurrentIndex(0)  # 完整索引
+                print(f"DEBUG: 设置文件类型 {type_key} 的模式为 {saved_mode}")
         # ----------------------------------------------
         
         # 暂时阻断复选框信号
@@ -2379,7 +4835,7 @@ class SettingsDialog(QDialog):
         selected_file_types = self._save_current_file_types()
         print(f"DEBUG: _apply_settings 保存文件类型 = {selected_file_types}")
         self.settings.setValue("indexing/selectedFileTypes", selected_file_types)
-        
+
         # --- ADDED: Save File Type Modes Settings ---
         file_type_modes = self._save_current_file_type_modes()
         print(f"DEBUG: _apply_settings 保存文件类型模式 = {file_type_modes}")
@@ -2525,7 +4981,7 @@ class SettingsDialog(QDialog):
         
         print(f"DEBUG: _save_current_file_types 返回 {len(selected_types)} 个选中类型")
         return selected_types
-    
+
     def _save_current_file_type_modes(self):
         """收集当前文件类型的索引模式并返回字典"""
         file_type_modes = {}
@@ -2533,7 +4989,7 @@ class SettingsDialog(QDialog):
             selected_mode = mode_combo.currentData()  # 获取当前选中项的data值
             file_type_modes[type_key] = selected_mode
             print(f"DEBUG: 文件类型 {type_key} 的索引模式 = {selected_mode}")
-        
+
         print(f"DEBUG: _save_current_file_type_modes 返回字典 = {file_type_modes}")
         return file_type_modes
 
@@ -2825,7 +5281,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
         # --------------------------------------------
-        
+
         # --- 主题管理系统初始化 ---
         self.current_theme = "现代蓝"  # 保持兼容性
         self.theme_manager = ThemeManager("现代蓝")  # 创建统一主题管理器
@@ -2917,11 +5373,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.results_text.setOpenExternalLinks(False)  # 禁止外部链接自动打开
         self.results_text.setOpenLinks(False)          # 禁止所有链接自动打开，使用信号处理
         self.results_text.setStyleSheet("border: 1px solid #D0D0D0;")
-        
+
         # 启用右键菜单并设置选择模式
         self.results_text.setContextMenuPolicy(Qt.CustomContextMenu)
         self.results_text.customContextMenuRequested.connect(self._show_results_context_menu)
-        self.results_text.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+        self.results_text.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
         
         # 创建虚拟滚动组件
         self.virtual_results_model = VirtualResultsModel(self)
@@ -3213,121 +5669,154 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         return container_layout
 
     def _create_type_filter_bar(self):
-        """创建文件类型过滤栏 - 紧凑版本，节省垂直空间"""
+        """创建文件类型过滤栏 - 紧凑美观版本"""
         self.file_type_checkboxes = {}
         self.pro_file_types = {}  # 用于存储专业版文件类型的映射
         
-        # 创建紧凑的容器，不使用分组框节省空间
+        # 创建容器
         container = QFrame()
         container.setObjectName("filter_container")
         container.setStyleSheet("""
             QFrame#filter_container {
-                background-color: #fafafa;
-                border: 1px solid #C0C0C0;
-                border-radius: 4px;
-                padding: 3px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 4px;
             }
         """)
         
-        # 使用水平布局节省垂直空间
+        # 使用水平布局，紧凑排列
         main_layout = QHBoxLayout()
-        main_layout.setSpacing(6)    # 减少间距
-        main_layout.setContentsMargins(3, 3, 3, 3)  # 减少边距
-        
-        # 文件类型选择区域 - 紧凑水平布局
-        type_filter_label = QLabel("📁 类型:")
-        type_filter_label.setStyleSheet("font-weight: bold; color: #333; font-size: 12px;")
-        main_layout.addWidget(type_filter_label)
-        
-        # 定义支持的文件类型，包括专业版标记
-        supported_types = {
-            'pdf': {'display': 'PDF', 'pro_feature': Features.PDF_SUPPORT},
-            'docx': {'display': 'Word', 'pro_feature': None},  # 基础版支持
-            'txt': {'display': 'Text', 'pro_feature': None},   # 基础版支持
-            'xlsx': {'display': 'Excel', 'pro_feature': None}, # 基础版支持
-            'pptx': {'display': 'PPT', 'pro_feature': None},   # 基础版支持
-            'eml': {'display': 'EML', 'pro_feature': Features.EMAIL_SUPPORT},
-            'msg': {'display': 'MSG', 'pro_feature': Features.EMAIL_SUPPORT},
-            'html': {'display': 'HTML', 'pro_feature': None},  # 基础版支持
-            'rtf': {'display': 'RTF', 'pro_feature': None},    # 基础版支持
-            'md': {'display': 'Markdown', 'pro_feature': Features.MARKDOWN_SUPPORT},
-        }
-        
-        # 先添加基础版支持的文件类型
-        free_types = []
-        pro_types = []
-        
-        # 将文件类型分为基础版和专业版两组
-        for type_key, type_info in supported_types.items():
-            if type_info['pro_feature'] is None:
-                free_types.append((type_key, type_info))
-            else:
-                pro_types.append((type_key, type_info))
-        
-        # 处理函数 - 为了避免代码重复，紧凑版本
-        def add_checkbox_to_layout(type_key, type_info):
-            display_name = type_info['display']
-            pro_feature = type_info['pro_feature']
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+
+        # 添加图标标题
+        icon_label = QLabel("📁")
+        icon_label.setStyleSheet("font-size: 14px; padding: 0px;")
+        main_layout.addWidget(icon_label)
+
+        # 创建文件类型定义（紧凑版本）
+        file_type_configs = [
+            # 文档类型
+            ('pdf', {'display': 'PDF', 'pro_feature': Features.PDF_SUPPORT, 'color': '#dc3545'}),
+            ('docx', {'display': 'Word', 'pro_feature': None, 'color': '#2b5797'}),
+            ('txt', {'display': 'TXT', 'pro_feature': None, 'color': '#6c757d'}),
+            ('xlsx', {'display': 'Excel', 'pro_feature': None, 'color': '#107c41'}),
+            ('pptx', {'display': 'PPT', 'pro_feature': None, 'color': '#d83b01'}),
+            ('html', {'display': 'HTML', 'pro_feature': None, 'color': '#e34c26'}),
+            ('md', {'display': 'MD', 'pro_feature': Features.MARKDOWN_SUPPORT, 'color': '#333'}),
+            # 分隔符
+            ('separator1', {'type': 'separator'}),
+            # 多媒体类型
+            ('mp4', {'display': '🎬视频', 'pro_feature': None, 'color': '#6f42c1', 'multimedia': ['mp4', 'mkv', 'avi', 'wmv', 'mov', 'flv', 'webm', 'm4v']}),
+            ('mp3', {'display': '🎵音频', 'pro_feature': None, 'color': '#fd7e14', 'multimedia': ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']}),
+            ('jpg', {'display': '🖼️图片', 'pro_feature': None, 'color': '#20c997', 'multimedia': ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'svg']}),
+            # 分隔符
+            ('separator2', {'type': 'separator'}),
+            # 邮件类型
+            ('eml', {'display': '📧EML', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+            ('msg', {'display': '📧MSG', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+        ]
+
+        # 处理函数
+        def add_checkbox_to_layout(type_key, type_config):
+            if type_config.get('type') == 'separator':
+                # 添加分隔线
+                separator = QFrame()
+                separator.setFrameShape(QFrame.VLine)
+                separator.setFrameShadow(QFrame.Sunken)
+                separator.setFixedWidth(1)
+                separator.setFixedHeight(20)
+                separator.setStyleSheet("color: #dee2e6;")
+                main_layout.addWidget(separator)
+                return
+
+            display_name = type_config['display']
+            pro_feature = type_config.get('pro_feature')
+            color = type_config.get('color', '#495057')
             
             checkbox = QCheckBox(display_name)
-            checkbox.setStyleSheet("font-size: 11px;")  # 减小字体
             
             # 检查此文件类型是否需要专业版
             is_pro_feature = pro_feature is not None
             feature_available = not is_pro_feature or self.license_manager.is_feature_available(pro_feature)
             
             # 存储复选框和其对应的类型
+            if 'multimedia' in type_config:
+                self.file_type_checkboxes[checkbox] = type_config['multimedia']
+            else:
             self.file_type_checkboxes[checkbox] = type_key
             
-            # 如果是专业版功能且未激活，则灰显
+            # 设置样式
             if is_pro_feature and not feature_available:
                 checkbox.setEnabled(False)
-                checkbox.setStyleSheet("color: #888888; font-size: 11px;")  
-                checkbox.setText(f"{display_name}⭐")  # 添加星号标记专业版
+                checkbox.setText(f"{display_name}⭐")
+                checkbox.setStyleSheet(f"""
+                    QCheckBox {{
+                        font-size: 10px;
+                        font-weight: 500;
+                        color: #adb5bd;
+                        padding: 2px 4px;
+                        spacing: 3px;
+                    }}
+                    QCheckBox::indicator {{
+                        width: 12px;
+                        height: 12px;
+                    }}
+                """)
                 
                 self.pro_file_types[checkbox] = {
                     'feature': pro_feature,
-                    'display_name': display_name
+                    'display_name': display_name.replace('⭐', '')
                 }
-                
-                # 为灰显的复选框添加点击事件提示专业版
                 checkbox.clicked.connect(self._show_pro_feature_dialog)
             else:
-                # 正常显示
                 checkbox.setEnabled(True)
-            
-            # 直接添加到主布局，不使用子布局
-            main_layout.addWidget(checkbox)
+                checkbox.setStyleSheet(f"""
+                    QCheckBox {{
+                        font-size: 10px;
+                        font-weight: 500;
+                        color: {color};
+                        padding: 2px 4px;
+                        spacing: 3px;
+                    }}
+                    QCheckBox::indicator {{
+                        width: 12px;
+                        height: 12px;
+                        border: 1px solid {color};
+                        border-radius: 2px;
+                        background-color: white;
+                    }}
+                    QCheckBox::indicator:checked {{
+                        background-color: {color};
+                        border: 1px solid {color};
+                    }}
+                    QCheckBox::indicator:checked:hover {{
+                        background-color: {color};
+                    }}
+                    QCheckBox:hover {{
+                        background-color: rgba(0,0,0,0.05);
+                        border-radius: 3px;
+                    }}
+                """)
             
             # 连接复选框状态改变信号
             checkbox.stateChanged.connect(self._filter_results_by_type_slot)
-        
-        # 先添加基础版文件类型
-        for type_key, type_info in free_types:
-            add_checkbox_to_layout(type_key, type_info)
-            
-        # 添加专业版分隔符
-        if pro_types:
-            # 添加垂直分隔线
-            separator = QFrame()
-            separator.setFrameShape(QFrame.VLine)
-            separator.setFrameShadow(QFrame.Sunken)
-            separator.setFixedWidth(1)
-            separator.setMaximumHeight(16)  # 限制高度
-            main_layout.addWidget(separator)
-        
-        # 再添加专业版文件类型
-        for type_key, type_info in pro_types:
-            add_checkbox_to_layout(type_key, type_info)
+            main_layout.addWidget(checkbox)
+
+        # 添加所有文件类型
+        for type_key, type_config in file_type_configs:
+            add_checkbox_to_layout(type_key, type_config)
         
         main_layout.addStretch(1)
         
         # 设置容器的布局
         container.setLayout(main_layout)
         
-        # 返回紧凑布局
+        # 返回布局
         container_layout = QVBoxLayout()
-        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.addWidget(container)
         return container_layout
         
@@ -3576,10 +6065,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- 搜索防抖机制连接 ---
         self.search_line_edit.textChanged.connect(self._on_search_text_changed)
         self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
-        
+
         # --- 搜索历史下拉框选择处理 ---
         self.search_combo.activated.connect(self._on_history_item_selected)
-        
+
         # --- 回车键搜索支持 ---
         self.search_line_edit.returnPressed.connect(self.start_search_slot)
 
@@ -3777,6 +6266,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         for checkbox, type_value in self.file_type_checkboxes.items():
             # 只添加被选中且可用的文件类型（专业版功能在未激活时为灰色不可选）
             if checkbox.isChecked() and checkbox.isEnabled():
+                # 处理多媒体类型的列表
+                if isinstance(type_value, list):
+                    checked_types.extend(type_value)
+                else:
                 checked_types.append(type_value)
         
         print(f"DEBUG: Checked types for filtering: {checked_types}")  # DEBUG
@@ -3794,15 +6287,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 file_path = result.get('file_path', '')
                 file_type = None
                 
-                # 提取文件扩展名
+                # 提取文件扩展名，包括多媒体文件
                 if file_path:
                     lower_path = file_path.lower()
-                    for ext in ['.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md']:
+                    # 扩展文件类型列表，包含多媒体文件
+                    all_extensions = [
+                        '.pdf', '.docx', '.txt', '.xlsx', '.pptx', '.eml', '.msg', '.html', '.htm', '.rtf', '.md',
+                        '.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.webm', '.m4v',  # 视频
+                        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',         # 音频
+                        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg'  # 图片
+                    ]
+                    for ext in all_extensions:
                         if lower_path.endswith(ext):
                             file_type = ext[1:]  # 移除前导点
                             # .htm特殊情况，处理为html
                             if file_type == 'htm':
                                 file_type = 'html'
+                            # .jpeg特殊情况，处理为jpg
+                            elif file_type == 'jpeg':
+                                file_type = 'jpg'
                             break
                 
                 # 如果文件类型匹配所选类型，添加结果
@@ -3870,23 +6373,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         original_count = len(self.original_search_results) if hasattr(self, 'original_search_results') else 0
         filtered_count = len(filtered_results)
         
-        if checked_types:
-            # 有选择文件类型时，显示过滤状态
-            type_names = ', '.join(checked_types)
-            if filtered_count == 0:
-                self.statusBar().showMessage(f"未找到 {type_names} 类型的文件 (原始结果: {original_count} 个)", 0)
-            else:
-                self.statusBar().showMessage(f"已过滤为 {type_names} 类型: {filtered_count} 个结果 (原始: {original_count} 个)", 0)
-        else:
-            # 没有选择文件类型时，显示所有结果
-            if filtered_count == 0:
-                self.statusBar().showMessage("未找到结果", 0)
-            else:
-                self.statusBar().showMessage(f"显示所有类型: {filtered_count} 个结果", 0)
-        
-        # 更新状态栏，显示过滤信息
-        original_count = len(self.original_search_results) if hasattr(self, 'original_search_results') else 0
-        filtered_count = len(filtered_results)
+        # 清除之前的搜索警告（如果过滤后结果变少）
+        if hasattr(self, 'search_warning_label') and filtered_count < 500:
+            self.search_warning_label.setVisible(False)
         
         if checked_types:
             # 有选择文件类型时，显示过滤状态
@@ -3902,28 +6391,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             else:
                 self.statusBar().showMessage(f"显示所有类型: {filtered_count} 个结果", 0)
         
-        # === 虚拟滚动兼容性修复 ===
-        # 检查当前是否使用虚拟滚动模式
-        use_virtual_scroll = len(filtered_results) > self.virtual_scroll_threshold
-        
-        if use_virtual_scroll:
-            # 直接调用虚拟滚动显示，不需要查看方式处理
-            self.results_stack.setCurrentIndex(1)
-            # 确保虚拟滚动模型有正确的父窗口引用
-            self.virtual_results_model.parent_window = self
-            # 设置虚拟滚动模型数据
-            current_theme = self.settings.value("ui/theme", "现代蓝")
-            self.virtual_results_model.set_theme(current_theme)
-            self.virtual_results_model.set_results(filtered_results)
-            
-            if filtered_count == 0:
-                print("💡 虚拟滚动模式: 显示 0 个结果")
-            else:
-                print(f"💡 虚拟滚动模式: 显示 {filtered_count} 个结果，提升UI性能")
-        else:
-            # 使用传统模式和查看方式系统
-            self.results_stack.setCurrentIndex(0)
-            self._apply_view_mode_and_display()
+        # === 统一显示逻辑修复 ===
+        # 调用统一的display_search_results_slot函数，避免重复的虚拟滚动判断逻辑
+        print(f"DEBUG: _filter_results_by_type_slot调用display_search_results_slot，结果数量: {filtered_count}")
+        self.display_search_results_slot(filtered_results)
     
     @Slot()
     def _sort_and_redisplay_results_slot(self):
@@ -4012,7 +6483,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if hasattr(self, 'worker') and self.worker:
             self.worker.clear_search_cache()
             print(f"DEBUG: 搜索开始前已清除缓存")
-        
+
         # --- MODIFIED: Call common search prep with scope ---
         self._start_search_common(mode, query, search_scope)
         # --------------------------------------------------
@@ -4063,7 +6534,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         """Common logic to start search, now takes mode, query, and scope."""
         # 检查是否为历史记录选择，如果是则优先处理
         is_history_selection = getattr(self, '_history_selection_in_progress', False)
-        
+
         if self.is_busy and not is_history_selection:
             QMessageBox.warning(self, "忙碌中", "请等待当前操作完成。")
             return
@@ -4260,7 +6731,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # --- MODIFIED: 正确传递目录过滤参数 ---
         # 获取当前配置的源目录，用于过滤历史索引中已删除目录的结果
         source_dirs = self.settings.value("indexing/sourceDirectories", [], type=list)
-        
+
         # 区分两种目录参数：
         # 1. current_source_dirs_param: 用于过滤已删除目录，总是传递所有当前配置的源目录
         # 2. search_dirs_param: 用于搜索范围限制，仅在用户选择特定目录时传递
@@ -4271,12 +6742,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print(f"DEBUG: 当前配置的源目录: {source_dirs}")
         print(f"DEBUG: 目录过滤参数(current_source_dirs): {current_source_dirs_param}")
         print(f"DEBUG: 搜索范围参数(search_dirs): {search_dirs_param}")
-        
+
         # 清除搜索缓存以确保目录过滤生效
         if self.worker:
             self.worker.clear_search_cache()
             print("DEBUG: 已清除搜索缓存，确保目录过滤生效")
-        
+
         # --- MODIFIED: Emit Signal to Worker with scope ---
         self.startSearchSignal.emit(query,
                                     mode,
@@ -4300,7 +6771,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _on_search_text_changed(self, text):
         """处理搜索文本变化 - 智能防抖机制：历史记录自动搜索，手动输入需要回车"""
         print(f"DEBUG: _on_search_text_changed 被调用，文本: '{text}'")
-        
+
         # 重置防抖计时器
         if hasattr(self, 'search_debounce_timer'):
             self.search_debounce_timer.stop()
@@ -4316,21 +6787,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         if text.strip() == getattr(self, 'last_search_text', '') and not is_history_selection:
             print(f"DEBUG: 文本与上次相同，跳过搜索")
             return
-        
+            
         # 检测是否为历史记录选择（通过程序设置文本）
         is_history_selection = getattr(self, '_setting_text_from_history', False)
         print(f"DEBUG: 历史记录选择标志: {is_history_selection}")
-        
+
         # 如果启用了即时搜索
         instant_search = getattr(self, 'instant_search_enabled', False)
         print(f"DEBUG: 即时搜索启用状态: {instant_search}")
-        
+
         if instant_search:
             if is_history_selection:
                 # 历史记录选择：立即重置标志，然后启动短延迟自动搜索
                 self._setting_text_from_history = False  # 立即重置标志避免重复触发
                 print(f"DEBUG: 历史记录选择标志已立即重置")
-                
+
                 # 历史记录选择时立即执行搜索，不使用计时器
                 print(f"DEBUG: 历史记录选择，立即执行搜索 (文本: '{text}')")
                 # 更新搜索文本记录
@@ -4345,54 +6816,54 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self.statusBar().showMessage("请按回车键或点击搜索按钮开始搜索", 2000)
         else:
             print(f"DEBUG: 即时搜索未启用，跳过防抖逻辑")
-        
+
     @Slot(int)
     def _on_history_item_selected(self, index):
         """处理历史记录项目选择"""
-        print(f"DEBUG: _on_history_item_selected 被调用，索引: {index}")
-        if index >= 0:
+        if 0 <= index < self.search_combo.count():
             selected_text = self.search_combo.itemText(index)
             if selected_text:
                 print(f"DEBUG: 用户选择历史记录: '{selected_text}' (长度: {len(selected_text)})")
-                
+
                 # 立即阻止所有当前操作
-                if hasattr(self, 'search_debounce_timer'):
+            if hasattr(self, 'search_debounce_timer'):
                     self.search_debounce_timer.stop()
-                
+
                 # 取消当前搜索操作（如果有）
                 if hasattr(self, 'worker') and self.worker:
                     self.worker.stop_requested = True
-                
+
                 # 设置标志以表明这是历史记录选择
                 self._setting_text_from_history = True
                 self._history_selection_in_progress = True  # 额外标志
                 print(f"DEBUG: 历史记录选择标志设置为 True")
-                
+
                 # 设置文本（这会触发textChanged信号）
                 self.search_line_edit.setText(selected_text)
                 print(f"DEBUG: 文本已设置")
-                
+
                 # 确保立即执行搜索，不依赖textChanged
                 QTimer.singleShot(50, lambda: self._execute_history_search(selected_text))
             else:
                 print(f"DEBUG: 选中的文本为空")
         else:
             print(f"DEBUG: 索引无效: {index}")
-    
+
+
     def _execute_history_search(self, search_text):
         """执行历史记录搜索"""
         print(f"DEBUG: _execute_history_search 被调用，文本: '{search_text}'")
         # 重置标志
         self._setting_text_from_history = False
         self._history_selection_in_progress = False
-        
+
         # 确保搜索框文本正确
         if self.search_line_edit.text().strip() == search_text.strip():
             # 清除搜索缓存以确保新搜索获得准确结果
             if hasattr(self, 'worker') and self.worker:
                 self.worker.clear_search_cache()
                 print(f"DEBUG: 已清除搜索缓存以确保准确结果")
-            
+
             # 更新搜索历史记录
             self.last_search_text = search_text.strip()
             print(f"DEBUG: 历史记录搜索 - 立即执行搜索: '{search_text}'")
@@ -4400,12 +6871,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.start_search_slot()
         else:
             print(f"DEBUG: 搜索框文本不匹配，跳过历史记录搜索")
-    
+
     def _reset_history_flag(self):
         """重置历史记录选择标志"""
         self._setting_text_from_history = False
         print(f"DEBUG: 历史记录选择标志已重置为 False")
-    
+        
     @Slot()
     def _perform_debounced_search(self):
         """执行防抖搜索"""
@@ -4483,33 +6954,33 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 使用默认相关性排序
         sorted_results = search_results
         
-        # === 虚拟滚动兼容性检查 ===
+        # === 智能模式选择：基于结果数量和分组需求 ===
         use_virtual_scroll = len(sorted_results) > self.virtual_scroll_threshold
         
         if use_virtual_scroll:
-            # 切换到虚拟滚动模式并显示结果
-            self.results_stack.setCurrentIndex(1)
-            # 确保虚拟滚动模型有正确的父窗口引用
-            self.virtual_results_model.parent_window = self
-            # 设置虚拟滚动模型数据
-            current_theme = self.settings.value("ui/theme", "现代蓝")
-            self.virtual_results_model.set_theme(current_theme)
-            self.virtual_results_model.set_results(sorted_results)
+            # 虚拟滚动模式：直接调用display_search_results_slot（支持分组）
+            print(f"DEBUG: _apply_view_mode_and_display调用display_search_results_slot（虚拟滚动），结果数量: {len(sorted_results)}")
+            self.display_search_results_slot(sorted_results)
+        else:
+            # 传统模式：根据分组设置选择显示方式
+            print(f"DEBUG: _apply_view_mode_and_display处理传统模式，结果数量: {len(sorted_results)}")
             
-            print(f"💡 虚拟滚动模式: 显示 {len(sorted_results)} 个结果，提升UI性能")
-            return
-        
-        # 传统模式：使用排序和分组
-        self.results_stack.setCurrentIndex(0)
-        
-        # 然后根据当前分组模式显示结果
         if getattr(self, 'grouping_enabled', False) and getattr(self, 'current_grouping_mode', 'none') != 'none':
-            # 应用分组
+                # 应用分组显示
+                print(f"📋 传统模式: 应用分组显示 ({self.current_grouping_mode})")
             grouped_results = self._group_results(sorted_results, self.current_grouping_mode)
+                
+                # 根据搜索范围选择合适的分组显示方法
+                if hasattr(self, 'last_search_scope') and self.last_search_scope == 'filename':
+                    # 文件名搜索：使用传统分组显示方法（现代化按钮样式）
+                    self._display_grouped_results_traditional(grouped_results)
+                else:
+                    # 全文搜索：使用完整分组显示方法
             self._display_grouped_results(grouped_results)
         else:
-            # 不分组，直接显示
-            self._display_ungrouped_results(sorted_results)
+                # 不分组，调用标准显示
+                print("📋 传统模式: 调用标准显示（不分组）")
+                self.display_search_results_slot(sorted_results)
             
 
             
@@ -4540,7 +7011,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 按修改日期分组（按天）
             import datetime
             import os
-            mtime = result.get('mtime', 0)
+            mtime = result.get('last_modified', result.get('mtime', 0))
             
             # 如果搜索结果没有mtime，尝试从文件系统获取
             if mtime <= 0:
@@ -4753,9 +7224,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     except Exception as pe:
                         print(f"W: Could not get parent for {file_path}: {pe}")
 
-                    links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>[打开文件]</a>']
+                    links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>🔍 打开文件</a>']
                     if folder_path_str:
-                        links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>[打开目录]</a>')
+                        links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>📁 打开目录</a>')
                     
                     html_output.append(f"<p><strong>{escaped_display_path}</strong></p>")
                     html_output.append(f"<p>{ ' &nbsp; '.join(links) }</p>")
@@ -4780,6 +7251,184 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             print(f"Error in _display_grouped_search_results: {e}")
             self.results_text.setText(f"显示结果时出错: {e}")
         
+    def _display_grouped_results_traditional(self, grouped_results):
+        """传统模式下显示分组后的文件名搜索结果 - 使用现代化按钮样式"""
+        scrollbar = self.results_text.verticalScrollBar()
+        scroll_position = scrollbar.value()
+
+        try:
+            self.results_text.clear()
+            if not grouped_results:
+                self.results_text.setText("未找到匹配结果。")
+                self.statusBar().showMessage("未找到结果", 5000)
+                return
+
+            # 获取主题颜色
+            current_theme = self.settings.value("ui/theme", "现代蓝")
+            theme_colors = self._get_theme_colors_for_display(current_theme)
+
+            html_output = []
+
+            # 统计总结果数
+            total_results = sum(len(group_results) for group_results in grouped_results.values())
+
+            # 添加美观的标题
+            html_output.append(f'''
+            <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
+                <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
+                    📄 文件名搜索结果 ({total_results} 个文件，按分组显示)
+                </h3>
+            </div>
+            ''')
+
+            # 按组名排序
+            sorted_groups = sorted(grouped_results.keys())
+
+            for group_name in sorted_groups:
+                group_results = grouped_results[group_name]
+                
+                # 检查组的折叠状态
+                group_collapse_states = getattr(self, 'group_collapse_states', {})
+                is_collapsed = group_collapse_states.get(group_name, False)
+                collapse_symbol = "▶" if is_collapsed else "▼"
+                
+                # 创建组标题ID
+                group_id = f"group_{hash(group_name) & 0xFFFFFF:06X}"
+                
+                # 存储分组ID到名称的映射
+                if not hasattr(self, 'group_id_mapping'):
+                    self.group_id_mapping = {}
+                self.group_id_mapping[group_id] = group_name
+
+                # 显示组标题
+                html_output.append(f'''
+                <div style="background-color: #f5f5f5; padding: 12px; margin: 15px 0 10px 0; border-left: 4px solid {theme_colors["primary"]}; border-radius: 6px;">
+                    <a href="#{group_id}" style="color: {theme_colors["primary"]}; text-decoration:none; font-weight:bold;">
+                        <h3 style="margin: 0; color: {theme_colors["primary"]};">{collapse_symbol} {group_name} ({len(group_results)} 个文件)</h3>
+                    </a>
+                </div>
+                ''')
+
+                # 如果组未折叠，显示组内的文件
+                if not is_collapsed:
+                    processed_paths = set()
+                    for i, result in enumerate(group_results):
+                        file_path = result.get('file_path', '(未知文件)')
+                        if file_path in processed_paths:
+                            continue
+                        processed_paths.add(file_path)
+
+                        # 计算文件信息
+                        try:
+                            file_name = os.path.basename(file_path)
+                            file_size = result.get('file_size', result.get('size', 0))
+                            mtime = result.get('last_modified', result.get('mtime', 0))
+
+                            # 格式化文件大小
+                            if file_size > 0:
+                                if file_size < 1024:
+                                    size_str = f"{file_size} B"
+                                elif file_size < 1024 * 1024:
+                                    size_str = f"{file_size / 1024:.1f} KB"
+                                else:
+                                    size_str = f"{file_size / (1024 * 1024):.1f} MB"
+                            else:
+                                size_str = '未知大小'
+
+                            # 格式化修改时间
+                            if mtime > 0:
+                                import datetime
+                                mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+                            else:
+                                mtime_str = '未知时间'
+
+                            # 获取文件类型图标
+                            file_ext = Path(file_path).suffix.lower()
+                            type_icon = "📄"
+                            if file_ext in ['.docx', '.doc']:
+                                type_icon = "📝"
+                            elif file_ext in ['.xlsx', '.xls']:
+                                type_icon = "📊"
+                            elif file_ext in ['.pptx', '.ppt']:
+                                type_icon = "📋"
+                            elif file_ext in ['.pdf']:
+                                type_icon = "📕"
+                            elif file_ext in ['.txt', '.md']:
+                                type_icon = "📄"
+                            elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+                                type_icon = "🖼️"
+                            elif file_ext in ['.mp4', '.avi', '.mov']:
+                                type_icon = "🎬"
+                            elif file_ext in ['.mp3', '.wav', '.flac']:
+                                type_icon = "🎵"
+
+                        except Exception as e:
+                            file_name = file_path
+                            size_str = '未知大小'
+                            mtime_str = '未知时间'
+                            type_icon = "📄"
+
+                        escaped_file_name = html.escape(file_name)
+                        escaped_file_path = html.escape(file_path)
+
+                        # 计算文件夹路径
+                        folder_path_str = ""
+                        is_archive_member = "::" in file_path
+                        try:
+                            if is_archive_member:
+                                archive_file_path = file_path.split("::", 1)[0]
+                                folder_path_str = str(Path(archive_file_path).parent)
+                            else:
+                                path_obj = Path(file_path)
+                                if path_obj.is_file():
+                                    folder_path_str = str(path_obj.parent)
+                        except Exception as pe:
+                            print(f"W: Could not get parent for {file_path}: {pe}")
+
+                        # 构建操作链接 - 使用现代化按钮样式（与不分组显示完全一致）
+                        links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
+                        if folder_path_str:
+                            links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+
+                        # 生成美观的文件项HTML（与不分组显示完全一致）
+                        html_output.append(f'''
+                        <div style="margin: 6px 15px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 5px;">
+                                <tr>
+                                    <td style="vertical-align: middle;">
+                                        <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
+                                        <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
+                                    </td>
+                                    <td style="text-align: right; vertical-align: middle; white-space: nowrap;">
+                                        {" ".join(links)}
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div style="margin-left: 26px;">
+                                <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    {escaped_file_path}
+                                </p>
+                                <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
+                                    <table width="100%" cellpadding="0" cellspacing="0">
+                                        <tr>
+                                            <td style="font-size: 11px; color: #6c757d;">📏 {size_str}</td>
+                                            <td style="text-align: right; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        ''')
+
+            final_html = "".join(html_output)
+            self.results_text.setHtml(final_html)
+            scrollbar.setValue(scroll_position)
+
+        except Exception as e:
+            print(f"Error in _display_grouped_results_traditional: {e}")
+            self.results_text.setText(f"显示结果时出错: {e}")
+
     def _display_ungrouped_results(self, results):
         """显示未分组的搜索结果 - 使用与首次搜索相同的详细显示格式"""
         # 直接使用完整的搜索结果显示函数，确保显示效果一致
@@ -4789,8 +7438,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         """格式化单个搜索结果的HTML"""
         file_path = result.get('file_path', result.get('path', 'Unknown'))
         score = result.get('score', 0)
-        mtime = result.get('mtime', 0)
-        size = result.get('size', 0)
+        mtime = result.get('last_modified', result.get('mtime', 0))
+        size = result.get('file_size', result.get('size', 0))
         
         # 格式化修改时间
         if mtime > 0:
@@ -4856,6 +7505,72 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _extract_folder_path(self, file_path):
         """提取文件夹路径"""
         return PathStandardizer.get_folder_path(file_path)
+
+    def _get_theme_colors_for_display(self, theme_name):
+        """获取用于显示的主题颜色配置"""
+        if theme_name == "现代蓝":
+            return {
+                "primary": "#007ACC",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444",
+                "text_color": "#333333"
+            }
+        elif theme_name == "现代紫":
+            return {
+                "primary": "#8B5CF6",
+                "success": "#10B981",
+                "info": "#8B5CF6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444",
+                "text_color": "#333333"
+            }
+        elif theme_name == "现代红":
+            return {
+                "primary": "#DC2626",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#DC2626",
+                "text_color": "#333333"
+            }
+        elif theme_name == "现代橙":
+            return {
+                "primary": "#EA580C",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#EA580C",
+                "danger": "#EF4444",
+                "text_color": "#333333"
+            }
+        elif theme_name == "深色模式":
+            return {
+                "primary": "#3B82F6",
+                "success": "#059669",
+                "info": "#3B82F6",
+                "warning": "#D97706",
+                "danger": "#DC2626",
+                "text_color": "#F9FAFB"
+            }
+        elif theme_name == "护眼绿":
+            return {
+                "primary": "#059669",
+                "success": "#059669",
+                "info": "#0891B2",
+                "warning": "#D97706",
+                "danger": "#DC2626",
+                "text_color": "#1E1E1E"
+            }
+        else:
+            return {
+                "primary": "#007ACC",
+                "success": "#10B981",
+                "info": "#3B82F6",
+                "warning": "#F59E0B",
+                "danger": "#EF4444",
+                "text_color": "#333333"
+            }
 
     # --- GUI Update Slots (Connected to worker signals) --- 
     @Slot(str)
@@ -4923,6 +7638,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         try:
             # === 虚拟滚动智能切换逻辑 ===
             use_virtual_scroll = len(results) > self.virtual_scroll_threshold
+            print(f"🔧 虚拟滚动判断: len(results)={len(results)}, threshold={self.virtual_scroll_threshold}, use_virtual_scroll={use_virtual_scroll}")
             
             if use_virtual_scroll:
                 # 切换到虚拟滚动视图
@@ -4960,7 +7676,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     print(f"💡 虚拟滚动模式: 显示 {len(results)} 个结果，提升UI性能")
                 return
             else:
-                # 使用传统文本浏览器
+                # === 传统模式：支持分组功能 ===
                 self.results_stack.setCurrentIndex(0)
                 scrollbar = self.results_text.verticalScrollBar()
                 scroll_position = scrollbar.value()
@@ -4970,6 +7686,19 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 self.results_text.setText("未找到匹配结果。")
                 self.statusBar().showMessage("未找到结果", 5000)
                 return
+
+                # 应用分组逻辑（如果启用）
+                if (hasattr(self, 'grouping_enabled') and self.grouping_enabled and 
+                    hasattr(self, 'current_grouping_mode') and self.current_grouping_mode != 'none'):
+                    
+                    print(f"📋 传统模式: 应用分组显示 ({self.current_grouping_mode})")
+                    # 应用分组并显示
+                    grouped_results = self._group_results(results, self.current_grouping_mode)
+                    self._display_grouped_results_traditional(grouped_results)
+                    self.statusBar().showMessage(f"找到 {len(results)} 个结果 (按{self.current_grouping_mode}分组)", 0)
+                    return
+                else:
+                    print("📋 传统模式: 使用列表显示（不分组）")
 
             # --- Determine highlight and link colors based on theme --- MODIFIED
             current_theme = self.settings.value("ui/theme", "现代蓝")
@@ -5020,18 +7749,84 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # -----------------------------------------------------------
 
             if hasattr(self, 'last_search_scope') and self.last_search_scope == 'filename':
-                # --- Render Simplified List --- 
+                # --- 优化的文件名搜索结果显示 ---
+
+                # 获取当前主题颜色
+                current_theme = self.settings.value("ui/theme", "现代蓝")
+                theme_colors = self._get_theme_colors_for_display(current_theme)
+
                 html_output = []
-                html_output.append("<h4>文件名搜索结果:</h4>")
-                html_output.append("<ul>")
+
+                # 添加美观的标题
+                html_output.append(f'''
+                <div style="margin: 15px 5px 20px 5px; padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid {theme_colors["primary"]};">
+                    <h3 style="margin: 0; color: {theme_colors["primary"]}; font-size: 16px; font-weight: bold;">
+                        📄 文件名搜索结果 ({len(results)} 个文件)
+                    </h3>
+                </div>
+                ''')
+
                 processed_paths = set()
                 for i, result in enumerate(results):
-                    # ... (extract file_path, determine folder_path_str) ...
                     file_path = result.get('file_path', '(未知文件)')
                     if file_path in processed_paths:
                         continue
                     processed_paths.add(file_path)
-                    escaped_display_path = html.escape(file_path)
+
+                    # 计算文件信息
+                    try:
+                        file_name = os.path.basename(file_path)
+                        file_size = result.get('file_size', result.get('size', 0))
+                        mtime = result.get('last_modified', result.get('mtime', 0))
+
+                        # 格式化文件大小
+                        if file_size > 0:
+                            if file_size < 1024:
+                                size_str = f"{file_size} B"
+                            elif file_size < 1024 * 1024:
+                                size_str = f"{file_size / 1024:.1f} KB"
+                            else:
+                                size_str = f"{file_size / (1024 * 1024):.1f} MB"
+                        else:
+                            size_str = '未知大小'
+
+                        # 格式化修改时间
+                        if mtime > 0:
+                            import datetime
+                            mtime_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+                        else:
+                            mtime_str = '未知时间'
+
+                        # 获取文件类型图标
+                        file_ext = Path(file_path).suffix.lower()
+                        type_icon = "📄"
+                        if file_ext in ['.docx', '.doc']:
+                            type_icon = "📝"
+                        elif file_ext in ['.xlsx', '.xls']:
+                            type_icon = "📊"
+                        elif file_ext in ['.pptx', '.ppt']:
+                            type_icon = "📋"
+                        elif file_ext in ['.pdf']:
+                            type_icon = "📕"
+                        elif file_ext in ['.txt', '.md']:
+                            type_icon = "📄"
+                        elif file_ext in ['.jpg', '.png', '.gif', '.bmp']:
+                            type_icon = "🖼️"
+                        elif file_ext in ['.mp4', '.avi', '.mov']:
+                            type_icon = "🎬"
+                        elif file_ext in ['.mp3', '.wav', '.flac']:
+                            type_icon = "🎵"
+
+                    except Exception as e:
+                        file_name = file_path
+                        size_str = '未知大小'
+                        mtime_str = '未知时间'
+                        type_icon = "📄"
+
+                    escaped_file_name = html.escape(file_name)
+                    escaped_file_path = html.escape(file_path)
+
+                    # 计算文件夹路径
                     folder_path_str = ""
                     is_archive_member = "::" in file_path
                     try:
@@ -5045,13 +7840,41 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     except Exception as pe:
                         print(f"W: Could not get parent for {file_path}: {pe}")
 
-                    # --- MODIFIED: Use link_style for actions ---
-                    links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>[打开文件]</a>']
+                    # 构建操作链接 - 使用现代化按钮样式
+                    links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["success"]}; border-radius: 4px; font-size: 12px; margin-right: 8px;">🔍 打开文件</a>']
                     if folder_path_str:
-                        links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>[打开目录]</a>')
-                    # -------------------------------------------
-                    html_output.append(f'<li>{escaped_display_path} &nbsp;&nbsp; { " &nbsp; ".join(links) }</li>')
-                html_output.append("</ul>")
+                        links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" style="color: #fff; text-decoration: none; padding: 6px 12px; background: {theme_colors["info"]}; border-radius: 4px; font-size: 12px;">📁 打开目录</a>')
+
+                    # 生成美观的文件项HTML
+                    html_output.append(f'''
+                    <div style="margin: 6px 5px; padding: 10px; background: #fff; border: 1px solid #e9ecef; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 5px;">
+                            <tr>
+                                <td style="vertical-align: middle;">
+                                    <span style="font-size: 18px; margin-right: 8px;">{type_icon}</span>
+                                    <span style="color: {theme_colors["text_color"]}; font-size: 13px; font-weight: bold;">{escaped_file_name}</span>
+                                </td>
+                                <td style="text-align: right; vertical-align: middle; white-space: nowrap;">
+                                    {" ".join(links)}
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-left: 26px;">
+                            <p style="margin: 0 0 5px 0; color: #6c757d; font-size: 10px; font-family: monospace; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {escaped_file_path}
+                            </p>
+                            <div style="padding: 5px 8px; background: #f8f9fa; border-radius: 3px;">
+                                <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td style="font-size: 11px; color: #6c757d;">📏 {size_str}</td>
+                                        <td style="text-align: right; font-size: 11px; color: #6c757d;">🕒 {mtime_str}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    ''')
                 
                 final_html = "".join(html_output)
                 self.results_text.setHtml(final_html)
@@ -5121,7 +7944,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             is_file_collapsed = self.collapse_states.get(file_key, False)
                             toggle_char = "[+]" if is_file_collapsed else "[-]"
                             toggle_href = f'toggle::{html.escape(file_key, quote=True)}'
-                            html_output.append(f'<h3><a href="{toggle_href}" {toggle_link_style}>{toggle_char}</a> {file_group_counter}. {escaped_display_path}</h3>')
+                            html_output.append(f'<h3 style="font-size: {UI_FONT_SIZES["file_header"]}; margin: {UI_SPACING["large"]} 0; color: #2c3e50;"><a href="{toggle_href}" {toggle_link_style}>{toggle_char}</a> {file_group_counter}. {escaped_display_path}</h3>')
                             folder_path_str = ""
                             is_archive_member = "::" in file_path
                             try:
@@ -5134,9 +7957,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                         folder_path_str = str(path_obj.parent)
                             except Exception as pe:
                                 print(f"W: Could not get parent for {file_path}: {pe}")
-                            links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>[打开文件]</a>']
+                            links = [f'<a href="openfile:{html.escape(file_path, quote=True)}" {link_style}>🔍 打开文件</a>']
                             if folder_path_str:
-                                links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>[打开目录]</a>')
+                                links.append(f'<a href="openfolder:{html.escape(folder_path_str, quote=True)}" {link_style}>📁 打开目录</a>')
                             html_output.append(f"<p>{ ' &nbsp; '.join(links) }</p>")
                             if not is_file_collapsed:
                                 html_output.append('<div class="file-details" style="display: block;">')
@@ -5153,7 +7976,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                 is_chapter_collapsed = self.collapse_states.get(chapter_key, False)
                                 toggle_char = "[+]" if is_chapter_collapsed else "[-]"
                                 toggle_href = f'toggle::{html.escape(chapter_key, quote=True)}'
-                                html_output.append(f'<p style="margin-left: 10px;"><a href="{toggle_href}" {toggle_link_style}>{toggle_char}</a> <b>章节:</b> {escaped_heading_display}</p>')
+                                html_output.append(f'<p style="margin-left: {UI_SPACING["large"]}; font-size: {UI_FONT_SIZES["section_header"]}; font-weight: 600; color: #34495e;"><a href="{toggle_href}" {toggle_link_style}>{toggle_char}</a> <b>📑 章节:</b> {escaped_heading_display}</p>')
                                 if not is_chapter_collapsed:
                                     html_output.append('<div class="chapter-details" style="display: block;">')
                                     current_chapter_div_open = True
@@ -5169,22 +7992,71 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         excel_sheet = result.get('excel_sheet')
                         excel_row_idx = result.get('excel_row_idx')
                         if current_file_div_open and excel_headers is not None and excel_values is not None:
-                            html_output.append(f'<p style="margin-left: 20px;"><b>表:</b> {html.escape(excel_sheet)} - <b>行:</b> {excel_row_idx}</p>')
-                            html_output.append('<table border="1" style="margin-left: 30px; border-collapse: collapse; font-size: 9pt;">')
-                            html_output.append("<tr>")
+                            # 获取主题颜色
+                            theme_colors = self._get_theme_colors_for_display(self.current_theme)
+
+                            # 现代化Excel表格样式
+                            html_output.append(f'''
+                            <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                                        background: linear-gradient(145deg, #ffffff, #f8f9fa);
+                                        border: 1px solid #e3e7ea; border-radius: {UI_BORDER_RADIUS['normal']};
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                <div style="margin-bottom: {UI_SPACING['normal']}; padding: {UI_SPACING['small']};
+                                            background: {theme_colors["primary"]}15; border-radius: {UI_BORDER_RADIUS['small']};
+                                            border-left: 4px solid {theme_colors["primary"]};">
+                                    <h4 style="margin: 0; font-size: {UI_FONT_SIZES['section_header']}; color: {theme_colors["text_color"]};">
+                                        📊 表格: {html.escape(str(excel_sheet))} | 行: {excel_row_idx}
+                                    </h4>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; background: white;
+                                             border-radius: {UI_BORDER_RADIUS['small']}; overflow: hidden;
+                                             box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                    <tr style="background: linear-gradient(135deg, {theme_colors['primary']}20, {theme_colors['primary']}15);">
+                            ''')
                             for header in excel_headers:
-                                html_output.append(f"<th>{html.escape(header)}</th>")
-                            html_output.append("</tr>")
-                            html_output.append("<tr>")
+                                html_output.append(f'''
+                                        <th style="padding: {UI_SPACING['normal']}; border: none;
+                                                  font-size: {UI_FONT_SIZES['table_cell']}; font-weight: 600;
+                                                  color: {theme_colors["text_color"]}; text-align: left;">
+                                            {html.escape(str(header))}
+                                        </th>
+                                ''')
+                            html_output.append("</tr><tr style='background: white;'>")
                             for value in excel_values:
                                 escaped_value = html.escape(str(value))
-                                highlighted_value = escaped_value.replace(escaped_start_marker, fuzzy_highlight_start).replace(escaped_end_marker, highlight_end)
-                                html_output.append(f"<td>{highlighted_value}</td>")
-                            html_output.append("</tr>")
-                            html_output.append("</table><br>")
+                                highlighted_value = escaped_value.replace(escaped_start_marker,
+                                    f'<mark style="background: linear-gradient(120deg, {theme_colors["highlight_bg"]}60, {theme_colors["highlight_bg"]}); color: {theme_colors["highlight_text"]}; border-radius: 3px; padding: 2px 4px;">'
+                                ).replace(escaped_end_marker, '</mark>')
+                                html_output.append(f'''
+                                        <td style="padding: {UI_SPACING['normal']}; border: none;
+                                                  font-size: {UI_FONT_SIZES['table_cell']}; color: {theme_colors["text_color"]};
+                                                  border-bottom: 1px solid #f0f0f0;">
+                                            {highlighted_value}
+                                        </td>
+                                ''')
+                            html_output.append("</tr></table></div>")
                         elif current_file_div_open and current_chapter_div_open and highlighted_paragraph_display is not None:
-                            paragraph_style = ' style="margin-left: 30px;"' 
-                            html_output.append(f'<p{paragraph_style}><b>段落:</b> {highlighted_paragraph_display}</p>')
+                            # 获取主题颜色
+                            theme_colors = self._get_theme_colors_for_display(self.current_theme)
+
+                            # 现代化段落样式
+                            html_output.append(f'''
+                            <div style="margin: {UI_SPACING['normal']} {UI_SPACING['extra_large']}; padding: {UI_SPACING['large']};
+                                        background: linear-gradient(145deg, #ffffff, #fafbfc);
+                                        border: 1px solid #e8ecef; border-radius: {UI_BORDER_RADIUS['normal']};
+                                        border-left: 4px solid {theme_colors["success"]};
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <div style="margin-bottom: {UI_SPACING['small']};">
+                                    <span style="font-size: {UI_FONT_SIZES['small']}; color: {theme_colors["success"]}; font-weight: 600;">
+                                        📄 段落内容
+                                    </span>
+                                </div>
+                                <div style="font-size: {UI_FONT_SIZES['normal']}; line-height: 1.6; color: {theme_colors["text_color"]};
+                                            word-wrap: break-word; overflow-wrap: break-word;">
+                                    {highlighted_paragraph_display}
+                                </div>
+                            </div>
+                            ''')
 
                         result_count += 1
                     # --- End of loop --- 
@@ -5319,11 +8191,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _show_results_context_menu(self, position):
         """显示搜索结果区域的右键菜单"""
         menu = QMenu(self)
-        
+
         # 获取当前选中的文本
         cursor = self.results_text.textCursor()
         selected_text = cursor.selectedText()
-        
+
         # 复制选中文本选项
         if selected_text:
             copy_action = menu.addAction("复制选中文本")
@@ -5332,30 +8204,30 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 如果没有选中文本，提供复制全部选项
             copy_all_action = menu.addAction("复制全部内容")
             copy_all_action.triggered.connect(lambda: QApplication.clipboard().setText(self.results_text.toPlainText()))
-        
+
         menu.addSeparator()
-        
+
         # 全选选项
         select_all_action = menu.addAction("全选")
         select_all_action.triggered.connect(self.results_text.selectAll)
-        
+
         # 查找选项
         find_action = menu.addAction("查找...")
         find_action.triggered.connect(self._show_find_dialog)
-        
+
         menu.addSeparator()
-        
+
         # 刷新搜索结果选项
         refresh_action = menu.addAction("刷新搜索结果")
         refresh_action.triggered.connect(self.start_search_slot)
-        
+
         # 清空结果选项
         clear_action = menu.addAction("清空结果")
         clear_action.triggered.connect(self.clear_results_slot)
-        
+
         # 在指定位置显示菜单
         menu.exec(self.results_text.mapToGlobal(position))
-        
+
     def _show_find_dialog(self):
         """显示查找对话框"""
         text, ok = QInputDialog.getText(self, "查找", "请输入要查找的文本:")
@@ -5364,11 +8236,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             cursor = self.results_text.textCursor()
             cursor.movePosition(cursor.Start)
             self.results_text.setTextCursor(cursor)
-            
+
             # 查找并高亮显示文本
             found = self.results_text.find(text)
             if not found:
                 QMessageBox.information(self, "查找结果", f"未找到 '{text}'")
+
+
+
+
 
     @Slot(QUrl)
     def handle_link_clicked_slot(self, url):
@@ -6021,7 +8897,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- 更新主题管理器 ---
         self.theme_manager.set_current_theme(theme_name)
-        
+
         # --- 应用主题 ---
         if theme_name == "现代蓝":
             try:
@@ -6479,9 +9355,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         source_dirs = self.settings.value("indexing/sourceDirectories", [])
         if not isinstance(source_dirs, list):
             source_dirs = [] if source_dirs is None else [source_dirs]
-        
+
         print(f"DEBUG: start_indexing_slot 读取源目录 = {source_dirs}")
-        
+
         if not source_dirs:
              QMessageBox.warning(self, "未配置源目录", "请先前往 \"设置 -> 索引设置\" 添加需要索引的文件夹。")
              return
@@ -6535,11 +9411,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         selected_file_types = self.settings.value("indexing/selectedFileTypes", [])
         if not isinstance(selected_file_types, list):
             selected_file_types = [] if selected_file_types is None else [selected_file_types]
-            
+
         file_type_modes = self.settings.value("indexing/fileTypeModes", {})
         if not isinstance(file_type_modes, dict):
             file_type_modes = {}
-        
+
         print(f"DEBUG: start_indexing_slot 读取 'indexing/selectedFileTypes' = {selected_file_types}")
         print(f"DEBUG: start_indexing_slot 读取 'indexing/fileTypeModes' = {file_type_modes}")
         
@@ -6563,29 +9439,29 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 # 用户取消操作
                 print(f"DEBUG: 用户取消了索引操作，因为未选择文件类型")
                 return
-        
+            
         # 分离完整索引和仅文件名索引的文件类型
         full_index_types = []
         filename_only_types = []
-        
+
         # 遍历所有文件类型模式设置，不仅仅是选中的文件类型
         all_possible_types = set(selected_file_types)
         all_possible_types.update(file_type_modes.keys())  # 确保包含所有配置的类型
-        
+
         for file_type in all_possible_types:
             # 首先检查该文件类型是否被用户勾选
             if file_type not in selected_file_types:
                 continue  # 未勾选的文件类型直接跳过，无论什么模式
-                
+
             mode = file_type_modes.get(file_type, "full")  # 默认完整索引
             if mode == "filename_only":
                 filename_only_types.append(file_type)
             else:
                 full_index_types.append(file_type)
-        
+
         print(f"DEBUG: 完整索引类型: {full_index_types}")
         print(f"DEBUG: 仅文件名索引类型: {filename_only_types}")
-        
+
         file_types_str = "所有支持的类型" if len(selected_file_types) == 12 else f"{', '.join(selected_file_types)}"
         # ---------------------------------------
 

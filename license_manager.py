@@ -32,6 +32,7 @@ class Features:
     MARKDOWN_SUPPORT = "md_support"       # Markdown文件支持
     EMAIL_SUPPORT = "email_support"       # 邮件文件支持（.eml和.msg）
     ARCHIVE_SUPPORT = "archive_support"   # 压缩包内容支持（zip和rar）
+    MULTIMEDIA_SUPPORT = "multimedia_support"  # 多媒体文件支持（视频、音频、图片）
     WILDCARDS = "wildcards"               # 通配符搜索支持
     UNLIMITED_DIRS = "unlimited_dirs"     # 无限制源目录
     ADVANCED_THEMES = "advanced_themes"   # 高级主题支持
@@ -46,6 +47,7 @@ class Features:
             Features.MARKDOWN_SUPPORT,
             Features.EMAIL_SUPPORT,
             Features.ARCHIVE_SUPPORT,
+            Features.MULTIMEDIA_SUPPORT,
             Features.WILDCARDS,
             Features.UNLIMITED_DIRS,
             Features.ADVANCED_THEMES,
