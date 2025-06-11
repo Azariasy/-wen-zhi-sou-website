@@ -731,16 +731,28 @@ class VirtualResultsModel(QAbstractListModel):
             self.dataChanged.emit(self.index(0), self.index(self.rowCount() - 1))
     
     def set_results(self, results):
-        """设置搜索结果"""
-        self.beginResetModel()
+        """设置搜索结果并处理成显示项目 - 支持完整的查看方式"""
         self.results = results
-        self.display_items = []
-        # 根据是否是文件名搜索选择处理方法
-        if self._is_filename_search():
-            self._process_filename_results(results)
+        
+        # 从父窗口获取查看方式设置并应用完整的处理流程
+        if self.parent_window:
+            # 使用默认相关性排序（搜索引擎返回顺序）
+            sorted_results = results
+            
+            # 检查是否需要分组显示
+            if (hasattr(self.parent_window, 'grouping_enabled') and 
+                self.parent_window.grouping_enabled and 
+                hasattr(self.parent_window, 'current_grouping_mode') and 
+                self.parent_window.current_grouping_mode != 'none'):
+                
+                # 应用分组，然后转换为虚拟滚动可以处理的格式
+                grouped_results = self.parent_window._group_results(sorted_results, self.parent_window.current_grouping_mode)
+                self._process_grouped_results_for_display(grouped_results)
+            else:
+                # 不分组，直接处理
+                self._process_results_for_display(sorted_results)
         else:
-            self._process_fulltext_results(results)
-        self.endResetModel()
+            self._process_results_for_display(results)
     
     def _generate_file_group_html(self, item):
         """生成文件组头部的HTML"""
