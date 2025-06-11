@@ -1030,143 +1030,6 @@ class VirtualResultsModel(QAbstractListModel):
 
 
 
-# --- 导入统一路径处理工具 ---
-from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
-
-# --- 导入统一主题管理工具 ---
-from theme_manager import ThemeManager
-# ------------------------
-
-import sys
-import io # 新增导入
-
-# 确保 stdout 和 stderr 在非控制台模式下是可写的
-# 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
-if sys.stdout is None:
-    sys.stdout = io.StringIO()  # 重定向到一个内存字符串缓冲区
-if sys.stderr is None:
-    sys.stderr = io.StringIO()  # 同样重定向到内存缓冲区，避免与您后续的文件重定向冲突
-
-# Import necessary classes from PySide6
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextBrowser, QProgressBar,
-    QFileDialog, QMessageBox, QDateEdit, QCheckBox, QComboBox, QRadioButton, QDialog, QDialogButtonBox, QSpinBox,
-    QButtonGroup, QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar, # ADDED QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar
-    QStatusBar, # Ensure QProgressBar is imported if not already
-    QTableWidget, QHeaderView, QTableWidgetItem,
-    QTreeView, QSplitter, # 添加文件夹树视图所需的组件
-    QSizePolicy, QFrame,
-    QInputDialog,
-    QTabWidget, QScrollArea, QTabBar, QTabWidget,
-    QGridLayout, QMenu, # 添加QMenu用于右键菜单
-    QListView, QStyledItemDelegate, QStackedWidget, QStyle, # 虚拟滚动所需组件
-)
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex, QRect, QAbstractListModel # Added QSize, QDir, QModelIndex, QRect, QAbstractListModel 
-from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QTextCursor, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
-import html  # Import html module for escaping
-
-# --- ADDED: Network and Version Comparison Imports ---
-import requests
-from packaging import version
-# -----------------------------------------------------
-
-# Standard library imports
-from pathlib import Path  # Added
-import document_search  # Uncommented backend import
-import traceback  # Keep for worker error reporting
-import json  # Needed for structure map parsing
-import functools # ADDED for LRU cache
-import os  # Added for os.path.normpath
-import time # Added for sleep
-import datetime
-import logging # Import logging module
-import re
-import subprocess
-import shutil
-import math
-import codecs
-import webbrowser
-import requests.adapters  # 添加requests的适配器和重试策略导入
-import urllib3.util  # 替换过时的requests.packages导入
-
-# --- ADDED: 导入许可证管理器和对话框 ---
-from license_manager import get_license_manager, Features, LicenseStatus
-from license_dialog import LicenseDialog
-# --------------------------------------
-
-# --- ADDED: Try importing qdarkstyle --- 
-_qdarkstyle_available = False
-try:
-    import qdarkstyle
-    _qdarkstyle_available = True
-except ImportError:
-    pass # qdarkstyle not installed, will use basic dark theme
-# -------------------------------------
-
-# --- 添加资源文件路径解析器 ---
-# ------------------------------
-
-# ====================
-# UI设计常量体系
-# ====================
-
-# 字体大小常量
-UI_FONT_SIZES = {
-    'normal': '12px',        # 标准文本
-    'small': '11px',         # 小号文本
-    'large': '14px',         # 大号文本
-    'icon': '14px',          # 图标
-    'extra_small': '10px',   # 额外小号文本
-    'file_header': '16px',   # 文件标题
-    'section_header': '13px', # 章节标题
-    'table_cell': '11px',    # 表格单元格
-    'file_info': '10px'      # 文件信息
-}
-
-# 间距和尺寸常量
-UI_SPACING = {
-    'small': '6px',
-    'normal': '8px',
-    'large': '12px',
-    'extra_large': '16px'
-}
-
-# 圆角常量
-UI_BORDER_RADIUS = {
-    'small': '4px',
-    'normal': '6px',
-    'large': '8px'
-}
-
-# 颜色透明度
-UI_ALPHA = {
-    'light': '0.05',
-    'medium': '0.1',
-    'strong': '0.2'
-}
-
-# --- Constants ---
-ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
-APPLICATION_NAME = "DocumentSearchToolPySide"
-CONFIG_FILE = 'search_config.ini'  # Keep for reference, but QSettings handles location
-DEFAULT_DOC_DIR = ""
-
-# --- Settings Keys --- (Define keys for QSettings)
-SETTINGS_LAST_SEARCH_DIR = "history/lastSearchDirectory"
-SETTINGS_WINDOW_GEOMETRY = "window/geometry"
-SETTINGS_INDEX_DIRECTORY = "indexing/indexDirectory" # New key for index path
-SETTINGS_SOURCE_DIRECTORIES = "indexing/sourceDirectories"
-SETTINGS_ENABLE_OCR = "indexing/enableOcr"
-SETTINGS_EXTRACTION_TIMEOUT = "indexing/extractionTimeout"
-SETTINGS_TXT_CONTENT_LIMIT = "indexing/txtContentLimitKb"
-SETTINGS_CASE_SENSITIVE = "search/caseSensitive"
-
-# --- ADDED: Version Info ---
-CURRENT_VERSION = "1.0.0"  # <--- Update this for each new release!
-UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_version.json" # URL to your version info file
-# -------------------------
-
 # === 虚拟滚动相关类实现 ===
 class HtmlItemDelegate(QStyledItemDelegate):
     """HTML内容委托，用于在列表视图中渲染HTML"""
@@ -1467,8 +1330,8 @@ class VirtualResultsView(QListView):
             select_action = menu.addAction("文本选择...")
             select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
 
-            # 显示菜单
-            menu.exec(self.mapToGlobal(position))
+                    # 显示菜单
+        menu.exec(self.mapToGlobal(position))
 
     def _copy_item_content(self, html_content):
         """复制项目的纯文本内容"""
@@ -1488,149 +1351,6 @@ class VirtualResultsView(QListView):
             self.parent().statusBar().showMessage(f"已复制 {len(plain_text)} 个字符到剪贴板", 3000)
 
 
-
-
-
-
-
-# --- 导入统一路径处理工具 ---
-from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
-
-# --- 导入统一主题管理工具 ---
-from theme_manager import ThemeManager
-# ------------------------
-
-import sys
-import io # 新增导入
-
-# 确保 stdout 和 stderr 在非控制台模式下是可写的
-# 这应该在几乎所有其他导入之前完成，特别是在 logging 和 jieba 导入之前
-if sys.stdout is None:
-    sys.stdout = io.StringIO()  # 重定向到一个内存字符串缓冲区
-if sys.stderr is None:
-    sys.stderr = io.StringIO()  # 同样重定向到内存缓冲区，避免与您后续的文件重定向冲突
-
-# Import necessary classes from PySide6
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextBrowser, QProgressBar,
-    QFileDialog, QMessageBox, QDateEdit, QCheckBox, QComboBox, QRadioButton, QDialog, QDialogButtonBox, QSpinBox,
-    QButtonGroup, QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar, # ADDED QListWidget, QListWidgetItem, QAbstractItemView, QGroupBox, QMenuBar, QToolBar
-    QStatusBar, # Ensure QProgressBar is imported if not already
-    QTableWidget, QHeaderView, QTableWidgetItem,
-    QTreeView, QSplitter, # 添加文件夹树视图所需的组件
-    QSizePolicy, QFrame,
-    QInputDialog,
-    QTabWidget, QScrollArea, QTabBar, QTabWidget,
-    QGridLayout, QMenu, # 添加QMenu用于右键菜单
-    QListView, QStyledItemDelegate, QStackedWidget, QStyle, # 虚拟滚动所需组件
-)
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QUrl, QSettings, QDate, QTimer, QSize, QDir, QModelIndex, QRect, QAbstractListModel # Added QSize, QDir, QModelIndex, QRect, QAbstractListModel 
-from PySide6.QtGui import QDesktopServices, QAction, QIntValidator, QShortcut, QKeySequence, QIcon, QColor, QStandardItemModel, QStandardItem, QTextDocument, QTextCursor, QPainter, QCursor # Added QStandardItemModel and QStandardItem, QTextDocument, QPainter, QCursor
-import html  # Import html module for escaping
-
-# --- ADDED: Network and Version Comparison Imports ---
-import requests
-from packaging import version
-# -----------------------------------------------------
-
-# Standard library imports
-from pathlib import Path  # Added
-import document_search  # Uncommented backend import
-import traceback  # Keep for worker error reporting
-import json  # Needed for structure map parsing
-import functools # ADDED for LRU cache
-import os  # Added for os.path.normpath
-import time # Added for sleep
-import datetime
-import logging # Import logging module
-import re
-import subprocess
-import shutil
-import math
-import codecs
-import webbrowser
-import requests.adapters  # 添加requests的适配器和重试策略导入
-import urllib3.util  # 替换过时的requests.packages导入
-
-# --- ADDED: 导入许可证管理器和对话框 ---
-from license_manager import get_license_manager, Features, LicenseStatus
-from license_dialog import LicenseDialog
-# --------------------------------------
-
-# --- ADDED: Try importing qdarkstyle --- 
-_qdarkstyle_available = False
-try:
-    import qdarkstyle
-    _qdarkstyle_available = True
-except ImportError:
-    pass # qdarkstyle not installed, will use basic dark theme
-# -------------------------------------
-
-# --- 添加资源文件路径解析器 ---
-# ------------------------------
-
-# ====================
-# UI设计常量体系
-# ====================
-
-# 字体大小常量
-UI_FONT_SIZES = {
-    'normal': '12px',        # 标准文本
-    'small': '11px',         # 小号文本
-    'large': '14px',         # 大号文本
-    'icon': '14px',          # 图标
-    'extra_small': '10px',   # 额外小号文本
-    'file_header': '16px',   # 文件标题
-    'section_header': '13px', # 章节标题
-    'table_cell': '11px',    # 表格单元格
-    'file_info': '10px'      # 文件信息
-}
-
-# 间距和尺寸常量
-UI_SPACING = {
-    'small': '6px',
-    'normal': '8px',
-    'large': '12px',
-    'extra_large': '16px'
-}
-
-# 圆角常量
-UI_BORDER_RADIUS = {
-    'small': '4px',
-    'normal': '6px',
-    'large': '8px'
-}
-
-# 颜色透明度
-UI_ALPHA = {
-    'light': '0.05',
-    'medium': '0.1',
-    'strong': '0.2'
-}
-
-# --- Constants ---
-ORGANIZATION_NAME = "YourOrganizationName"  # Replace with your actual org name or identifier
-APPLICATION_NAME = "DocumentSearchToolPySide"
-CONFIG_FILE = 'search_config.ini'  # Keep for reference, but QSettings handles location
-DEFAULT_DOC_DIR = ""
-
-# --- Settings Keys --- (Define keys for QSettings)
-SETTINGS_LAST_SEARCH_DIR = "history/lastSearchDirectory"
-SETTINGS_WINDOW_GEOMETRY = "window/geometry"
-SETTINGS_INDEX_DIRECTORY = "indexing/indexDirectory" # New key for index path
-SETTINGS_SOURCE_DIRECTORIES = "indexing/sourceDirectories"
-SETTINGS_ENABLE_OCR = "indexing/enableOcr"
-SETTINGS_EXTRACTION_TIMEOUT = "indexing/extractionTimeout"
-SETTINGS_TXT_CONTENT_LIMIT = "indexing/txtContentLimitKb"
-SETTINGS_CASE_SENSITIVE = "search/caseSensitive"
-
-# --- ADDED: Version Info ---
-CURRENT_VERSION = "1.0.0"  # <--- Update this for each new release!
-UPDATE_INFO_URL = "https://azariasy.github.io/-wen-zhi-sou-website/latest_version.json" # URL to your version info file
-# -------------------------
-
-# === 虚拟滚动相关类实现 ===
 # --- Worker Class for Background Tasks ---
 class Worker(QObject):
     # Signals to communicate with the main thread
@@ -1678,7 +1398,7 @@ class Worker(QObject):
             ocr_status_text = "启用OCR" if enable_ocr else "禁用OCR"
             dir_count = len(source_directories)
             dir_text = f"{dir_count} 个源目录" if dir_count != 1 else f"源目录 '{source_directories[0]}'"
-            self.statusChanged.emit(f"开始索引 ({ocr_status_text}): {dir_text} -> {index_dir_path}")
+            self.statusChanged.emit(f"开始索引 {dir_text} -> '{index_dir_path}'")
             # ------------------------------------------------------
 
             # --- RESTORED Actual Backend Call and Generator Processing ---
@@ -1699,18 +1419,18 @@ class Worker(QObject):
                 filename_only_types = file_type_config.get('filename_only_types', [])
                 print(f"完整索引文件类型: {full_index_types}")
                 print(f"仅文件名索引文件类型: {filename_only_types}")
-            else:
-                print("使用默认设置：索引所有支持的文件类型（完整索引）")
 
-            generator = document_search.create_or_update_index_legacy(
+            print("使用兼容性包装函数调用优化版索引...")
+
+            generator = document_search.create_or_update_index(
                 source_directories,
                 index_dir_path,
                 enable_ocr,
-                extraction_timeout=extraction_timeout, # Pass timeout here
-                txt_content_limit_kb=txt_content_limit_kb, # Pass txt limit here
-                file_types_to_index=full_index_types, # 仅传递完整索引的文件类型
-                filename_only_types=filename_only_types, # 新增：仅文件名索引的文件类型
-                cancel_callback=cancel_check  # Pass cancel callback
+                extraction_timeout=extraction_timeout,
+                txt_content_limit_kb=txt_content_limit_kb,
+                file_types_to_index=full_index_types,
+                filename_only_types=filename_only_types,
+                cancel_callback=cancel_check
             )
 
             for update in generator:
@@ -1725,68 +1445,43 @@ class Worker(QObject):
                 msg_type = update.get('type')
                 message = update.get('message', '')
 
-                if msg_type == 'status': # Only emit simple status for clarity
-                     self.statusChanged.emit(message) # Emit raw status message from backend
-                # Optional: Add back more specific status handling if needed
-                # elif msg_type == 'add' or msg_type == 'update' or msg_type == 'delete' or msg_type == 'skip':
-                #     self.statusChanged.emit(f"[{msg_type.upper()}] {message}")
+                if msg_type == 'status':
+                     self.statusChanged.emit(message)
                 elif msg_type == 'progress':
                     current = update.get('current', 0)
-                    total = update.get('total', 0)  # Use 0 for indeterminate
-                    phase = update.get('phase', '') # Get phase info
-                    # --- ADDED: Get detail text from update ---
-                    detail = update.get('detail', '') # Get detail, default to empty
-                    # --- MODIFIED: Emit progressUpdated with detail ---
-                    # --- FIXED: 添加参数验证 ---
+                    total = update.get('total', 0)
+                    phase = update.get('phase', '')
+                    detail = update.get('detail', '')
+                    
                     try:
-                        # 确保参数类型正确
                         current = int(current) if current is not None else 0
                         total = int(total) if total is not None else 0
                         phase = str(phase) if phase is not None else "处理中"
                         detail = str(detail) if detail is not None else ""
-                        
-                        # 确保参数类型正确并处理可能的解包错误
-                        try:
-                            current = int(current) if current is not None else 0
-                            total = int(total) if total is not None else 0
-                            phase = str(phase) if phase is not None else "处理中"
-                            detail = str(detail) if detail is not None else ""
-                            self.progressUpdated.emit(current, total, phase, detail)
-                        except (ValueError, TypeError) as e:
-                            print(f"Progress emit error: {e}, using defaults")
-                            self.progressUpdated.emit(0, 100, "处理中", "")
+                        self.progressUpdated.emit(current, total, phase, detail)
                     except Exception as e:
                         print(f"Error emitting progress: {e}")
-                        # 发射安全的默认值
                         self.progressUpdated.emit(0, 100, "处理中", "")
-                    # --------------------------------------------------
                 elif msg_type == 'warning':
-                    self.statusChanged.emit(f"[警告] {message}")  # Warnings can also be status messages
+                    self.statusChanged.emit(f"[警告] {message}")
                 elif msg_type == 'error':
                     self.errorOccurred.emit(f"索引错误: {message}")
-                elif msg_type == 'complete': # Check for 'complete' type
-                    summary_dict = update.get('summary', {}) # Get the summary dict
+                elif msg_type == 'complete':
+                    summary_dict = update.get('summary', {})
                     if not self._indexing_completed:
                         self._indexing_completed = True
-                        self.indexingComplete.emit(summary_dict) # Emit the summary dict
-            # -------------------------------------------------------------
+                        self.indexingComplete.emit(summary_dict)
 
         except InterruptedError as e:
-            # 捕获用户中断，发送取消通知
             self.statusChanged.emit("操作已被用户取消")
             summary_dict = {
                 'message': '索引已被用户取消。',
-                'added': 0,
-                'updated': 0,
-                'deleted': 0,
-                'errors': 0,
-                'cancelled': True
+                'added': 0, 'updated': 0, 'deleted': 0, 'errors': 0, 'cancelled': True
             }
             if not self._indexing_completed:
                 self._indexing_completed = True
                 self.indexingComplete.emit(summary_dict)
         except Exception as e:
-            # Catch any unexpected errors during the backend call itself
             tb = traceback.format_exc()
             print(f"WORKER EXCEPTION in run_indexing: {e}\n{tb}", file=sys.stderr)
             self.errorOccurred.emit(f"启动或执行索引时发生意外错误: {e}")
@@ -1799,25 +1494,18 @@ class Worker(QObject):
             self.stop_requested = False
             print("🔄 开始搜索操作，取消标志已重置")
             
-            # --- Convert arguments to hashable types for caching --- 
-            # Dates are already QDate, convert to string or None (hashable)
+            # Convert arguments to hashable types for caching
             start_date_str = None
             end_date_str = None
-            if isinstance(start_date, QDate) and start_date != QDate(1900, 1, 1): # Check against default
+            if isinstance(start_date, QDate) and start_date != QDate(1900, 1, 1):
                 start_date_str = start_date.toString('yyyy-MM-dd')
-            if isinstance(end_date, QDate) and end_date != QDate.currentDate(): # Check against default
+            if isinstance(end_date, QDate) and end_date != QDate.currentDate():
                 end_date_str = end_date.toString('yyyy-MM-dd')
 
-            # Convert file_type_filter list to a tuple (hashable)
             file_type_filter_tuple = tuple(sorted(file_type_filter)) if file_type_filter else None
-            
-            # Convert search_dirs to a tuple if it's a list (to make it hashable for caching)
             search_dirs_tuple = tuple(search_dirs) if isinstance(search_dirs, list) else search_dirs
             
-            # min_size/max_size are int/None (hashable)
-            # query_str, search_mode, index_dir_path, case_sensitive are str/bool (hashable)
-
-            # --- Construct User-Friendly Status Message --- 
+            # Construct User-Friendly Status Message
             filter_parts = []
             if min_size is not None: filter_parts.append(f"最小大小: {min_size}KB")
             if max_size is not None: filter_parts.append(f"最大大小: {max_size}KB")
@@ -1825,70 +1513,41 @@ class Worker(QObject):
             if end_date_str: filter_parts.append(f"结束日期: {end_date_str}")
             if file_type_filter: filter_parts.append(f"文件类型: {', '.join(file_type_filter)}")
             filter_desc = ", ".join(filter_parts)
-            search_desc = f"'{query_str}'" if query_str else "(所有文档)"  # Put query in quotes
+            search_desc = f"'{query_str}'" if query_str else "(所有文档)"
             mode_desc = "精确" if search_mode == 'phrase' else "模糊"
             case_desc = " (区分大小写)" if case_sensitive else ""
-            # -- Added scope description --
             scope_ui_map = {'fulltext': '全文', 'filename': '文件名'}
-            scope_text = scope_ui_map.get(search_scope, search_scope) # Get display name
-            scope_desc = f" (范围: {scope_text})"
-            # ---------------------------
-            status_msg = f"正在进行 {mode_desc} {case_desc}{scope_desc}: {search_desc}"
+            scope_text = scope_ui_map.get(search_scope, search_scope)
+
             if filter_desc:
-                status_msg += f" (筛选条件: {filter_desc})"
-            status_msg += "..."
+                status_msg = f"搜索{scope_text} {search_desc} ({mode_desc}{case_desc}), 过滤条件: {filter_desc}"
+            else:
+                status_msg = f"搜索{scope_text} {search_desc} ({mode_desc}{case_desc})"
+
             self.statusChanged.emit(status_msg)
-            # ---------------------------------------------------------------
 
-            # 检查是否请求了停止
-            self._check_stop_requested()
-
-            # --- Call the cached search function --- 
+            # Call the cached search function
             results = self._perform_search_with_cache(
-                query_str,
-                search_mode,
-                min_size,
-                max_size,
-                start_date_str,
-                end_date_str,
-                file_type_filter_tuple,
-                index_dir_path,
-                case_sensitive,
-                search_scope, # Pass scope here
-                search_dirs_tuple # Pass the tuple version instead of the list
+                query_str, search_mode, min_size, max_size, start_date_str, end_date_str,
+                file_type_filter_tuple, index_dir_path, case_sensitive, search_scope, search_dirs_tuple
             )
-            # -------------------------------------------
-            
-            # 再次检查是否请求了停止
-            self._check_stop_requested()
-            
+
+            # Emit results
             self.resultsReady.emit(results)
 
-        except InterruptedError:
-            # 捕获用户中断，发送取消通知
-            self.statusChanged.emit("搜索已被用户取消")
-            self.resultsReady.emit([])  # 发送空结果列表
         except Exception as e:
-            error_info = traceback.format_exc()
-            self.errorOccurred.emit(f"搜索过程中发生意外错误: {e}\n{error_info}")
+            tb = traceback.format_exc()
+            print(f"WORKER EXCEPTION in run_search: {e}\n{tb}", file=sys.stderr)
+            self.errorOccurred.emit(f"搜索过程中发生错误: {e}")
 
-    # --- NEW: Cached Search Function ---
-    @functools.lru_cache(maxsize=128) # Cache up to 128 recent search results
+    @functools.lru_cache(maxsize=128)
     def _perform_search_with_cache(self, query_str, search_mode, min_size, max_size, start_date_str, end_date_str, file_type_filter_tuple, index_dir_path, case_sensitive, search_scope, search_dirs_tuple):
-        """Internal method that performs the actual search and caches results.
-           Args must be hashable, hence file_type_filter_tuple.
-        """
-        print(f"--- Cache MISS: Performing backend search for: '{query_str}' (Scope: {search_scope}) ---") # Debug with scope
-        # Convert tuple back to list for backend function if needed (check backend signature)
+        """实际执行搜索的缓存方法"""
+        # Convert back from hashable types
         file_type_filter_list = list(file_type_filter_tuple) if file_type_filter_tuple else None
-        
-        # 检查是否需要过滤目录
         search_dirs_list = list(search_dirs_tuple) if search_dirs_tuple else None
-        if search_dirs_list:
-            print(f"--- Search will be filtered to {len(search_dirs_list)} directories ---")
-        
+
         # Call the actual backend search function, passing scope
-        # 注意：只有当后端实际支持search_dirs参数时才传递
         try:
             import inspect
             # --- ADDED: 使用优化的搜索引擎 ---
@@ -1935,7 +1594,6 @@ class Worker(QObject):
                 # 降级到原始搜索方法
                 backend_params = inspect.signature(document_search.search_index).parameters
                 if 'current_source_dirs' in backend_params:
-                    # 后端支持current_source_dirs参数
                     results = document_search.search_index(
                         query_str=query_str, 
                         index_dir_path=index_dir_path, 
@@ -1950,7 +1608,6 @@ class Worker(QObject):
                         current_source_dirs=search_dirs_list
                     )
                 else:
-                    # 后端不支持current_source_dirs参数
                     results = document_search.search_index(
                         query_str=query_str, 
                         index_dir_path=index_dir_path, 
@@ -1964,7 +1621,6 @@ class Worker(QObject):
                         case_sensitive=case_sensitive
                     )
         except TypeError:
-            # 如果后端不支持某些参数，使用最基本的参数调用
             results = document_search.search_index(
                 query_str=query_str, 
                 index_dir_path=index_dir_path, 
@@ -1975,42 +1631,26 @@ class Worker(QObject):
         if search_dirs_list and results:
             try:
                 print(f"DEBUG: 后端不支持目录过滤，手动过滤 {len(results)} 个结果")
-                # 创建过滤后的结果列表
                 filtered_results = []
-                
-                # 规范化所选目录路径
-                # 确保路径格式一致，以便正确匹配
                 normalized_search_dirs = [os.path.normpath(d).lower() for d in search_dirs_list]
-                print(f"DEBUG: 规范化的过滤目录: {normalized_search_dirs}")
                 
-                # 遍历结果进行过滤
                 for result in results:
                     file_path = result.get('file_path', '')
                     if not file_path:
                         continue
                     
-                    # 检查文件所在的目录是否在所选目录列表中
                     is_in_selected_dir = False
-                    
-                    # 处理存档文件内部项目
                     if '::' in file_path:
                         archive_path = file_path.split('::', 1)[0]
                         file_path_normalized = os.path.normpath(archive_path).lower()
                     else:
                         file_path_normalized = os.path.normpath(file_path).lower()
                     
-                    # 检查文件是否在选定的目录列表中或其子目录中
                     for search_dir in normalized_search_dirs:
-                        # 检查文件是否在搜索目录中或其子目录中
                         if file_path_normalized.startswith(search_dir + os.sep) or file_path_normalized == search_dir:
                             is_in_selected_dir = True
-                            print(f"DEBUG: 文件 {file_path} 匹配目录 {search_dir}")
                             break
                             
-                    if not is_in_selected_dir:
-                        print(f"DEBUG: 过滤掉文件 {file_path}（不在当前源目录中）")
-                    
-                    # 如果文件在所选目录中，添加到过滤结果
                     if is_in_selected_dir:
                         filtered_results.append(result)
                 
@@ -2018,13 +1658,11 @@ class Worker(QObject):
                 results = filtered_results
             except Exception as e:
                 print(f"Error filtering results by directory: {e}")
-                # 如果过滤出错，保留原始结果
                 import traceback
                 traceback.print_exc()
         
         return results
 
-    # --- NEW: Cache Clearing Method --- (Step 5)
     def clear_search_cache(self):
         """Clears the LRU search cache."""
         cache_info = self._perform_search_with_cache.cache_info()
@@ -2032,39 +1670,70 @@ class Worker(QObject):
         self._perform_search_with_cache.cache_clear()
         print("--- Search cache cleared. ---")
 
-    # --- ADDED: Worker method for checking updates --- 
-    @Slot(str, str) # current_version, update_url
+    @Slot(str, str)
     def run_update_check(self, current_version_str, update_url):
         """Performs the update check in the background."""
         try:
             print(f"Checking for updates at {update_url}...")
+            import requests
             
-            # 创建一个完全定制的连接会话
             session = requests.Session()
-            
-            # 配置重试策略，加大重试次数和间隔
             retry_strategy = requests.packages.urllib3.util.retry.Retry(
-                total=5,                          # 增加到5次重试
-                backoff_factor=1,                 # 重试间隔更长
-                status_forcelist=[429, 500, 502, 503, 504],  # 需要重试的HTTP状态码
-                allowed_methods=["GET"],          # 只对GET请求重试
-                raise_on_status=False,            # 不立即因状态码而失败
-                connect=5,                        # 连接问题最多重试5次
-                read=3,                           # 读取问题最多重试3次
-                redirect=5                        # 重定向最多重试5次
+                total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["GET"], raise_on_status=False,
+                connect=5, read=3, redirect=5
             )
             
-            # 配置适配器，包括连接和读取超时
             adapter = requests.adapters.HTTPAdapter(
-                max_retries=retry_strategy,
-                pool_connections=3,               # 保持连接池大小
-                pool_maxsize=10,                  # 最大连接数
-                pool_block=False                  # 不阻塞连接池
+                max_retries=retry_strategy, pool_connections=3, 
+                pool_maxsize=10, pool_block=False
             )
             
-            # 应用适配器到HTTP和HTTPS请求
             session.mount("http://", adapter)
             session.mount("https://", adapter)
+            
+            headers = {
+                'User-Agent': 'DocumentSearchTool/1.0',
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+            
+            response = session.get(update_url, headers=headers, timeout=(10, 30))
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if 'tag_name' in data:
+                latest_version = data['tag_name'].lstrip('v')
+                
+                def parse_version(version_str):
+                    return tuple(map(int, version_str.split('.')))
+                
+                try:
+                    current_version = parse_version(current_version_str)
+                    latest_version_tuple = parse_version(latest_version)
+                    
+                    if latest_version_tuple > current_version:
+                        update_info = {
+                            'version': latest_version,
+                            'url': data.get('html_url', ''),
+                            'description': data.get('body', ''),
+                            'published_at': data.get('published_at', '')
+                        }
+                        self.updateAvailableSignal.emit(update_info)
+                    else:
+                        self.upToDateSignal.emit()
+                        
+                except ValueError as e:
+                    self.updateCheckFailedSignal.emit(f"版本号解析错误: {e}")
+            else:
+                self.updateCheckFailedSignal.emit("无效的版本信息格式")
+                
+        except Exception as e:
+            self.updateCheckFailedSignal.emit(f"检查更新失败: {e}")
+
+
+# ======================================================
             
             # 更详细的用户代理和请求头
             headers = {
