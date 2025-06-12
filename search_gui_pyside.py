@@ -5,6 +5,7 @@
 
 
 
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -4104,12 +4105,38 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     def _setup_worker_thread(self):
         """创建并设置工作线程及其工作对象"""
         try:
+            # 如果已存在Worker，先断开所有信号连接
+            if hasattr(self, 'worker') and self.worker:
+                print("🔧 断开旧Worker的信号连接...")
+                try:
+                    # 更安全的断开方式：指定具体的槽函数
+                    self.worker.statusChanged.disconnect(self.update_status_label_slot)
+                    self.worker.progressUpdated.disconnect(self.update_progress_bar_slot)
+                    self.worker.resultsReady.disconnect(self._handle_new_search_results_slot)
+                    self.worker.indexingComplete.disconnect(self.indexing_finished_slot)
+                    self.worker.errorOccurred.disconnect(self.handle_error_slot)
+                    self.worker.updateAvailableSignal.disconnect(self.show_update_available_dialog_slot)
+                    self.worker.upToDateSignal.disconnect(self.show_up_to_date_dialog_slot)
+                    self.worker.updateCheckFailedSignal.disconnect(self.show_update_check_failed_dialog_slot)
+                    
+                    # 断开主线程到Worker的信号
+                    try:
+                        self.startIndexingSignal.disconnect(self.worker.run_indexing)
+                        self.startSearchSignal.disconnect(self.worker.run_search)
+                        self.startUpdateCheckSignal.disconnect(self.worker.run_update_check)
+                    except Exception as e2:
+                        print(f"⚠️ 断开主线程信号时出现错误: {e2}")
+                    
+                    print("✅ 旧Worker信号连接已断开")
+                except Exception as e:
+                    print(f"⚠️ 断开旧Worker信号时出现错误: {e}")
+            
             # 如果已存在线程，确保它被正确清理
             if hasattr(self, 'worker_thread') and self.worker_thread and self.worker_thread.isRunning():
-                print("警告: 工作线程已存在，先清理...")
+                print("🔧 清理旧工作线程...")
                 self.worker_thread.quit()
                 if not self.worker_thread.wait(3000):  # 等待最多3秒
-                    print("警告: 线程未能在3秒内退出，将强制终止")
+                    print("⚠️ 线程未能在3秒内退出，将强制终止")
                     self.worker_thread.terminate()
                     self.worker_thread.wait(1000)
                 
@@ -4117,17 +4144,21 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     self.worker.deleteLater()
                 
                 self.worker_thread.deleteLater()
+                print("✅ 旧工作线程已清理")
             
             # 创建新的线程和工作对象
+            print("🔧 创建新的工作线程和Worker...")
             self.worker_thread = QThread()
             self.worker = Worker()
             self.worker.moveToThread(self.worker_thread)
             
             # 连接工作线程信号到主线程槽函数
+            print("🔧 连接Worker信号...")
             self.worker.statusChanged.connect(self.update_status_label_slot)
             self.worker.progressUpdated.connect(self.update_progress_bar_slot)
             self.worker.resultsReady.connect(self._handle_new_search_results_slot)
-            
+            print(f"🔧 resultsReady信号已连接到_handle_new_search_results_slot (Worker ID: {id(self.worker)})")
+            self.worker.indexingComplete.connect(self.indexing_finished_slot)
             self.worker.errorOccurred.connect(self.handle_error_slot)
             
             # --- ADDED: Connect update check signals ---
@@ -4221,24 +4252,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.virtual_results_view.linkClicked.connect(self.handle_link_clicked_slot)
 
         # --- Worker thread signals ---
-        if self.worker:
-            # Check that worker exists (just in case)
-            self.worker.statusChanged.connect(self.update_status_label_slot)
-            self.worker.progressUpdated.connect(self.update_progress_bar_slot)
-            self.worker.resultsReady.connect(self.display_search_results_slot)
-            self.worker.indexingComplete.connect(self.indexing_finished_slot)
-            self.worker.errorOccurred.connect(self.handle_error_slot)
-            # --- ADDED: Update check connections ---
-            self.worker.updateAvailableSignal.connect(self.show_update_available_dialog_slot)
-            self.worker.upToDateSignal.connect(self.show_up_to_date_dialog_slot)
-            self.worker.updateCheckFailedSignal.connect(self.show_update_check_failed_dialog_slot)
-            # --------------------------------------
-            # Connect our signals to worker slots
-            self.startIndexingSignal.connect(self.worker.run_indexing)
-            self.startSearchSignal.connect(self.worker.run_search)
-            # --- ADDED: Update check signal ---
-            self.startUpdateCheckSignal.connect(self.worker.run_update_check)
-            # --------------------------------
+        # 注意：Worker信号连接已在_setup_worker_thread()方法中完成，此处不需要重复连接
         
         # --- File type filter change and sorting ---
         for checkbox in self.file_type_checkboxes:  # Assume these checkboxes setup earlier
@@ -4259,7 +4273,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot(list)
     def _handle_new_search_results_slot(self, backend_results):
         """处理从Worker接收到的新搜索结果，存储并显示"""
-        print(f"Received {len(backend_results)} search results from backend")
+        worker_id = id(self.worker) if hasattr(self, 'worker') and self.worker else 'None'
+        print(f"🔥 NEW CODE: Received {len(backend_results)} search results from backend (Worker ID: {worker_id})")
         
         # --- 添加: 检查是否有错误或警告 ---
         if backend_results and len(backend_results) > 0:
@@ -4271,12 +4286,18 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 if first_result.get('license_required', False):
                     # 如果是许可证错误，显示升级提示
                     self._show_pro_feature_dialog_message("通配符搜索")
+                    # 清除搜索进行标志
+                    self._search_in_progress = False
+                    print("DEBUG: 清除搜索进行标志 _search_in_progress = False (许可证错误)")
                     # 恢复用户界面状态
                     self.set_busy_state(False, "search")
                     return
                 else:
                     # 其他错误显示普通错误对话框
                     QMessageBox.warning(self, "搜索错误", error_msg)
+                    # 清除搜索进行标志
+                    self._search_in_progress = False
+                    print("DEBUG: 清除搜索进行标志 _search_in_progress = False (搜索错误)")
                     # 恢复用户界面状态
                     self.set_busy_state(False, "search")
                     return
@@ -4329,7 +4350,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # Now apply the current checkbox filters to these new results
         self._filter_results_by_type_slot()
-        # Note: set_busy_state(False) is called within display_search_results_slot's finally block
+        
+        # 清除搜索进行标志
+        self._search_in_progress = False
+        print("DEBUG: 清除搜索进行标志 _search_in_progress = False (搜索完成)")
+        
+        # 重置搜索忙碌状态
+        self.set_busy_state(False, "search")
+        print("DEBUG: 重置搜索忙碌状态 set_busy_state(False, 'search')")
+        
+        # Note: 搜索忙碌状态现在在此处重置，而不是在display_search_results_slot中
     
     @Slot(str)
     def _filter_results_by_folder_slot(self, folder_path):
@@ -4847,6 +4877,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # 清除之前的警告标签
         if hasattr(self, 'search_warning_label'):
             self.search_warning_label.setVisible(False)
+        
+        # 设置搜索进行标志，防止视图模式变化干扰
+        self._search_in_progress = True
+        print("DEBUG: 设置搜索进行标志 _search_in_progress = True")
+        
         # 设置忙碌状态为搜索操作（不显示进度条和取消按钮）
         self.set_busy_state(True, "search")
         # ------------------------------
@@ -5041,6 +5076,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     @Slot()
     def _handle_view_mode_change_slot(self):
         """处理视图方式改变 - 只控制分组功能"""
+        # 检查是否处于搜索过程中，如果是则跳过处理
+        if hasattr(self, '_search_in_progress') and self._search_in_progress:
+            print("DEBUG: 搜索过程中跳过视图模式变化处理")
+            return
+            
         view_mode_index = self.view_mode_combo.currentIndex()
         view_mode_text = self.view_mode_combo.currentText()
         print(f"视图方式改变为: {view_mode_text}")
@@ -5383,39 +5423,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.set_busy_state(False, "index")
 
     # --- NEW Slot to handle results directly from worker ---
-    @Slot(list)
-    def _handle_new_search_results_slot(self, backend_results):
-        """Receives results from the backend worker, stores them, and triggers filtering/display."""
-        print("Received new results from backend.")  # DEBUG
-        self.original_search_results = backend_results
-        self.collapse_states = {}  # Reset collapse states on new search
-        
-        # 重置文件夹过滤状态
-        self.filtered_by_folder = False
-        self.current_filter_folder = None
-        
-        # 检查文件夹树功能是否可用
-        folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
-        if folder_tree_available:
-            # 仅当文件夹树功能可用时构建文件夹树
-            self.folder_tree.build_folder_tree_from_results(backend_results)
-        else:
-            # 如果功能不可用，确保文件夹树是空的
-            self.folder_tree.clear()
-        
-        # 重置搜索的忙碌状态（关键修复）
-        self.set_busy_state(False, "search")
-        
-        # Now apply the current checkbox filters to these new results
-        self._filter_results_by_type_slot()
-    
-    # --- NEW Slot for Sorting (Called by sort controls) ---
- 
-
-    # --- Slot for Live File Type Filtering (Modified) --- 
-
-
-    # --- Link Handling Slot ---
+        # --- Link Handling Slot ---
     def _show_results_context_menu(self, position):
         """显示搜索结果区域的右键菜单 - 传统模式已移除，统一使用虚拟滚动模式"""
         # 虚拟滚动模式有自己的右键菜单处理
