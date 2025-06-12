@@ -1,0 +1,9 @@
+2025-06-11 22:07:57,867 - license_manager - DEBUG - 正在从设置文件加载许可证信息: \HKEY_CURRENT_USER\Software\YourOrganizationName\DocumentSearchToolPySide
+2025-06-11 22:07:57,868 - license_manager - INFO - 永久许可证
+2025-06-11 22:07:57,869 - license_manager - DEBUG - 在模块加载时预先创建了LicenseManager实例
+2025-06-11 22:08:16,096 - asyncio - DEBUG - Using proactor: IocpProactor
+2025-06-11 22:08:16,310 - jieba - DEBUG - Building prefix dict from the default dictionary ...
+2025-06-11 22:08:16,325 - jieba - DEBUG - Loading model from cache C:\Users\yangy\AppData\Local\Temp\jieba.cache
+2025-06-11 22:08:16,941 - jieba - DEBUG - Loading model cost 0.631 seconds.
+2025-06-11 22:08:16,942 - jieba - DEBUG - Prefix dict has been built successfully.
+2025-06-11 22:08:31,561 - asyncio - DEBUG - Using proactor: IocpProactor
