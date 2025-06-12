@@ -4,6 +4,7 @@
 
 
 
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -389,11 +390,23 @@ class VirtualResultsModel(QAbstractListModel):
         self.display_items = []
         
         if not results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
+            # 检查是否进行过搜索操作
+            has_searched = (hasattr(self.parent_window, 'search_results') and 
+                          hasattr(self.parent_window, 'last_search_text') and 
+                          self.parent_window.last_search_text)
+            
+            if has_searched:
+                # 进行过搜索但没有结果
+                self.display_items.append({
+                    'type': 'empty_state',
+                    'content': '🔍 未找到匹配的搜索结果'
+                })
+            else:
+                # 程序启动状态，还没有进行搜索
+                self.display_items.append({
+                    'type': 'welcome_state',
+                    'content': '💡 请输入搜索词开始搜索文档'
+                })
             self.endResetModel()
             return
             
@@ -422,11 +435,23 @@ class VirtualResultsModel(QAbstractListModel):
         self.display_items = []
         
         if not grouped_results:
-            # 添加一个友好的空状态显示项
-            self.display_items.append({
-                'type': 'empty_state',
-                'content': '🔍 未找到匹配的搜索结果'
-            })
+            # 检查是否进行过搜索操作
+            has_searched = (hasattr(self.parent_window, 'search_results') and 
+                          hasattr(self.parent_window, 'last_search_text') and 
+                          self.parent_window.last_search_text)
+            
+            if has_searched:
+                # 进行过搜索但没有结果
+                self.display_items.append({
+                    'type': 'empty_state',
+                    'content': '🔍 未找到匹配的搜索结果'
+                })
+            else:
+                # 程序启动状态，还没有进行搜索
+                self.display_items.append({
+                    'type': 'welcome_state',
+                    'content': '💡 请输入搜索词开始搜索文档'
+                })
             self.endResetModel()
             return
         
@@ -459,6 +484,7 @@ class VirtualResultsModel(QAbstractListModel):
                     for result in group_results:
                         self.display_items.append({
                             'type': 'filename_result',
+                            'file_path': result.get('file_path', ''),
                             'result': result
                         })
                 else:
@@ -785,7 +811,9 @@ class VirtualResultsModel(QAbstractListModel):
     
     def _generate_filename_result_html(self, item):
         """生成文件名搜索结果的HTML - 统一现代化样式"""
-        file_path = item['file_path']
+        file_path = item.get('file_path', '')
+        if not file_path:
+            return '<div style="margin: 10px; padding: 10px; background: #ffebee;">文件路径缺失</div>'
         result = item.get('result', {})
         theme_colors = self._get_theme_colors()
         
@@ -860,53 +888,54 @@ class VirtualResultsModel(QAbstractListModel):
         
         card_style = create_modern_card_style(theme_colors, 'normal')
         
+        # 计算目录路径（不包含文件名）
+        import os
+        directory_path = os.path.dirname(file_path)
+        escaped_directory = html.escape(directory_path)
+        
         return f'''
         <div style="{card_style}">
-            <!-- 文件头部：图标 + 文件名 + 操作按钮 -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: {UI_SPACING['small']};">
-                <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
-                    <span style="font-size: {UI_FONT_SIZES['header']}; margin-right: {UI_SPACING['normal']}; flex-shrink: 0;">
-                        {type_icon}
-                    </span>
-                    <div style="flex: 1; min-width: 0;">
-                        <h4 style="margin: 0; color: {theme_colors["text_color"]}; 
-                                   font-size: {UI_FONT_SIZES['large']}; font-weight: 600; 
-                                   line-height: 1.3; word-break: break-word;">
-                            {escaped_file_name}
-                        </h4>
-                </div>
-                </div>
-                <div style="margin-left: {UI_SPACING['large']}; flex-shrink: 0;">
-                    {"".join(action_buttons)}
-                </div>
-            </div>
-
-            <!-- 文件详细信息 -->
-            <div style="margin-left: calc({UI_FONT_SIZES['header']} + {UI_SPACING['normal']});">
-                <!-- 文件路径 -->
-                <div style="margin-bottom: {UI_SPACING['small']};">
-                    <span style="font-size: {UI_FONT_SIZES['tiny']}; color: #6c757d; 
-                                 font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
-                                 background: #f8f9fa; padding: {UI_SPACING['micro']} {UI_SPACING['tiny']};
-                                 border-radius: {UI_BORDER_RADIUS['tiny']}; word-break: break-all;">
-                        📂 {escaped_file_path}
-                    </span>
-                </div>
-                
-                <!-- 文件元数据 -->
-                <div style="display: flex; gap: {UI_SPACING['large']}; flex-wrap: wrap;">
-                    <span style="font-size: {UI_FONT_SIZES['tiny']}; color: #6c757d; 
-                                 display: flex; align-items: center; gap: {UI_SPACING['micro']};">
-                        <span style="font-size: {UI_FONT_SIZES['small']};">📏</span>
-                        <span>{size_str}</span>
-                    </span>
-                    <span style="font-size: {UI_FONT_SIZES['tiny']}; color: #6c757d; 
-                                 display: flex; align-items: center; gap: {UI_SPACING['micro']};">
-                        <span style="font-size: {UI_FONT_SIZES['small']};">🕒</span>
-                        <span>{mtime_str}</span>
-                    </span>
+            <!-- 使用与全文搜索文件组相同的布局结构 -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <table cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td style="vertical-align: middle; padding-right: {UI_SPACING['normal']};">
+                                    <span style="font-size: {UI_FONT_SIZES['header']};">{type_icon}</span>
+                                </td>
+                                <td style="vertical-align: middle;">
+                                    <h4 style="margin: 0; color: {theme_colors["text_color"]}; font-size: {UI_FONT_SIZES['large']}; font-weight: 600; line-height: 1.3; display: inline;">
+                                        {escaped_file_name}
+                                    </h4>
+                                </td>
+                            </tr>
+                        </table>
+                        <div style="margin-top: {UI_SPACING['micro']}; margin-left: calc({UI_FONT_SIZES['header']} + {UI_SPACING['normal']});">
+                            <!-- 目录路径（不包含文件名） -->
+                            <p style="margin: 0; color: #6c757d; font-size: {UI_FONT_SIZES['tiny']}; font-family: monospace;">
+                                📂 {escaped_directory}
+                            </p>
+                            <!-- 文件元数据 -->
+                            <div style="margin-top: {UI_SPACING['micro']}; display: flex; gap: {UI_SPACING['large']}; flex-wrap: wrap;">
+                                <span style="font-size: {UI_FONT_SIZES['tiny']}; color: #6c757d; 
+                                             display: flex; align-items: center; gap: {UI_SPACING['micro']};">
+                                    <span style="font-size: {UI_FONT_SIZES['small']};">📏</span>
+                                    <span>{size_str}</span>
+                                </span>
+                                <span style="font-size: {UI_FONT_SIZES['tiny']}; color: #6c757d; 
+                                             display: flex; align-items: center; gap: {UI_SPACING['micro']};">
+                                    <span style="font-size: {UI_FONT_SIZES['small']};">🕒</span>
+                                    <span>{mtime_str}</span>
+                                </span>
                 </div>
             </div>
+                    </td>
+                    <td style="text-align: right; vertical-align: middle; white-space: nowrap;">
+                        {"".join(action_buttons)}
+                    </td>
+                </tr>
+            </table>
         </div>
         '''
     
@@ -943,10 +972,12 @@ class VirtualResultsModel(QAbstractListModel):
     
     def _generate_file_group_html(self, item):
         """生成文件组头部的HTML - 统一现代化样式"""
-        file_path = item['file_path']
-        file_key = item['file_key']
-        file_number = item['file_number']
-        is_collapsed = item['is_collapsed']
+        file_path = item.get('file_path', '')
+        if not file_path:
+            return '<div style="margin: 10px; padding: 10px; background: #ffebee;">文件路径缺失</div>'
+        file_key = item.get('file_key', '')
+        file_number = item.get('file_number', 0)
+        is_collapsed = item.get('is_collapsed', False)
         theme_colors = self._get_theme_colors()
         
         import html
@@ -1036,10 +1067,10 @@ class VirtualResultsModel(QAbstractListModel):
     
     def _generate_chapter_group_html(self, item):
         """生成章节组头部的HTML - 统一现代化样式"""
-        chapter_key = item['chapter_key']
-        heading = item['heading']
-        is_collapsed = item['is_collapsed']
-        result = item['result']
+        chapter_key = item.get('chapter_key', '')
+        heading = item.get('heading', '')
+        is_collapsed = item.get('is_collapsed', False)
+        result = item.get('result', {})
         theme_colors = self._get_theme_colors()
         
         import html
@@ -1097,7 +1128,7 @@ class VirtualResultsModel(QAbstractListModel):
     
     def _generate_content_html(self, item):
         """生成内容的HTML（段落或Excel表格）"""
-        result = item['result']
+        result = item.get('result', {})
         theme_colors = self._get_theme_colors()
         
         # 检查是否是Excel数据
@@ -1663,7 +1694,7 @@ class Worker(QObject):
 
             print("使用兼容性包装函数调用优化版索引...")
 
-            generator = document_search.create_or_update_index(
+            generator = document_search.create_or_update_index_legacy(
                 source_directories,
                 index_dir_path,
                 enable_ocr,
@@ -5305,6 +5336,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         self.search_warning_label.setVisible(False)
                 
                 print(f"💡 虚拟滚动模式: 显示 {len(results)} 个结果，提升UI性能")
+                
         except Exception as e:
             print(f"显示搜索结果时出错: {e}")
             self.statusBar().showMessage(f"显示结果时出错: {str(e)}", 5000)
@@ -6271,13 +6303,16 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         # self.settings.sync() # Explicit sync usually not needed, but can try if issues persist
 
     def _apply_result_font_size(self):
-        """Applies the font size setting to the results display area."""
+        """Applies the font size setting to the virtual results view."""
         default_font_size = 10
         font_size = self.settings.value("ui/resultFontSize", default_font_size, type=int)
         print(f"DEBUG: Applying result font size: {font_size}pt") # DEBUG
-        current_font = self.results_text.font() # Get current font
-        current_font.setPointSize(font_size)     # Set the desired point size
-        self.results_text.setFont(current_font)  # Apply the modified font
+        
+        # 应用字体大小到虚拟滚动视图
+        if hasattr(self, 'virtual_results_view'):
+            current_font = self.virtual_results_view.font() # Get current font
+            current_font.setPointSize(font_size)     # Set the desired point size
+            self.virtual_results_view.setFont(current_font)  # Apply the modified font
 
     # --- 添加首次启动检查方法 ---
     def _check_first_launch(self):
@@ -6625,7 +6660,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print(f"- 索引文件类型: {file_types_str}")
 
         self.set_busy_state(True, "index")
-        self.results_text.clear()  # Clear previous results/logs
+        # 清空虚拟滚动视图的结果
+        if hasattr(self, 'virtual_results_model'):
+            self.virtual_results_model.set_results([])
         self.statusBar().showMessage(f"开始准备索引 {len(source_dirs)} 个源目录...", 3000)
 
         # --- MODIFIED: 传递文件类型过滤参数 --- 
