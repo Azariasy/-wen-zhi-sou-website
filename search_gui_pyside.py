@@ -870,23 +870,6 @@ class VirtualResultsModel(QAbstractListModel):
         escaped_file_name = html.escape(file_name)
         escaped_file_path = html.escape(file_path)
         
-        # 生成操作按钮
-        action_buttons = []
-        action_buttons.append(f'''
-            <a href="openfile:{html.escape(file_path, quote=True)}" 
-               style="{create_modern_button_style(theme_colors, 'success')}">
-                🔍 打开文件
-            </a>
-        ''')
-        
-        if folder_path_str:
-            action_buttons.append(f'''
-                <a href="openfolder:{html.escape(folder_path_str, quote=True)}" 
-                   style="{create_modern_button_style(theme_colors, 'info')}">
-                    📁 打开目录
-                </a>
-            ''')
-        
         card_style = create_modern_card_style(theme_colors, 'normal')
         
         # 计算目录路径（不包含文件名）
@@ -895,8 +878,8 @@ class VirtualResultsModel(QAbstractListModel):
         escaped_directory = html.escape(directory_path)
         
         return f'''
-        <div style="{card_style}">
-            <!-- 使用与全文搜索文件组相同的布局结构 -->
+        <div style="{card_style}" data-file-path="{escaped_file_path}">
+            <!-- 文件名搜索结果 - 右键菜单操作 -->
             <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                     <td style="vertical-align: top;">
@@ -929,11 +912,11 @@ class VirtualResultsModel(QAbstractListModel):
                                     <span style="font-size: {UI_FONT_SIZES['small']};">🕒</span>
                                     <span>{mtime_str}</span>
                                 </span>
-                </div>
-            </div>
+                            </div>
+                        </div>
                     </td>
-                    <td style="text-align: right; vertical-align: middle; white-space: nowrap;">
-                        {"".join(action_buttons)}
+                    <td style="text-align: right; vertical-align: middle; white-space: nowrap; padding-left: {UI_SPACING['normal']};">
+                        <!-- 右键菜单操作区域 -->
                     </td>
                 </tr>
             </table>
@@ -1012,28 +995,11 @@ class VirtualResultsModel(QAbstractListModel):
         except Exception:
             pass
         
-        # 生成现代化操作按钮
-        action_buttons = []
-        action_buttons.append(f'''
-            <a href="openfile:{html.escape(file_path, quote=True)}" 
-               style="{create_modern_button_style(theme_colors, 'success')}">
-                🔍 打开文件
-            </a>
-        ''')
-        
-        if folder_path_str:
-            action_buttons.append(f'''
-                <a href="openfolder:{html.escape(folder_path_str, quote=True)}" 
-                   style="{create_modern_button_style(theme_colors, 'info')}">
-                    📁 打开目录
-                </a>
-            ''')
-        
         header_style = create_modern_card_style(theme_colors, 'header')
         
         return f'''
-        <div style="{header_style}">
-            <!-- 使用表格布局确保按钮与文件名水平对齐 -->
+        <div style="{header_style}" data-file-path="{html.escape(file_path, quote=True)}">
+            <!-- 全文搜索文件组 - 右键菜单操作 -->
             <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                     <td style="vertical-align: top;">
@@ -1045,10 +1011,10 @@ class VirtualResultsModel(QAbstractListModel):
                                 <td style="vertical-align: middle; padding-right: {UI_SPACING['normal']};">
                                     <span style="font-size: {UI_FONT_SIZES['header']};">{type_icon}</span>
                                 </td>
-                    <td style="vertical-align: middle;">
+                                <td style="vertical-align: middle;">
                                     <h3 style="margin: 0; color: {theme_colors["text_color"]}; font-size: {UI_FONT_SIZES['large']}; font-weight: 600; line-height: 1.3; display: inline;">
                                         {file_number}. {escaped_file_name}
-                        </h3>
+                                    </h3>
                                 </td>
                             </tr>
                         </table>
@@ -1058,8 +1024,8 @@ class VirtualResultsModel(QAbstractListModel):
                             </p>
                         </div>
                     </td>
-                    <td style="text-align: right; vertical-align: middle; white-space: nowrap;">
-                        {"".join(action_buttons)}
+                    <td style="text-align: right; vertical-align: middle; white-space: nowrap; padding-left: {UI_SPACING['normal']};">
+                        <!-- 右键菜单操作区域 -->
                     </td>
                 </tr>
             </table>
@@ -1391,124 +1357,25 @@ class VirtualResultsView(QListView):
         pass  # 链接点击由mousePressEvent处理
     
     def mousePressEvent(self, event):
-        """处理鼠标点击事件，特别是链接点击"""
+        """处理鼠标点击事件 - 简化版本，主要处理折叠/展开"""
         if event.button() == Qt.LeftButton:
             index = self.indexAt(event.position().toPoint())
             if index.isValid():
-                # 使用QTextDocument来精确检测链接点击
                 html_content = index.data(Qt.DisplayRole)
                 if html_content:
-                    clicked_link = self._detect_link_at_position(event.position().toPoint(), index, html_content)
-                    if clicked_link:
-                        self.linkClicked.emit(QUrl(clicked_link))
+                    # 只检测折叠/展开链接
+                    import re
+                    toggle_match = re.search(r'href="(toggle::[^"]+)"', html_content)
+                    if toggle_match:
+                        from PySide6.QtCore import QUrl
+                        toggle_url = QUrl(toggle_match.group(1))
+                        self.linkClicked.emit(toggle_url)
                         return
-
-        # 调用父类处理
+        
+        # 调用父类方法处理其他点击
         super().mousePressEvent(event)
 
-    def _detect_link_at_position(self, global_pos, index, html_content):
-        """使用QTextDocument精确检测点击位置的链接"""
-        try:
-            # QTextDocument, QTextCursor 已在文件顶部导入
-            from PySide6.QtCore import QPointF
 
-            # 创建临时的QTextDocument来处理HTML
-            doc = QTextDocument()
-            doc.setHtml(html_content)
-
-            # 获取项目的矩形区域
-            item_rect = self.visualRect(index)
-            if not item_rect.isValid():
-                print(f"无效的项目矩形，使用备选方案")
-                return self._find_clicked_link_fallback(html_content)
-
-            # 计算相对于项目的点击位置
-            relative_pos = global_pos - item_rect.topLeft()
-            print(f"点击位置: 全局{global_pos.x()},{global_pos.y()}, 相对{relative_pos.x()},{relative_pos.y()}")
-
-            # 尝试多个hitTest策略
-            hit_strategies = [
-                (Qt.HitTestAccuracy.ExactHit, "精确命中"),
-                (Qt.HitTestAccuracy.FuzzyHit, "模糊命中")
-            ]
-
-            for strategy, strategy_name in hit_strategies:
-                hit_point = QPointF(relative_pos.x(), relative_pos.y())
-                cursor_pos = doc.documentLayout().hitTest(hit_point, strategy)
-                print(f"{strategy_name}测试: 光标位置 {cursor_pos}")
-
-                if cursor_pos >= 0:
-                    # 创建光标并检查格式
-                    cursor = QTextCursor(doc)
-                    cursor.setPosition(cursor_pos)
-
-                    # 获取字符格式
-                    char_format = cursor.charFormat()
-
-                    # 检查是否是链接
-                    if char_format.isAnchor():
-                        anchor_href = char_format.anchorHref()
-                        print(f"检测到链接点击({strategy_name}): {anchor_href}")
-                        return anchor_href
-                    else:
-                        # 尝试扩展选择范围，查找附近的链接
-                        for offset in [-1, 1, -2, 2]:
-                            try_pos = cursor_pos + offset
-                            if try_pos >= 0:
-                                cursor.setPosition(try_pos)
-                                char_format = cursor.charFormat()
-                                if char_format.isAnchor():
-                                    anchor_href = char_format.anchorHref()
-                                    print(f"检测到附近链接({strategy_name}, 偏移{offset}): {anchor_href}")
-                                    return anchor_href
-
-            print(f"精确检测失败，使用备选方案")
-            # 如果精确检测失败，使用备选方案
-            return self._find_clicked_link_fallback(html_content)
-
-        except Exception as e:
-            print(f"链接检测出错，使用备选方案: {e}")
-            return self._find_clicked_link_fallback(html_content)
-
-    def _find_clicked_link_fallback(self, html_content):
-        """备选的链接检测方案"""
-        import re
-        
-        # 提取所有链接
-        link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>'
-        links = re.findall(link_pattern, html_content)
-        if not links:
-            return None
-
-        # 使用简单的轮换策略或者随机选择，避免总是选择同一个
-        import time
-        openfile_links = [url for url, text in links if url.startswith('openfile:')]
-        openfolder_links = [url for url, text in links if url.startswith('openfolder:')]
-        toggle_links = [url for url, text in links if url.startswith('toggle::')]
-
-        # 如果同时有文件和目录链接，使用时间戳来轮换选择
-        if openfile_links and openfolder_links:
-            # 使用毫秒数的奇偶性来决定选择哪个
-            ms = int(time.time() * 1000) % 1000
-            if ms % 2 == 0:
-                print(f"备选检测：选择打开文件链接")
-                return openfile_links[0]
-            else:
-                print(f"备选检测：选择打开目录链接")
-                return openfolder_links[0]
-
-        # 如果只有一种类型，直接返回
-        if openfile_links:
-            print(f"备选检测：只有打开文件链接")
-            return openfile_links[0]
-        if openfolder_links:
-            print(f"备选检测：只有打开目录链接")
-            return openfolder_links[0]
-        if toggle_links:
-            print(f"备选检测：只有折叠链接")
-            return toggle_links[0]
-
-        return links[0][0] if links else None
 
 
 
@@ -1583,7 +1450,7 @@ class VirtualResultsView(QListView):
             QMessageBox.warning(dialog, "未选择文本", "请先选择要复制的文本")
 
     def _show_context_menu(self, position):
-        """显示虚拟滚动视图的右键菜单"""
+        """显示虚拟滚动视图的增强右键菜单"""
         index = self.indexAt(position)
         if not index.isValid():
             return
@@ -1593,18 +1460,96 @@ class VirtualResultsView(QListView):
         # 获取HTML内容
         html_content = index.data(Qt.DisplayRole)
         if html_content:
+            # 尝试从HTML中提取文件路径信息
+            file_path = self._extract_file_path_from_html(html_content)
+            
+            if file_path:
+                # 文件操作选项
+                open_file_action = menu.addAction("🔍 打开文件")
+                open_file_action.triggered.connect(lambda: self._open_file_from_context(file_path))
+                
+                open_folder_action = menu.addAction("📁 打开目录")
+                open_folder_action.triggered.connect(lambda: self._open_folder_from_context(file_path))
+                
+                menu.addSeparator()
+            
             # 复制内容选项
-            copy_action = menu.addAction("复制内容")
+            copy_action = menu.addAction("📋 复制内容")
             copy_action.triggered.connect(lambda: self._copy_item_content(html_content))
 
             menu.addSeparator()
 
             # 文本选择对话框选项
-            select_action = menu.addAction("文本选择...")
+            select_action = menu.addAction("✏️ 文本选择...")
             select_action.triggered.connect(lambda: self._show_text_selection_dialog(html_content))
 
-                    # 显示菜单
+        # 显示菜单
         menu.exec(self.mapToGlobal(position))
+
+    def _extract_file_path_from_html(self, html_content):
+        """从HTML内容中提取文件路径"""
+        import re
+        
+        # 尝试多种模式来提取文件路径
+        patterns = [
+            r'href="open_file:([^"]+)"',  # 打开文件链接
+            r'href="open_folder:([^"]+)"',  # 打开目录链接
+            r'data-file-path="([^"]+)"',  # 数据属性
+            r'文件路径[：:]\s*([^\n<]+)',  # 文本中的路径
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, html_content)
+            if match:
+                file_path = match.group(1).strip()
+                # 解码URL编码的路径
+                try:
+                    from urllib.parse import unquote
+                    file_path = unquote(file_path)
+                except:
+                    pass
+                return file_path
+        
+        return None
+
+    def _open_file_from_context(self, file_path):
+        """从右键菜单打开文件"""
+        try:
+            # 使用主窗口的方法来打开文件
+            if hasattr(self, 'parent') and hasattr(self.parent(), '_open_path_with_desktop_services'):
+                self.parent()._open_path_with_desktop_services(file_path, is_file=True)
+            else:
+                # 备用方法
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+                from pathlib import Path
+                
+                if Path(file_path).exists():
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
+                else:
+                    print(f"文件不存在: {file_path}")
+        except Exception as e:
+            print(f"打开文件失败: {e}")
+
+    def _open_folder_from_context(self, file_path):
+        """从右键菜单打开文件所在目录"""
+        try:
+            # 使用主窗口的方法来打开目录
+            if hasattr(self, 'parent') and hasattr(self.parent(), '_open_path_with_desktop_services'):
+                self.parent()._open_path_with_desktop_services(file_path, is_file=False)
+            else:
+                # 备用方法
+                from PySide6.QtGui import QDesktopServices
+                from PySide6.QtCore import QUrl
+                from pathlib import Path
+                
+                folder_path = Path(file_path).parent
+                if folder_path.exists():
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder_path)))
+                else:
+                    print(f"目录不存在: {folder_path}")
+        except Exception as e:
+            print(f"打开目录失败: {e}")
 
     def _copy_item_content(self, html_content):
         """复制项目的纯文本内容"""
@@ -3532,12 +3477,12 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.virtual_results_view.setModel(self.virtual_results_model)
         self.virtual_results_view.setStyleSheet("border: 1px solid #D0D0D0;")
         
-        # 直接使用虚拟滚动视图，不再需要切换
-        self.results_stack = self.virtual_results_view
+        # 直接使用虚拟滚动视图，统一的搜索结果显示
+        self.results_view = self.virtual_results_view
         
         right_layout.addWidget(right_title)
         right_layout.addWidget(self.search_warning_label)  # 添加警告标签
-        right_layout.addWidget(self.results_stack)
+        right_layout.addWidget(self.results_view)
         
         # 将两个容器添加到分隔器
         self.main_splitter.addWidget(left_container)
