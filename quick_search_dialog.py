@@ -23,7 +23,7 @@ from pathlib import Path
 from search_gui_pyside import ORGANIZATION_NAME, APPLICATION_NAME
 
 class SearchResultItem(QListWidgetItem):
-    """现代化搜索结果列表项 - 增强版"""
+    """现代化搜索结果列表项 - 性能优化版"""
     
     def __init__(self, title, path, icon_path=None, content_preview="", file_type=""):
         super().__init__()
@@ -36,11 +36,9 @@ class SearchResultItem(QListWidgetItem):
         # 设置项目标志 - 确保可以被选择和启用
         self.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         
-        # 获取文件信息
-        file_info = self._get_file_info(path)
-        
-        # 设置显示文本 - 更丰富的信息展示
-        display_text = self._create_rich_display_text(title, path, file_info, file_type)
+        # 性能优化：延迟文件信息获取，只在需要时获取
+        # 先设置基本显示文本，避免同步I/O操作
+        display_text = self._create_fast_display_text(title, path, file_type)
         self.setText(display_text)
         
         # 设置图标（如果有）
@@ -50,16 +48,36 @@ class SearchResultItem(QListWidgetItem):
         # 存储额外数据
         self.setData(Qt.UserRole, path)
         self.setData(Qt.UserRole + 1, content_preview)
-        self.setData(Qt.UserRole + 2, file_info)  # 存储文件信息
         
-        # 取消工具提示 - 避免鼠标悬停干扰，提升流畅性
-        # 不设置工具提示，保持界面简洁流畅
+        # 设置项目高度 - 优化显示（减少高度，提升滚动性能）
+        self.setSizeHint(QSize(0, 50))  # 从65减少到50
+    
+    def _create_fast_display_text(self, title, path, file_type):
+        """创建快速显示文本（避免文件I/O操作）"""
+        # 获取文件图标
+        icon = self._get_file_icon(file_type if file_type else Path(path).suffix[1:] if path else '')
         
-        # 设置项目高度 - 优化显示
-        self.setSizeHint(QSize(0, 65))
+        # 快速路径处理 - 只获取父目录名
+        if path:
+            parent_name = Path(path).parent.name
+            if not parent_name:  # 根目录情况
+                parent_name = str(Path(path).parent)
+        else:
+            parent_name = '未知目录'
+        
+        # 构建简化的显示文本（单行，提升性能）
+        display_text = f"{icon} {title}\n  📁 {parent_name}"
+        
+        return display_text
+    
+    def get_detailed_info(self):
+        """按需获取详细文件信息（延迟加载）"""
+        if not hasattr(self, '_detailed_info'):
+            self._detailed_info = self._get_file_info(self.path)
+        return self._detailed_info
     
     def _get_file_info(self, file_path):
-        """获取文件信息"""
+        """获取文件信息（延迟调用）"""
         import os
         from datetime import datetime
         
@@ -82,7 +100,6 @@ class SearchResultItem(QListWidgetItem):
                 'exists': True
             }
         except Exception as e:
-            print(f"获取文件信息失败: {e}")
             return {
                 'size': 0,
                 'size_str': '未知',
@@ -102,64 +119,35 @@ class SearchResultItem(QListWidgetItem):
         s = round(size_bytes / p, 2)
         return f"{s} {size_names[i]}"
     
-    def _create_rich_display_text(self, title, path, file_info, file_type):
-        """创建丰富的显示文本"""
-        # 获取文件图标
-        icon = self._get_file_icon(file_type if file_type else Path(path).suffix[1:] if path else '')
-        
-        # 获取目录信息
-        directory = str(Path(path).parent) if path else '未知目录'
-        # 简化路径显示 - 只保留最后两级目录
-        dir_parts = directory.split(os.sep)
-        if len(dir_parts) > 2:
-            simplified_dir = f"...{os.sep}{os.sep.join(dir_parts[-2:])}"
-        else:
-            simplified_dir = directory
-        
-        # 构建显示文本
-        display_lines = []
-        
-        # 第一行：文件图标 + 文件名
-        display_lines.append(f"{icon} {title}")
-        
-        # 第二行：路径 + 文件信息
-        info_parts = []
-        info_parts.append(f"📁 {simplified_dir}")
-        
-        if file_info['exists']:
-            info_parts.append(f"📏 {file_info['size_str']}")
-            info_parts.append(f"🕒 {file_info['modified_time']}")
-            
-        display_lines.append("  " + " | ".join(info_parts))
-        
-        return "\n".join(display_lines)
-    
     def _get_file_icon(self, file_type):
-        """根据文件类型返回对应的图标"""
-        icon_map = {
-            # 文档类型
-            'docx': '📝', 'doc': '📝',
-            'xlsx': '📊', 'xls': '📊', 'csv': '📊',
-            'pptx': '📊', 'ppt': '📊',
-            'pdf': '📋',
-            'txt': '📄', 'md': '📄', 'rtf': '📄',
-            'zip': '📦', 'rar': '📦', '7z': '📦',
-            'html': '🌐', 'htm': '🌐',
-            'eml': '📧', 'msg': '📧',
-            
-            # 视频文件
-            'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬', 'wmv': '🎬', 
-            'mov': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
-            
-            # 音频文件
-            'mp3': '🎵', 'wav': '🎵', 'flac': '🎵', 'aac': '🎵',
-            'ogg': '🎵', 'wma': '🎵', 'm4a': '🎵',
-            
-            # 图片文件
-            'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
-            'bmp': '🖼️', 'tiff': '🖼️', 'webp': '🖼️', 'svg': '🖼️'
-        }
-        return icon_map.get(file_type.lower(), '📄')
+        """根据文件类型返回对应的图标（缓存优化）"""
+        # 使用类级别缓存避免重复计算
+        if not hasattr(SearchResultItem, '_icon_cache'):
+            SearchResultItem._icon_cache = {
+                # 文档类型
+                'docx': '📝', 'doc': '📝',
+                'xlsx': '📊', 'xls': '📊', 'csv': '📊',
+                'pptx': '📋', 'ppt': '📋',
+                'pdf': '📕',
+                'txt': '📄', 'md': '📄', 'rtf': '📄',
+                'zip': '📦', 'rar': '📦', '7z': '📦',
+                'html': '🌐', 'htm': '🌐',
+                'eml': '📧', 'msg': '📧',
+                
+                # 视频文件
+                'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬', 'wmv': '🎬', 
+                'mov': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
+                
+                # 音频文件
+                'mp3': '🎵', 'wav': '🎵', 'flac': '🎵', 'aac': '🎵',
+                'ogg': '🎵', 'wma': '🎵', 'm4a': '🎵',
+                
+                # 图片文件
+                'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+                'bmp': '🖼️', 'tiff': '🖼️', 'webp': '🖼️', 'svg': '🖼️'
+            }
+        
+        return SearchResultItem._icon_cache.get(file_type.lower(), '📄')
 
 class QuickSearchDialog(QDialog):
     """优化版快速搜索对话框"""
@@ -665,7 +653,7 @@ class QuickSearchDialog(QDialog):
         QTimer.singleShot(50, lambda: self.resize(original_size))
     
     def _on_search_text_changed(self, text):
-        """搜索文本改变时的处理（优化流畅性版本）"""
+        """搜索文本改变时的处理（性能优化版本）"""
         # 显示/隐藏清空按钮
         self.clear_button.setVisible(bool(text))
         
@@ -675,12 +663,19 @@ class QuickSearchDialog(QDialog):
         
         # 重置搜索定时器（防抖优化）
         self.search_timer.stop()
+        
         if text.strip():
-            # 减少防抖延迟到100ms，提升响应速度
-            self.search_timer.start(100)
+            # 性能优化：减少防抖延迟到50ms，提升响应速度
+            self.search_timer.start(50)  # 从100ms减少到50ms
         else:
-            # 清空结果
+            # 文本为空时，立即清空结果并恢复待搜索状态
             self._clear_results()
+            self._hide_search_progress()  # 立即隐藏进度条
+            self._show_empty_state()      # 恢复待搜索状态
+            
+            # 更新状态标签
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("准备就绪")
     
     def _clear_results(self):
         """清空搜索结果"""
@@ -989,13 +984,16 @@ class QuickSearchDialog(QDialog):
         self._on_main_window_button()
     
     def set_search_results(self, results):
-        """设置搜索结果（流畅性优化版本）"""
+        """设置搜索结果（性能优化版本）"""
         import time
         start_time = time.time()
         
+        # 性能优化：批量操作，减少UI更新
+        self.results_list.setUpdatesEnabled(False)
         self.results_list.clear()
         
         if not results:
+            self.results_list.setUpdatesEnabled(True)
             self.empty_state_label.setVisible(True)
             if hasattr(self, 'results_header'):
                 self.results_header.setText("未找到结果")
@@ -1006,8 +1004,8 @@ class QuickSearchDialog(QDialog):
         # 隐藏空状态提示
         self.empty_state_label.setVisible(False)
         
-        # 快捷搜索显示限制 - 减少到10个，提升流畅性
-        display_limit = 10  # 进一步减少显示数量，保持快捷和流畅
+        # 快捷搜索显示限制 - 保持10个，但优化渲染
+        display_limit = 10
         total_count = len(results)
         
         # 更新结果标题
@@ -1017,17 +1015,15 @@ class QuickSearchDialog(QDialog):
             else:
                 self.results_header.setText(f"📁 文件搜索结果 (共{total_count}个)")
         
-        # 批量添加结果（性能优化）
-        self.results_list.setUpdatesEnabled(False)
-        
         try:
-            displayed_count = 0
+            # 性能优化：预分配列表，批量创建项目
+            items_to_add = []
             
             for result in results[:display_limit]:
                 file_path = result.get('file_path', '')
                 content_preview = result.get('content_preview', '')
                 
-                # 创建结果项
+                # 创建结果项（现在更快，因为避免了文件I/O）
                 item = SearchResultItem(
                     title=self._get_file_display_name(file_path),
                     path=file_path,
@@ -1037,11 +1033,13 @@ class QuickSearchDialog(QDialog):
                 
                 # 确保文件路径正确存储在UserRole中
                 item.setData(Qt.UserRole, file_path)
-                
-                self.results_list.addItem(item)
-                displayed_count += 1
+                items_to_add.append(item)
             
-            # 如果有更多结果，添加明显的提示项
+            # 批量添加到列表（减少UI更新次数）
+            for item in items_to_add:
+                self.results_list.addItem(item)
+            
+            # 如果有更多结果，添加提示项
             if total_count > display_limit:
                 more_item = QListWidgetItem()
                 remaining = total_count - display_limit
@@ -1050,13 +1048,11 @@ class QuickSearchDialog(QDialog):
                 more_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 不可选择
                 more_item.setBackground(QColor("#f8f9fa"))
                 more_item.setForeground(QColor("#495057"))
-                
-                # 设置适中的高度
                 more_item.setSizeHint(QSize(0, 60))
-                
                 self.results_list.addItem(more_item)
         
         finally:
+            # 重新启用UI更新
             self.results_list.setUpdatesEnabled(True)
         
         # 选中第一个结果
