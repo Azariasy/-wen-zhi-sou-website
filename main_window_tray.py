@@ -235,6 +235,46 @@ class TrayMainWindow(MainWindow):
         """
         # 使用轻量级搜索控制器显示对话框
         self.quick_search_controller.show_quick_search(initial_query)
+        
+        # 同步主题到快捷搜索窗口
+        self._sync_theme_to_quick_search()
+    
+    def _sync_theme_to_quick_search(self):
+        """同步主题到快捷搜索窗口"""
+        if hasattr(self, 'quick_search_controller') and self.quick_search_controller:
+            current_theme = self.settings.value("ui/theme", "现代蓝")
+            # 通知快捷搜索控制器更新主题
+            if hasattr(self.quick_search_controller, 'update_theme'):
+                self.quick_search_controller.update_theme(current_theme)
+    
+    def apply_theme(self, theme_name):
+        """应用主题（重写父类方法以添加快捷搜索同步）"""
+        # 调用父类的主题应用方法
+        super().apply_theme(theme_name)
+        
+        # 同步主题到快捷搜索窗口
+        self._sync_theme_to_quick_search()
+        
+        # 更新托盘图标的主题显示
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            try:
+                if hasattr(self.tray_icon, 'update_theme_display'):
+                    self.tray_icon.update_theme_display(theme_name)
+            except Exception as e:
+                print(f"更新托盘图标主题显示时出错: {e}")
+    
+    def _on_theme_changed(self, theme_name):
+        """主题变化时的处理（新增方法）"""
+        print(f"托盘版本: 主题已变更为 {theme_name}")
+        
+        # 应用新主题
+        self.apply_theme(theme_name)
+        
+        # 同步到快捷搜索窗口
+        self._sync_theme_to_quick_search()
+        
+        # 显示状态消息
+        self.statusBar().showMessage(f"主题已切换为: {theme_name}", 2000)
     
     def _perform_search(self, query, max_results=50, quick_search=False, search_scope="fulltext"):
         """执行搜索，供轻量级搜索控制器调用

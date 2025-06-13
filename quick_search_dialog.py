@@ -23,7 +23,7 @@ from pathlib import Path
 from search_gui_pyside import ORGANIZATION_NAME, APPLICATION_NAME
 
 class SearchResultItem(QListWidgetItem):
-    """现代化搜索结果列表项"""
+    """现代化搜索结果列表项 - 增强版"""
     
     def __init__(self, title, path, icon_path=None, content_preview="", file_type=""):
         super().__init__()
@@ -33,16 +33,14 @@ class SearchResultItem(QListWidgetItem):
         self.content_preview = content_preview
         self.file_type = file_type
         
-        # 设置显示文本 - 更美观的格式
-        display_text = f"📄 {title}"
-        if file_type:
-            display_text = f"{self._get_file_icon(file_type)} {title}"
-        elif path:
-            # 从文件路径获取文件类型
-            file_ext = Path(path).suffix[1:] if path else ''
-            if file_ext:
-                display_text = f"{self._get_file_icon(file_ext)} {title}"
+        # 设置项目标志 - 确保可以被选择和启用
+        self.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         
+        # 获取文件信息
+        file_info = self._get_file_info(path)
+        
+        # 设置显示文本 - 更丰富的信息展示
+        display_text = self._create_rich_display_text(title, path, file_info, file_type)
         self.setText(display_text)
         
         # 设置图标（如果有）
@@ -52,16 +50,89 @@ class SearchResultItem(QListWidgetItem):
         # 存储额外数据
         self.setData(Qt.UserRole, path)
         self.setData(Qt.UserRole + 1, content_preview)
+        self.setData(Qt.UserRole + 2, file_info)  # 存储文件信息
         
-        # 设置工具提示 - 更丰富的信息
-        tooltip_text = f"📄 {title}\n📁 {path}"
-        if content_preview:
-            preview_short = content_preview[:100] + "..." if len(content_preview) > 100 else content_preview
-            tooltip_text += f"\n\n💬 预览:\n{preview_short}"
-        self.setToolTip(tooltip_text)
+        # 取消工具提示 - 避免鼠标悬停干扰，提升流畅性
+        # 不设置工具提示，保持界面简洁流畅
         
-        # 设置项目高度
-        self.setSizeHint(QSize(0, 50))
+        # 设置项目高度 - 优化显示
+        self.setSizeHint(QSize(0, 65))
+    
+    def _get_file_info(self, file_path):
+        """获取文件信息"""
+        import os
+        from datetime import datetime
+        
+        if not file_path or not os.path.exists(file_path):
+            return {
+                'size': 0,
+                'modified_time': '未知',
+                'exists': False
+            }
+        
+        try:
+            stat = os.stat(file_path)
+            size = stat.st_size
+            modified_time = datetime.fromtimestamp(stat.st_mtime)
+            
+            return {
+                'size': size,
+                'size_str': self._format_file_size(size),
+                'modified_time': modified_time.strftime('%Y-%m-%d %H:%M'),
+                'exists': True
+            }
+        except Exception as e:
+            print(f"获取文件信息失败: {e}")
+            return {
+                'size': 0,
+                'size_str': '未知',
+                'modified_time': '未知',
+                'exists': False
+            }
+    
+    def _format_file_size(self, size_bytes):
+        """格式化文件大小"""
+        if size_bytes == 0:
+            return "0 B"
+        
+        size_names = ["B", "KB", "MB", "GB", "TB"]
+        import math
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"
+    
+    def _create_rich_display_text(self, title, path, file_info, file_type):
+        """创建丰富的显示文本"""
+        # 获取文件图标
+        icon = self._get_file_icon(file_type if file_type else Path(path).suffix[1:] if path else '')
+        
+        # 获取目录信息
+        directory = str(Path(path).parent) if path else '未知目录'
+        # 简化路径显示 - 只保留最后两级目录
+        dir_parts = directory.split(os.sep)
+        if len(dir_parts) > 2:
+            simplified_dir = f"...{os.sep}{os.sep.join(dir_parts[-2:])}"
+        else:
+            simplified_dir = directory
+        
+        # 构建显示文本
+        display_lines = []
+        
+        # 第一行：文件图标 + 文件名
+        display_lines.append(f"{icon} {title}")
+        
+        # 第二行：路径 + 文件信息
+        info_parts = []
+        info_parts.append(f"📁 {simplified_dir}")
+        
+        if file_info['exists']:
+            info_parts.append(f"📏 {file_info['size_str']}")
+            info_parts.append(f"🕒 {file_info['modified_time']}")
+            
+        display_lines.append("  " + " | ".join(info_parts))
+        
+        return "\n".join(display_lines)
     
     def _get_file_icon(self, file_type):
         """根据文件类型返回对应的图标"""
@@ -121,14 +192,17 @@ class QuickSearchDialog(QDialog):
         # 加载设置
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
+        # 获取当前主题
+        self.current_theme = self.settings.value("ui/theme", "现代蓝")
+        
         # 初始化UI
         self._setup_ui()
         
         # 连接信号
         self._connect_signals()
         
-        # 应用样式
-        self._apply_styles()
+        # 应用主题样式
+        self._apply_theme_styles()
         
         # 居中显示
         self._center_on_screen()
@@ -214,8 +288,8 @@ class QuickSearchDialog(QDialog):
         search_layout = QVBoxLayout(search_frame)
         search_layout.setContentsMargins(20, 15, 20, 15)
         
-        # 搜索提示
-        self.search_hint_label = QLabel("输入关键词开始搜索，支持实时搜索")
+        # 搜索提示 - 明确说明这是文件名搜索
+        self.search_hint_label = QLabel("🗂️ 快速文件名搜索 - 输入关键词快速找到文件")
         self.search_hint_label.setObjectName("searchHint")
         search_layout.addWidget(self.search_hint_label)
         
@@ -226,7 +300,7 @@ class QuickSearchDialog(QDialog):
         # 搜索框
         self.search_line_edit = QLineEdit()
         self.search_line_edit.setObjectName("modernSearchLineEdit")
-        self.search_line_edit.setPlaceholderText("🔍 输入搜索内容...")
+        self.search_line_edit.setPlaceholderText("🔍 输入文件名或关键词...")
         self.search_line_edit.setMinimumHeight(40)
         search_container.addWidget(self.search_line_edit)
         
@@ -238,6 +312,13 @@ class QuickSearchDialog(QDialog):
         search_container.addWidget(self.clear_button)
         
         search_layout.addLayout(search_container)
+        
+        # 搜索说明
+        help_text = "💡 支持文件名模糊搜索，实时显示结果。需要全文搜索请使用主窗口。"
+        self.help_label = QLabel(help_text)
+        self.help_label.setObjectName("helpLabel")
+        self.help_label.setStyleSheet("color: #666; font-size: 11px; margin-top: 5px;")
+        search_layout.addWidget(self.help_label)
         
         # 搜索进度条
         self.search_progress = QProgressBar()
@@ -265,10 +346,24 @@ class QuickSearchDialog(QDialog):
         self.results_list = QListWidget()
         self.results_list.setObjectName("modernResultsList")
         self.results_list.setAlternatingRowColors(True)
+        
+        # 修复关键配置
+        # 1. 启用自定义右键菜单
+        self.results_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        
+        # 2. 设置正确的选择模式
+        self.results_list.setSelectionMode(QListWidget.SingleSelection)
+        
+        # 3. 设置选择行为
+        self.results_list.setSelectionBehavior(QListWidget.SelectRows)
+        
+        # 4. 设置焦点策略（移除鼠标跟踪，避免与选择冲突）
+        self.results_list.setFocusPolicy(Qt.StrongFocus)
+        
         results_layout.addWidget(self.results_list)
         
         # 空状态提示
-        self.empty_state_label = QLabel("🔍\n\n开始输入以搜索文档\n支持文件名和内容搜索")
+        self.empty_state_label = QLabel("🗂️\n\n输入文件名开始搜索\n\n✨ 快速搜索小贴士：\n• 支持文件名模糊匹配\n• 双击结果打开文件\n• 右键查看更多选项\n• 需要全文搜索请按 Enter 键打开主窗口")
         self.empty_state_label.setObjectName("emptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignCenter)
         self.empty_state_label.setVisible(True)
@@ -285,30 +380,37 @@ class QuickSearchDialog(QDialog):
         bottom_layout.setContentsMargins(20, 10, 20, 10)
         
         # 状态信息
-        self.status_label = QLabel("准备就绪")
+        self.status_label = QLabel("就绪 - 快速文件名搜索")
         self.status_label.setObjectName("statusLabel")
         bottom_layout.addWidget(self.status_label)
         
         bottom_layout.addStretch()
         
-        # 操作按钮组
+        # 操作提示和按钮组
         button_container = QHBoxLayout()
-        button_container.setSpacing(10)
+        button_container.setSpacing(15)
+        
+        # 快捷键提示
+        shortcut_label = QLabel("💡 Enter: 主窗口 | Esc: 关闭 | ↑↓: 选择")
+        shortcut_label.setObjectName("shortcutLabel")
+        shortcut_label.setStyleSheet("color: #666; font-size: 11px;")
+        button_container.addWidget(shortcut_label)
         
         # 主窗口搜索按钮
-        self.main_window_button = QPushButton("📋 在主窗口中搜索")
+        self.main_window_button = QPushButton("🖥️ 主窗口搜索")
         self.main_window_button.setObjectName("primaryButton")
         self.main_window_button.setMinimumHeight(35)
         self.main_window_button.setDefault(False)
         self.main_window_button.setAutoDefault(False)
+        self.main_window_button.setToolTip("在主窗口中搜索，支持全文搜索和高级功能")
         button_container.addWidget(self.main_window_button)
         
         bottom_layout.addLayout(button_container)
         layout.addWidget(bottom_frame)
     
     def _connect_signals(self):
-        """连接信号和槽"""
-        # 标题栏按钮
+        """连接信号"""
+        # 窗口控制按钮
         self.minimize_button.clicked.connect(self.showMinimized)
         self.close_button.clicked.connect(self.close)
         
@@ -317,198 +419,215 @@ class QuickSearchDialog(QDialog):
         self.search_line_edit.returnPressed.connect(self._on_search_enter)
         self.clear_button.clicked.connect(self._clear_search)
         
+        # 搜索防抖定时器
+        self.search_timer.timeout.connect(self._perform_search)
+        
         # 结果列表
         self.results_list.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.results_list.itemActivated.connect(self._on_item_activated)
+        self.results_list.customContextMenuRequested.connect(self._show_context_menu)
         
         # 底部按钮
-        self.main_window_button.clicked.connect(self._on_main_window_button)
-        
-        # 右键菜单
-        self.results_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.results_list.customContextMenuRequested.connect(self._show_context_menu)
+        if hasattr(self, 'main_window_button'):
+            self.main_window_button.clicked.connect(self._on_main_window_button)
     
-    def _apply_styles(self):
-        """应用现代化样式"""
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2b2b2b;
+    def _apply_theme_styles(self):
+        """应用主题样式"""
+        colors = self._get_theme_colors()
+        
+        # 动态生成样式表
+        style = f"""
+            QDialog {{
+                background-color: {colors['dialog_bg']};
                 border-radius: 12px;
-            }
+            }}
             
-            #titleFrame {
+            #titleFrame {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #3d3d3d, stop:1 #353535);
+                    stop:0 {colors['title_bg_start']}, stop:1 {colors['title_bg_end']});
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
-                border-bottom: 1px solid #4a4a4a;
-            }
+                border-bottom: 1px solid {colors['border']};
+            }}
             
-            #searchIcon {
+            #searchIcon {{
                 font-size: 18px;
-            }
+                color: {colors['text_primary']};
+            }}
             
-            #titleLabel {
+            #titleLabel {{
                 font-size: 16px;
                 font-weight: bold;
-                color: #ffffff;
+                color: {colors['surface']};
                 margin-left: 8px;
-            }
+            }}
             
-            #subtitleLabel {
+            #subtitleLabel {{
                 font-size: 12px;
-                color: #b0b0b0;
+                color: {colors['text_secondary']};
                 margin-left: 5px;
                 font-style: italic;
-            }
+            }}
             
-            #minimizeButton, #closeButton {
+            #minimizeButton, #closeButton {{
                 border: none;
                 background: transparent;
-                color: #c0c0c0;
+                color: {colors['text_secondary']};
                 font-size: 16px;
                 font-weight: bold;
                 border-radius: 4px;
-            }
+                padding: 4px 8px;
+            }}
             
-            #minimizeButton:hover {
-                background-color: #4a4a4a;
-                color: #ffffff;
-            }
+            #minimizeButton:hover {{
+                background-color: {colors['hover']};
+                color: {colors['text_primary']};
+            }}
             
-            #closeButton:hover {
-                background-color: #d32f2f;
-                color: #ffffff;
-            }
+            #closeButton:hover {{
+                background-color: {colors['error']};
+                color: {colors['surface']};
+            }}
             
-            #searchFrame {
-                background-color: #2b2b2b;
-            }
+            #searchFrame {{
+                background-color: {colors['dialog_bg']};
+            }}
             
-            #searchHint {
-                color: #888888;
+            #searchHint {{
+                color: {colors['text_secondary']};
                 font-size: 11px;
                 margin-bottom: 8px;
-            }
+            }}
             
-            #modernSearchLineEdit {
+            #modernSearchLineEdit {{
                 padding: 12px 16px;
                 border-radius: 20px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #404040, stop:1 #383838);
-                color: #ffffff;
-                border: 2px solid #555555;
+                background-color: {colors['search_bg']};
+                color: {colors['text_primary']};
+                border: 2px solid {colors['search_border']};
                 font-size: 14px;
-            }
+                font-family: "Microsoft YaHei", "SimHei", sans-serif;
+                min-height: 24px;
+                line-height: 1.2;
+            }}
             
-            #modernSearchLineEdit:focus {
-                border: 2px solid #007acc;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #454545, stop:1 #3d3d3d);
-            }
+            #modernSearchLineEdit:focus {{
+                border: 2px solid {colors['search_focus']};
+                background-color: {colors['surface']};
+            }}
             
-            #clearButton {
+            #clearButton {{
                 border: none;
                 background: transparent;
-                color: #888888;
+                color: {colors['text_secondary']};
                 font-size: 12px;
                 border-radius: 17px;
-            }
+                padding: 4px 8px;
+            }}
             
-            #clearButton:hover {
-                background-color: #555555;
-                color: #ffffff;
-            }
+            #clearButton:hover {{
+                background-color: {colors['hover']};
+                color: {colors['text_primary']};
+            }}
             
-            #searchProgress {
-                background-color: #404040;
+            #searchProgress {{
+                background-color: {colors['border']};
                 border: none;
-                border-radius: 1px;
-            }
+                border-radius: 2px;
+            }}
             
-            #searchProgress::chunk {
+            #searchProgress::chunk {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #007acc, stop:1 #0056b3);
-                border-radius: 1px;
-            }
+                    stop:0 {colors['primary']}, stop:1 {colors['secondary']});
+                border-radius: 2px;
+            }}
             
-            #resultsFrame {
-                background-color: #2b2b2b;
-            }
+            #resultsFrame {{
+                background-color: {colors['dialog_bg']};
+            }}
             
-            #resultsHeader {
-                color: #ffffff;
+            #resultsHeader {{
+                color: {colors['text_primary']};
                 font-size: 13px;
                 font-weight: bold;
                 margin-bottom: 8px;
                 margin-top: 10px;
-            }
+            }}
             
-            #modernResultsList {
-                background-color: #323232;
-                alternate-background-color: #373737;
-                color: #ffffff;
+            #modernResultsList {{
+                background-color: {colors['results_bg']};
+                alternate-background-color: {colors['hover']};
+                color: {colors['text_primary']};
                 border-radius: 8px;
-                border: 1px solid #4a4a4a;
+                border: 1px solid {colors['border']};
                 outline: none;
                 font-size: 13px;
-            }
+            }}
             
-            #modernResultsList::item {
+            #modernResultsList::item {{
                 padding: 12px;
-                border-bottom: 1px solid #404040;
+                border-bottom: 1px solid {colors['border']};
                 min-height: 35px;
-            }
+            }}
             
-            #modernResultsList::item:selected {
+            #modernResultsList::item:hover {{
+                background-color: {colors['item_hover']};
+                color: {colors['text_primary']};
+            }}
+            
+            #modernResultsList::item:selected {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #007acc, stop:1 #0056b3);
-                color: #ffffff;
-            }
+                    stop:0 {colors['item_selected']}, stop:1 {colors['secondary']});
+                color: {colors['surface']};
+            }}
             
-            #modernResultsList::item:hover {
-                background-color: #404040;
-            }
+            #modernResultsList::item:selected:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {colors['item_selected']}, stop:1 {colors['secondary']});
+                color: {colors['surface']};
+            }}
             
-            #emptyStateLabel {
-                color: #666666;
+            #emptyStateLabel {{
+                color: {colors['text_secondary']};
                 font-size: 14px;
                 line-height: 1.5;
-            }
+            }}
             
-            #bottomFrame {
-                background-color: #2b2b2b;
-                border-top: 1px solid #4a4a4a;
+            #bottomFrame {{
+                background-color: {colors['dialog_bg']};
+                border-top: 1px solid {colors['border']};
                 border-bottom-left-radius: 12px;
                 border-bottom-right-radius: 12px;
-            }
+            }}
             
-            #statusLabel {
-                color: #888888;
+            #statusLabel {{
+                color: {colors['text_secondary']};
                 font-size: 11px;
-            }
+            }}
             
-            #primaryButton {
+            #primaryButton {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #007acc, stop:1 #0056b3);
-                color: #ffffff;
+                    stop:0 {colors['primary']}, stop:1 {colors['secondary']});
+                color: {colors['surface']};
                 border: none;
                 border-radius: 6px;
                 padding: 8px 16px;
                 font-weight: bold;
                 font-size: 12px;
-            }
+            }}
             
-            #primaryButton:hover {
+            #primaryButton:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0086e6, stop:1 #0066cc);
-            }
+                    stop:0 {colors['gradient_start']}, stop:1 {colors['gradient_end']});
+            }}
             
-            #primaryButton:pressed {
+            #primaryButton:pressed {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0056b3, stop:1 #004080);
-            }
-        """)
+                    stop:0 {colors['secondary']}, stop:1 {colors['primary']});
+            }}
+        """
+        
+        self.setStyleSheet(style)
         
         # 添加阴影效果
         shadow = QGraphicsDropShadowEffect()
@@ -546,17 +665,31 @@ class QuickSearchDialog(QDialog):
         QTimer.singleShot(50, lambda: self.resize(original_size))
     
     def _on_search_text_changed(self, text):
-        """搜索文本改变时的处理"""
+        """搜索文本改变时的处理（优化流畅性版本）"""
         # 显示/隐藏清空按钮
-        self.clear_button.setVisible(bool(text.strip()))
+        self.clear_button.setVisible(bool(text))
         
-        # 重置搜索定时器（实时搜索）
+        # 启用/禁用主窗口搜索按钮
+        if hasattr(self, 'main_window_button'):
+            self.main_window_button.setEnabled(bool(text.strip()))
+        
+        # 重置搜索定时器（防抖优化）
         self.search_timer.stop()
         if text.strip():
-            self.search_timer.start(500)  # 500ms延迟
-            self.search_hint_label.setText("正在输入...")
+            # 减少防抖延迟到100ms，提升响应速度
+            self.search_timer.start(100)
         else:
-            self._show_empty_state()
+            # 清空结果
+            self._clear_results()
+    
+    def _clear_results(self):
+        """清空搜索结果"""
+        self.results_list.clear()
+        self.empty_state_label.setVisible(True)
+        if hasattr(self, 'search_stats'):
+            self.search_stats.setVisible(False)
+        if hasattr(self, 'results_header'):
+            self.results_header.setText("搜索结果")
     
     def _on_search_enter(self):
         """处理回车键搜索"""
@@ -564,22 +697,35 @@ class QuickSearchDialog(QDialog):
         self._perform_search()
     
     def _perform_search(self):
-        """执行搜索"""
-        search_text = self.search_line_edit.text().strip()
-        if not search_text:
-            self._show_empty_state()
+        """执行搜索（优化版本）"""
+        query = self.search_line_edit.text().strip()
+        if not query:
+            self._clear_results()
             return
         
         # 显示搜索进度
         self._show_search_progress()
         
-        # 更新提示
-        self.search_hint_label.setText(f"搜索: {search_text}")
+        # 更新状态
+        if hasattr(self, 'status_label'):
+            self.status_label.setText("搜索中...")
         
-        # 发出搜索信号
-        self.search_executed.emit(search_text)
+        # 记录搜索开始时间
+        import time
+        start_time = time.time()
         
-        print(f"优化版快速搜索: 执行搜索 '{search_text}'")
+        try:
+            # 发出搜索信号
+            self.search_executed.emit(query)
+            
+            # 模拟搜索延迟（实际搜索在控制器中进行）
+            QTimer.singleShot(100, lambda: self._hide_search_progress())
+            
+        except Exception as e:
+            print(f"搜索执行失败: {str(e)}")
+            self._hide_search_progress()
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("搜索失败")
     
     def _show_search_progress(self):
         """显示搜索进度"""
@@ -633,60 +779,59 @@ class QuickSearchDialog(QDialog):
             super().mouseReleaseEvent(event)
     
     def keyPressEvent(self, event):
-        """处理键盘事件 - 改进的导航体验"""
-        key = event.key()
-        
-        # Escape键关闭窗口
-        if key == Qt.Key_Escape:
+        """键盘事件处理（增强版本）"""
+        if event.key() == Qt.Key_Escape:
             self.close()
-            event.accept()
-            return
-        
-        # 回车键处理
-        elif key in (Qt.Key_Return, Qt.Key_Enter):
-            if self.search_line_edit.hasFocus():
-                # 如果有搜索结果，选择第一个结果并打开
-                if self.results_list.count() > 0:
-                    self.results_list.setCurrentRow(0)
-                    self._on_item_activated(self.results_list.currentItem())
+        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            if event.modifiers() == Qt.ControlModifier:
+                # Ctrl+Enter: 在主窗口中搜索
+                self._on_main_window_button()
+            else:
+                # Enter: 如果有选中项，打开文件；否则在主窗口中搜索
+                current_item = self.results_list.currentItem()
+                if current_item and hasattr(current_item, 'data') and current_item.data(Qt.UserRole):
+                    self._on_item_activated(current_item)
                 else:
-                    # 否则执行搜索
-                    self._on_search_enter()
-                event.accept()
-                return
-            elif self.results_list.hasFocus() and self.results_list.currentItem():
-                self._on_item_activated(self.results_list.currentItem())
-                event.accept()
-                return
-        
-        # 上下键导航
-        elif key == Qt.Key_Down:
-            if self.search_line_edit.hasFocus() and self.results_list.count() > 0:
-                self.results_list.setCurrentRow(0)
+                    self._on_main_window_button()
+        elif event.key() == Qt.Key_Down:
+            # 下箭头：移动到结果列表
+            if self.results_list.count() > 0:
                 self.results_list.setFocus()
-                event.accept()
-                return
-        elif key == Qt.Key_Up:
-            if self.results_list.hasFocus() and self.results_list.currentRow() == 0:
+                if self.results_list.currentRow() < 0:
+                    self.results_list.setCurrentRow(0)
+        elif event.key() == Qt.Key_Up:
+            # 上箭头：如果在列表第一项，回到搜索框
+            if self.sender() == self.results_list and self.results_list.currentRow() <= 0:
                 self.search_line_edit.setFocus()
-                event.accept()
-                return
-        
-        # Ctrl+F 聚焦搜索框
-        elif key == Qt.Key_F and event.modifiers() == Qt.ControlModifier:
-            self.search_line_edit.setFocus()
-            self.search_line_edit.selectAll()
-            event.accept()
-            return
-        
-        # Ctrl+W 或 Alt+F4 关闭窗口
-        elif ((key == Qt.Key_W and event.modifiers() == Qt.ControlModifier) or
-              (key == Qt.Key_F4 and event.modifiers() == Qt.AltModifier)):
-            self.close()
-            event.accept()
-            return
-        
-        super().keyPressEvent(event)
+        elif event.key() == Qt.Key_F5:
+            # F5: 刷新搜索
+            self._perform_search()
+        elif event.key() == Qt.Key_Delete:
+            # Delete: 清空搜索框
+            if self.search_line_edit.hasFocus():
+                self.search_line_edit.clear()
+        elif event.key() == Qt.Key_F1:
+            # F1: 显示帮助
+            self._show_help_dialog()
+        elif event.modifiers() == Qt.ControlModifier:
+            if event.key() == Qt.Key_C:
+                # Ctrl+C: 复制选中项的路径
+                current_item = self.results_list.currentItem()
+                if current_item and hasattr(current_item, 'data'):
+                    file_path = current_item.data(Qt.UserRole)
+                    if file_path:
+                        self._copy_to_clipboard(file_path)
+            elif event.key() == Qt.Key_O:
+                # Ctrl+O: 打开选中的文件
+                current_item = self.results_list.currentItem()
+                if current_item:
+                    self._on_item_activated(current_item)
+            elif event.key() == Qt.Key_L:
+                # Ctrl+L: 定位到搜索框
+                self.search_line_edit.setFocus()
+                self.search_line_edit.selectAll()
+        else:
+            super().keyPressEvent(event)
     
     # 为了兼容原有接口，保留原方法名
     def _on_search(self):
@@ -729,54 +874,103 @@ class QuickSearchDialog(QDialog):
             self.close()
     
     def _show_context_menu(self, position):
-        """显示优化的右键菜单"""
+        """显示简化的右键菜单 - 突出最常用功能"""
+        print(f"🖱️ 右键菜单被触发，位置: {position}")
+        
         item = self.results_list.itemAt(position)
         if not item:
+            print("⚠️ 右键点击位置没有项目")
             return
         
-        file_path = item.data(Qt.UserRole)
+        print(f"✅ 找到项目: {type(item)}")
+        
+        # 从SearchResultItem获取文件路径
+        file_path = None
+        
+        # 优先从SearchResultItem的属性获取
+        if isinstance(item, SearchResultItem):
+            file_path = item.path
+            print(f"📄 从SearchResultItem获取路径: {file_path}")
+        
+        # 如果没有，从Qt.UserRole获取
         if not file_path:
+            file_path = item.data(Qt.UserRole)
+            print(f"📄 从UserRole获取路径: {file_path}")
+        
+        if not file_path:
+            print("⚠️ 无法获取文件路径，跳过右键菜单")
             return
+        
+        print(f"✅ 显示简化右键菜单，文件路径: {file_path}")
         
         context_menu = QMenu(self)
-        context_menu.setStyleSheet("""
-            QMenu {
-                background-color: #404040;
-                color: #ffffff;
-                border: 1px solid #555555;
+        
+        # 获取当前主题颜色
+        colors = self._get_theme_colors()
+        
+        context_menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {colors['surface']};
+                color: {colors['text_primary']};
+                border: 1px solid {colors['border']};
+                border-radius: 6px;
+                padding: 6px;
+                font-size: 14px;
+                min-width: 180px;
+            }}
+            QMenu::item {{
+                padding: 10px 16px;
                 border-radius: 4px;
-            }
-            QMenu::item {
-                padding: 8px 16px;
-            }
-            QMenu::item:selected {
-                background-color: #007acc;
-            }
+                margin: 2px;
+            }}
+            QMenu::item:selected {{
+                background-color: {colors['primary']};
+                color: {colors['surface']};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background-color: {colors['border']};
+                margin: 6px 8px;
+            }}
         """)
         
-        # 打开文件
+        # === 最常用的4个功能 ===
+        
+        # 1. 打开文件
         open_file_action = QAction("📄 打开文件", self)
         open_file_action.triggered.connect(lambda: self._open_file(file_path))
         context_menu.addAction(open_file_action)
         
-        # 打开文件所在目录
-        open_folder_action = QAction("📁 打开文件所在目录", self)
+        # 2. 打开目录
+        open_folder_action = QAction("📁 打开目录", self)
         open_folder_action.triggered.connect(lambda: self._open_folder(file_path))
         context_menu.addAction(open_folder_action)
         
         context_menu.addSeparator()
         
-        # 复制文件路径
+        # 3. 复制文件路径
         copy_path_action = QAction("📋 复制文件路径", self)
-        copy_path_action.triggered.connect(lambda: self._copy_path(file_path))
+        copy_path_action.triggered.connect(lambda: self._copy_to_clipboard(file_path))
         context_menu.addAction(copy_path_action)
         
-        # 在主窗口中搜索
-        main_search_action = QAction("🔍 在主窗口中搜索", self)
-        main_search_action.triggered.connect(self._on_main_window_button)
-        context_menu.addAction(main_search_action)
+        context_menu.addSeparator()
+        
+        # 4. 打开主窗口查看更多结果
+        main_window_action = QAction("🖥️ 主窗口查看更多", self)
+        main_window_action.triggered.connect(self._on_main_window_button)
+        context_menu.addAction(main_window_action)
         
         context_menu.exec(self.results_list.mapToGlobal(position))
+    
+    def _copy_to_clipboard(self, text):
+        """复制文本到剪贴板（简化版本）"""
+        if text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            
+            # 简化提示信息
+            self.status_label.setText("已复制文件路径")
+            QTimer.singleShot(2000, lambda: self.status_label.setText("就绪 - 快速文件名搜索"))
     
     def _open_file(self, file_path):
         """打开文件"""
@@ -790,55 +984,401 @@ class QuickSearchDialog(QDialog):
             folder_path = str(Path(file_path).parent)
             self.open_folder_signal.emit(folder_path)
     
-    def _copy_path(self, file_path):
-        """复制文件路径到剪贴板"""
-        if file_path:
-            clipboard = QApplication.clipboard()
-            clipboard.setText(file_path)
-            self.status_label.setText("已复制文件路径")
-            QTimer.singleShot(2000, lambda: self.status_label.setText("准备就绪"))
-    
     def _fulltext_search_in_main(self):
         """在主窗口中进行全文搜索（兼容原接口）"""
         self._on_main_window_button()
     
     def set_search_results(self, results):
-        """设置搜索结果"""
-        self._hide_search_progress()
+        """设置搜索结果（流畅性优化版本）"""
+        import time
+        start_time = time.time()
+        
         self.results_list.clear()
         
         if not results:
-            self.status_label.setText("未找到匹配结果")
-            self.results_header.setText("搜索结果 (0)")
-            self.empty_state_label.setText("🔍\n\n未找到匹配的文件\n请尝试其他关键词")
             self.empty_state_label.setVisible(True)
-            self.results_list.setVisible(False)
+            if hasattr(self, 'results_header'):
+                self.results_header.setText("未找到结果")
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("未找到匹配的文件")
             return
         
-        # 显示结果
+        # 隐藏空状态提示
         self.empty_state_label.setVisible(False)
-        self.results_list.setVisible(True)
         
-        for result in results:
-            title = result.get('title', '未知标题')
-            path = result.get('path', '')
-            preview = result.get('preview', '')
-            file_type = Path(path).suffix[1:] if path else ''
+        # 快捷搜索显示限制 - 减少到10个，提升流畅性
+        display_limit = 10  # 进一步减少显示数量，保持快捷和流畅
+        total_count = len(results)
+        
+        # 更新结果标题
+        if hasattr(self, 'results_header'):
+            if total_count > display_limit:
+                self.results_header.setText(f"📁 文件搜索结果 (显示前{display_limit}个，共找到{total_count}个)")
+            else:
+                self.results_header.setText(f"📁 文件搜索结果 (共{total_count}个)")
+        
+        # 批量添加结果（性能优化）
+        self.results_list.setUpdatesEnabled(False)
+        
+        try:
+            displayed_count = 0
             
-            # 兼容原有接口：如果result有content_preview字段，也要支持
-            if 'content_preview' in result:
-                preview = result['content_preview']
+            for result in results[:display_limit]:
+                file_path = result.get('file_path', '')
+                content_preview = result.get('content_preview', '')
+                
+                # 创建结果项
+                item = SearchResultItem(
+                    title=self._get_file_display_name(file_path),
+                    path=file_path,
+                    content_preview=content_preview,
+                    file_type=self._get_file_type(file_path)
+                )
+                
+                # 确保文件路径正确存储在UserRole中
+                item.setData(Qt.UserRole, file_path)
+                
+                self.results_list.addItem(item)
+                displayed_count += 1
             
-            item = SearchResultItem(title, path, None, preview, file_type)
-            self.results_list.addItem(item)
+            # 如果有更多结果，添加明显的提示项
+            if total_count > display_limit:
+                more_item = QListWidgetItem()
+                remaining = total_count - display_limit
+                more_text = f"⚡ 还有 {remaining} 个文件\n\n🖥️ 右键「主窗口查看更多」获取全部结果"
+                more_item.setText(more_text)
+                more_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 不可选择
+                more_item.setBackground(QColor("#f8f9fa"))
+                more_item.setForeground(QColor("#495057"))
+                
+                # 设置适中的高度
+                more_item.setSizeHint(QSize(0, 60))
+                
+                self.results_list.addItem(more_item)
         
-        # 更新状态
-        self.status_label.setText(f"找到 {len(results)} 个匹配结果")
-        self.results_header.setText(f"搜索结果 ({len(results)})")
+        finally:
+            self.results_list.setUpdatesEnabled(True)
         
-        # 选中第一项
+        # 选中第一个结果
         if self.results_list.count() > 0:
             self.results_list.setCurrentRow(0)
+        
+        # 显示搜索统计
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        self._show_search_stats(total_count, elapsed_ms)
+        
+        # 更新状态
+        if hasattr(self, 'status_label'):
+            if total_count > display_limit:
+                self.status_label.setText(f"显示前{display_limit}个文件，共{total_count}个 - 快速搜索")
+            else:
+                self.status_label.setText(f"找到 {total_count} 个文件 - 快速搜索")
+    
+    def _get_file_display_name(self, file_path):
+        """获取文件显示名称"""
+        import os
+        return os.path.basename(file_path) if file_path else "未知文件"
+    
+    def _get_file_type(self, file_path):
+        """获取文件类型"""
+        import os
+        if not file_path:
+            return "unknown"
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        type_map = {
+            '.txt': 'text', '.md': 'text', '.py': 'code',
+            '.doc': 'word', '.docx': 'word',
+            '.xls': 'excel', '.xlsx': 'excel',
+            '.ppt': 'powerpoint', '.pptx': 'powerpoint',
+            '.pdf': 'pdf',
+            '.jpg': 'image', '.png': 'image', '.gif': 'image',
+            '.mp4': 'video', '.avi': 'video',
+            '.mp3': 'audio', '.wav': 'audio'
+        }
+        return type_map.get(ext, 'file')
+    
+    def _show_search_stats(self, count, time_ms):
+        """显示搜索统计信息"""
+        if hasattr(self, 'search_stats'):
+            if count > 0:
+                self.search_stats.setText(f"找到 {count} 个结果 ({time_ms}ms)")
+            else:
+                self.search_stats.setText("未找到匹配结果")
+            self.search_stats.setVisible(True)
+    
+    def _get_theme_colors(self):
+        """获取当前主题的颜色配置"""
+        if self.current_theme == "现代蓝":
+            return {
+                "primary": "#007ACC",
+                "secondary": "#005A9E",
+                "background": "#F8FAFE",
+                "surface": "#FFFFFF",
+                "text_primary": "#1E1E1E",
+                "text_secondary": "#6B7280",
+                "border": "#E1E5E9",
+                "hover": "#E3F2FD",
+                "accent": "#FF6B35",
+                "success": "#10B981",
+                "warning": "#F59E0B",
+                "error": "#EF4444",
+                "info": "#3B82F6",
+                "gradient_start": "#007ACC",
+                "gradient_end": "#00A8E8",
+                "dialog_bg": "#F8FAFE",
+                "title_bg_start": "#007ACC",
+                "title_bg_end": "#005A9E",
+                "search_bg": "#FFFFFF",
+                "search_border": "#E1E5E9",
+                "search_focus": "#007ACC",
+                "results_bg": "#FFFFFF",
+                "item_hover": "#E3F2FD",
+                "item_selected": "#007ACC"
+            }
+        elif self.current_theme == "现代紫":
+            return {
+                "primary": "#8B5CF6",
+                "secondary": "#7C3AED",
+                "background": "#FDFBFF",
+                "surface": "#FFFFFF",
+                "text_primary": "#1E1E1E",
+                "text_secondary": "#6B7280",
+                "border": "#E9E3FF",
+                "hover": "#F3F0FF",
+                "accent": "#06B6D4",
+                "success": "#10B981",
+                "warning": "#F59E0B",
+                "error": "#EF4444",
+                "info": "#8B5CF6",
+                "gradient_start": "#8B5CF6",
+                "gradient_end": "#A855F7",
+                "dialog_bg": "#FDFBFF",
+                "title_bg_start": "#8B5CF6",
+                "title_bg_end": "#7C3AED",
+                "search_bg": "#FFFFFF",
+                "search_border": "#E9E3FF",
+                "search_focus": "#8B5CF6",
+                "results_bg": "#FFFFFF",
+                "item_hover": "#F3F0FF",
+                "item_selected": "#8B5CF6"
+            }
+        elif self.current_theme == "现代红":
+            return {
+                "primary": "#DC2626",
+                "secondary": "#B91C1C",
+                "background": "#FFFBFA",
+                "surface": "#FFFFFF",
+                "text_primary": "#1E1E1E",
+                "text_secondary": "#6B7280",
+                "border": "#FEE2E2",
+                "hover": "#FEF2F2",
+                "accent": "#059669",
+                "success": "#10B981",
+                "warning": "#F59E0B",
+                "error": "#DC2626",
+                "info": "#3B82F6",
+                "gradient_start": "#DC2626",
+                "gradient_end": "#F87171",
+                "dialog_bg": "#FFFBFA",
+                "title_bg_start": "#DC2626",
+                "title_bg_end": "#B91C1C",
+                "search_bg": "#FFFFFF",
+                "search_border": "#FEE2E2",
+                "search_focus": "#DC2626",
+                "results_bg": "#FFFFFF",
+                "item_hover": "#FEF2F2",
+                "item_selected": "#DC2626"
+            }
+        elif self.current_theme == "现代橙":
+            return {
+                "primary": "#EA580C",
+                "secondary": "#C2410C",
+                "background": "#FFFBF5",
+                "surface": "#FFFFFF",
+                "text_primary": "#1E1E1E",
+                "text_secondary": "#6B7280",
+                "border": "#FED7AA",
+                "hover": "#FFF7ED",
+                "accent": "#0D9488",
+                "success": "#10B981",
+                "warning": "#EA580C",
+                "error": "#EF4444",
+                "info": "#3B82F6",
+                "gradient_start": "#EA580C",
+                "gradient_end": "#FB923C",
+                "dialog_bg": "#FFFBF5",
+                "title_bg_start": "#EA580C",
+                "title_bg_end": "#C2410C",
+                "search_bg": "#FFFFFF",
+                "search_border": "#FED7AA",
+                "search_focus": "#EA580C",
+                "results_bg": "#FFFFFF",
+                "item_hover": "#FFF7ED",
+                "item_selected": "#EA580C"
+            }
+
+        else:
+            # 默认现代蓝主题
+            return self._get_theme_colors_for_theme("现代蓝")
+    
+    def _get_theme_colors_for_theme(self, theme_name):
+        """获取指定主题的颜色配置（辅助方法）"""
+        original_theme = self.current_theme
+        self.current_theme = theme_name
+        colors = self._get_theme_colors()
+        self.current_theme = original_theme
+        return colors
+    
+    def update_theme(self, theme_name):
+        """更新主题（供外部调用）"""
+        if theme_name != self.current_theme:
+            self.current_theme = theme_name
+            self._apply_theme_styles()
+            
+            # 更新搜索图标
+            self._update_search_icon()
+            
+            # 刷新结果显示
+            if hasattr(self, 'results_list') and self.results_list.count() > 0:
+                self._refresh_results_display()
+    
+    def _update_search_icon(self):
+        """更新搜索图标颜色"""
+        colors = self._get_theme_colors()
+        if hasattr(self, 'search_icon_label'):
+            # 根据主题调整图标
+            if self.current_theme == "深色模式":
+                self.search_icon_label.setText("🔍")
+            else:
+                self.search_icon_label.setText("🔍")
+    
+    def _refresh_results_display(self):
+        """刷新结果显示以应用新主题"""
+        # 触发重新渲染
+        current_row = self.results_list.currentRow()
+        self.results_list.update()
+        if current_row >= 0:
+            self.results_list.setCurrentRow(current_row)
+    
+    def _create_enhanced_search_area(self, layout):
+        """创建增强的搜索区域"""
+        search_frame = QFrame()
+        search_frame.setObjectName("searchFrame")
+        search_layout = QVBoxLayout(search_frame)
+        search_layout.setContentsMargins(20, 15, 20, 15)
+        
+        # 搜索提示
+        self.search_hint = QLabel("输入关键词开始搜索...")
+        self.search_hint.setObjectName("searchHint")
+        search_layout.addWidget(self.search_hint)
+        
+        # 搜索输入框容器
+        search_container = QHBoxLayout()
+        
+        # 搜索输入框
+        self.search_line_edit = QLineEdit()
+        self.search_line_edit.setObjectName("modernSearchLineEdit")
+        self.search_line_edit.setPlaceholderText("搜索文档...")
+        search_container.addWidget(self.search_line_edit)
+        
+        # 清空按钮
+        self.clear_button = QPushButton("✖")
+        self.clear_button.setObjectName("clearButton")
+        self.clear_button.setFixedSize(34, 34)
+        self.clear_button.setVisible(False)
+        search_container.addWidget(self.clear_button)
+        
+        search_layout.addLayout(search_container)
+        
+        # 搜索进度条
+        self.search_progress = QProgressBar()
+        self.search_progress.setObjectName("searchProgress")
+        self.search_progress.setFixedHeight(3)
+        self.search_progress.setVisible(False)
+        search_layout.addWidget(self.search_progress)
+        
+        # 搜索统计信息
+        self.search_stats = QLabel("")
+        self.search_stats.setObjectName("searchStats")
+        self.search_stats.setVisible(False)
+        search_layout.addWidget(self.search_stats)
+        
+        layout.addWidget(search_frame)
+    
+    def _show_search_stats(self, count, time_ms):
+        """显示搜索统计信息"""
+        if hasattr(self, 'search_stats'):
+            if count > 0:
+                self.search_stats.setText(f"找到 {count} 个结果 ({time_ms}ms)")
+            else:
+                self.search_stats.setText("未找到匹配结果")
+            self.search_stats.setVisible(True)
+    
+    def _create_enhanced_results_area(self, layout):
+        """创建增强的结果区域"""
+        results_frame = QFrame()
+        results_frame.setObjectName("resultsFrame")
+        results_layout = QVBoxLayout(results_frame)
+        results_layout.setContentsMargins(20, 10, 20, 10)
+        
+        # 结果标题
+        self.results_header = QLabel("搜索结果")
+        self.results_header.setObjectName("resultsHeader")
+        results_layout.addWidget(self.results_header)
+        
+        # 结果列表
+        self.results_list = QListWidget()
+        self.results_list.setObjectName("modernResultsList")
+        self.results_list.setAlternatingRowColors(True)
+        self.results_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        # 确保右键菜单信号连接
+        self.results_list.customContextMenuRequested.connect(self._show_context_menu)
+        results_layout.addWidget(self.results_list)
+        
+        # 空状态提示
+        self.empty_state_label = QLabel(
+            "🔍 输入关键词开始搜索\n\n"
+            "💡 小贴士：\n"
+            "• 支持中英文搜索\n"
+            "• 双击结果打开文件\n"
+            "• 右键查看更多选项\n"
+            "• Enter键在主窗口中搜索"
+        )
+        self.empty_state_label.setObjectName("emptyStateLabel")
+        self.empty_state_label.setAlignment(Qt.AlignCenter)
+        self.empty_state_label.setVisible(True)
+        results_layout.addWidget(self.empty_state_label)
+        
+        layout.addWidget(results_frame)
+    
+    def _create_enhanced_bottom_bar(self, layout):
+        """创建增强的底部操作栏"""
+        bottom_frame = QFrame()
+        bottom_frame.setObjectName("bottomFrame")
+        bottom_frame.setFixedHeight(50)
+        bottom_layout = QHBoxLayout(bottom_frame)
+        bottom_layout.setContentsMargins(20, 10, 20, 10)
+        
+        # 状态标签
+        self.status_label = QLabel("就绪")
+        self.status_label.setObjectName("statusLabel")
+        bottom_layout.addWidget(self.status_label)
+        
+        bottom_layout.addStretch()
+        
+        # 快捷键提示
+        shortcut_label = QLabel("Enter: 主窗口搜索 | Esc: 关闭")
+        shortcut_label.setObjectName("statusLabel")
+        bottom_layout.addWidget(shortcut_label)
+        
+        # 在主窗口中搜索按钮
+        self.main_window_button = QPushButton("在主窗口中搜索")
+        self.main_window_button.setObjectName("primaryButton")
+        self.main_window_button.setEnabled(False)
+        bottom_layout.addWidget(self.main_window_button)
+        
+        layout.addWidget(bottom_frame)
 
 
 # 简单测试代码

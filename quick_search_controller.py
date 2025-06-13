@@ -22,31 +22,39 @@ class QuickSearchController(QObject):
     # 定义信号
     show_main_window_signal = Signal(str)  # 显示主窗口信号，带有搜索文本参数
     
-    def __init__(self, main_window=None):
-        super().__init__(None)
-        
-        # 持有主窗口的引用（可能是None，延迟设置）
-        self.main_window = main_window
-        
-        # 创建搜索对话框，但不显示
-        self.search_dialog = None
-        
-        # 搜索结果缓存
-        self.search_results_cache = {}
-        
-        # 最大结果数
-        self.max_results = 20
-        
-        # 结果格式化设置
-        self.preview_length = 100  # 预览内容的最大长度
-    
-    def set_main_window(self, main_window):
-        """设置主窗口
+    def __init__(self, main_window):
+        """初始化快速搜索控制器
         
         Args:
             main_window: 主窗口实例
         """
+        super().__init__()
         self.main_window = main_window
+        self.dialog = None
+        self.max_results = 50  # 增加轻量级搜索结果数量，与主窗口保持一致
+        
+        # 当前主题
+        self.current_theme = "现代蓝"
+        if hasattr(main_window, 'settings'):
+            self.current_theme = main_window.settings.value("ui/theme", "现代蓝")
+        
+        # 搜索结果缓存
+        self.search_results_cache = {}
+        
+        # 结果格式化设置
+        self.preview_length = 100  # 预览内容的最大长度
+    
+    def update_theme(self, theme_name):
+        """更新主题
+        
+        Args:
+            theme_name: 新主题名称
+        """
+        self.current_theme = theme_name
+        
+        # 如果对话框已经创建，更新其主题
+        if self.dialog and hasattr(self.dialog, 'update_theme'):
+            self.dialog.update_theme(theme_name)
     
     def show_quick_search(self, initial_query=None):
         """显示快速搜索对话框
@@ -54,27 +62,63 @@ class QuickSearchController(QObject):
         Args:
             initial_query: 初始搜索关键词，可选
         """
-        if not self.search_dialog:
-            # 懒加载搜索对话框
-            self.search_dialog = QuickSearchDialog()
+        try:
+            # 如果对话框不存在或已关闭，创建新的
+            if not self.dialog or not self.dialog.isVisible():
+                from quick_search_dialog import QuickSearchDialog
+                self.dialog = QuickSearchDialog()
+                
+                # 设置当前主题
+                if hasattr(self.dialog, 'update_theme'):
+                    self.dialog.update_theme(self.current_theme)
+                
+                # 连接信号
+                self._connect_dialog_signals()
             
-            # 连接信号
-            self.search_dialog.search_executed.connect(self._handle_search_request)
-            self.search_dialog.item_activated.connect(self._handle_item_activation)
-            self.search_dialog.open_main_window.connect(self._open_in_main_window)
-            self.search_dialog.open_file_signal.connect(self._handle_item_activation)
-            self.search_dialog.open_folder_signal.connect(self._handle_folder_open)
-        
-        # 如果有初始查询，设置到搜索框
-        if initial_query:
-            self.search_dialog.search_line_edit.setText(initial_query)
-            # 使用QTimer延迟执行搜索，使对话框完全显示后再搜索
-            QTimer.singleShot(100, self.search_dialog._on_search)
-        
-        # 显示对话框
-        self.search_dialog.show()
-        self.search_dialog.activateWindow()
-        self.search_dialog.search_line_edit.setFocus()
+            # 设置初始查询
+            if initial_query and hasattr(self.dialog, 'search_line_edit'):
+                self.dialog.search_line_edit.setText(initial_query)
+                # 触发搜索
+                if hasattr(self.dialog, '_perform_search'):
+                    self.dialog._perform_search()
+            
+            # 显示对话框
+            self.dialog.show()
+            self.dialog.raise_()
+            self.dialog.activateWindow()
+            
+            # 聚焦到搜索框
+            if hasattr(self.dialog, 'search_line_edit'):
+                self.dialog.search_line_edit.setFocus()
+                
+        except Exception as e:
+            print(f"显示快速搜索对话框时出错: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _connect_dialog_signals(self):
+        """连接对话框信号"""
+        if not self.dialog:
+            return
+            
+        try:
+            # 连接搜索信号
+            if hasattr(self.dialog, 'search_executed'):
+                self.dialog.search_executed.connect(self._handle_search_request)
+            
+            # 连接文件操作信号
+            if hasattr(self.dialog, 'open_file_signal'):
+                self.dialog.open_file_signal.connect(self._handle_open_file)
+            
+            if hasattr(self.dialog, 'open_folder_signal'):
+                self.dialog.open_folder_signal.connect(self._handle_open_folder)
+            
+            # 连接主窗口打开信号
+            if hasattr(self.dialog, 'open_main_window'):
+                self.dialog.open_main_window.connect(self._open_in_main_window)
+                
+        except Exception as e:
+            print(f"连接对话框信号时出错: {str(e)}")
     
     def _handle_search_request(self, query):
         """处理搜索请求
@@ -128,7 +172,7 @@ class QuickSearchController(QObject):
             self._show_search_results([])
     
     def _execute_search_via_main_window(self, query):
-        """通过主窗口执行搜索
+        """通过主窗口执行搜索 - 专注于文件名搜索
         
         Args:
             query: 搜索关键词
@@ -136,20 +180,49 @@ class QuickSearchController(QObject):
         Returns:
             list: 搜索结果原始数据
         """
-        # 这里需要根据主窗口的实际搜索接口来调整
-        # 轻量级窗口默认使用文件名搜索，更适合快速浏览
         try:
-            # 调用主窗口的搜索方法
-            # 注意: 轻量级窗口专门使用文件名搜索模式
-            raw_results = self.main_window._perform_search(
+            print(f"快捷搜索：开始执行文件名搜索 '{query}'")
+            
+            # 专注于文件名搜索 - 这是快捷搜索的主要用途
+            print("  执行文件名搜索...")
+            filename_results = self.main_window._perform_search(
                 query=query, 
                 max_results=self.max_results,
-                quick_search=True,  # 标记为快速搜索
-                search_scope="filename"  # 轻量级窗口使用文件名搜索
+                quick_search=True,
+                search_scope="filename"
             )
-            return raw_results
+            print(f"  文件名搜索结果: {len(filename_results)} 个")
+            
+            # 如果文件名搜索结果很少（<5个），才补充一些全文搜索结果
+            if len(filename_results) < 5:
+                print("  文件名搜索结果较少，补充部分全文搜索结果...")
+                fulltext_results = self.main_window._perform_search(
+                    query=query, 
+                    max_results=min(15, self.max_results - len(filename_results)),
+                    quick_search=True,
+                    search_scope="fulltext"
+                )
+                print(f"  全文搜索补充结果: {len(fulltext_results)} 个")
+                
+                # 合并结果，文件名搜索结果优先
+                combined_results = filename_results.copy()
+                existing_paths = {result.get('file_path', '') for result in filename_results}
+                
+                for result in fulltext_results:
+                    file_path = result.get('file_path', '')
+                    if file_path and file_path not in existing_paths:
+                        combined_results.append(result)
+                        existing_paths.add(file_path)
+                
+                print(f"  合并后结果: {len(combined_results)} 个（文件名优先）")
+                return combined_results
+            else:
+                return filename_results
+                
         except Exception as e:
             print(f"通过主窗口执行搜索失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def _format_search_results(self, raw_results):
@@ -168,6 +241,7 @@ class QuickSearchController(QObject):
             return formatted_results
             
         try:
+            import os
             print("开始格式化搜索结果...")
             print(f"原始结果类型: {type(raw_results)}")
             if raw_results and len(raw_results) > 0:
@@ -177,29 +251,46 @@ class QuickSearchController(QObject):
             
             # 根据原始结果的格式，转换为快速搜索需要的格式
             for result in raw_results[:self.max_results]:
-                if hasattr(result, 'get'):  # 确认是否是字典类型对象
-                    # 尝试从不同的键名获取文件路径
-                    file_path = result.get('file_path', result.get('path', ''))
+                try:
+                    # 处理不同的结果格式
+                    if hasattr(result, 'get'):  # 字典类型
+                        file_path = result.get('file_path', result.get('path', ''))
+                        content = result.get('content_preview', result.get('content', result.get('preview', '')))
+                    elif hasattr(result, '__getitem__'):  # 列表或元组类型
+                        if len(result) >= 2:
+                            file_path = result[0] if result[0] else ''
+                            content = result[1] if len(result) > 1 and result[1] else ''
+                        else:
+                            file_path = str(result[0]) if result else ''
+                            content = ''
+                    else:
+                        # 如果是字符串，假设是文件路径
+                        file_path = str(result)
+                        content = ''
+                    
+                    # 确保文件路径有效
+                    if not file_path:
+                        continue
+                        
+                    # 获取文件名
                     file_name = os.path.basename(file_path) if file_path else '未知文件'
                     
-                    # 尝试从不同的键名获取内容预览
-                    content = result.get('content_preview', result.get('content', result.get('preview', '')))
-                    
                     # 截断过长的预览内容
-                    if len(content) > self.preview_length:
+                    if content and len(content) > self.preview_length:
                         content = content[:self.preview_length] + "..."
                     
+                    # 创建格式化结果，使用快捷搜索对话框期望的格式
                     formatted_result = {
-                        'title': file_name,
-                        'path': file_path,
-                        'preview': content,
-                        'icon': None  # 可以通过文件类型获取对应图标
+                        'file_path': file_path,  # 使用 file_path 键名
+                        'content_preview': content or f"文件: {file_name}"  # 使用 content_preview 键名
                     }
                     
                     formatted_results.append(formatted_result)
-                    print(f"格式化结果: {file_name}")
-                else:
-                    print(f"跳过不兼容的结果类型: {type(result)}")
+                    print(f"格式化结果: {file_name} -> {file_path}")
+                    
+                except Exception as e:
+                    print(f"处理单个结果时出错: {str(e)}, 结果: {result}")
+                    continue
                 
         except Exception as e:
             print(f"格式化搜索结果失败: {str(e)}")
@@ -214,46 +305,26 @@ class QuickSearchController(QObject):
         Args:
             results: 格式化后的搜索结果
         """
-        if self.search_dialog:
-            self.search_dialog.set_search_results(results)
+        if self.dialog:
+            self.dialog.set_search_results(results)
     
-    def _handle_item_activation(self, path):
-        """处理结果项激活（打开文件）
-        
-        Args:
-            path: 要打开的文件路径
-        """
-        if not path:
-            return
-        
+    def _handle_open_file(self, file_path):
+        """处理打开文件请求"""
         try:
-            # 如果主窗口有打开文件的方法，调用它
             if self.main_window and hasattr(self.main_window, 'open_file'):
-                self.main_window.open_file(path)
-            else:
-                # 否则使用系统默认程序打开
-                os.startfile(path)
+                self.main_window.open_file(file_path)
         except Exception as e:
-            print(f"打开文件失败: {str(e)}")
+            print(f"打开文件时出错: {str(e)}")
     
-    def _handle_folder_open(self, folder_path):
-        """处理打开文件夹请求
-        
-        Args:
-            folder_path: 要打开的文件夹路径
-        """
-        if not folder_path:
-            return
-        
+    def _handle_open_folder(self, file_path):
+        """处理打开文件夹请求"""
         try:
-            # 使用系统文件管理器打开文件夹
-            if os.name == 'nt':  # Windows
-                os.startfile(folder_path)
-            elif os.name == 'posix':  # macOS/Linux
-                subprocess.run(['open', folder_path] if sys.platform == 'darwin' else ['xdg-open', folder_path])
-            print(f"已打开文件夹: {folder_path}")
+            import os
+            folder_path = os.path.dirname(file_path)
+            if self.main_window and hasattr(self.main_window, 'open_file'):
+                self.main_window.open_file(folder_path)
         except Exception as e:
-            print(f"打开文件夹失败: {str(e)}")
+            print(f"打开文件夹时出错: {str(e)}")
     
     def _open_in_main_window(self, query):
         """在主窗口中打开搜索
@@ -274,17 +345,45 @@ class QuickSearchController(QObject):
             if hasattr(self.main_window, 'search_line_edit'):
                 self.main_window.search_line_edit.setText(query)
             
-            # 设置搜索范围为文件名搜索（与轻量级搜索保持一致）
+            # 设置搜索范围为文件名搜索（与快捷搜索保持一致）
+            # 注意：这里需要根据实际的主窗口界面来确定正确的索引
             if hasattr(self.main_window, 'scope_combo'):
-                # 设置为文件名搜索 (索引1)
-                self.main_window.scope_combo.setCurrentIndex(1)
-                print(f"设置主窗口搜索范围为文件名搜索")
+                # 查看当前的搜索范围选项
+                scope_count = self.main_window.scope_combo.count()
+                print(f"主窗口搜索范围选项数量: {scope_count}")
+                
+                # 打印所有选项以便调试
+                for i in range(scope_count):
+                    option_text = self.main_window.scope_combo.itemText(i)
+                    print(f"  索引 {i}: {option_text}")
+                
+                # 寻找文件名搜索选项（通常包含"文件名"关键词）
+                filename_index = -1
+                for i in range(scope_count):
+                    option_text = self.main_window.scope_combo.itemText(i).lower()
+                    if "文件名" in option_text or "filename" in option_text:
+                        filename_index = i
+                        break
+                
+                if filename_index >= 0:
+                    self.main_window.scope_combo.setCurrentIndex(filename_index)
+                    print(f"设置主窗口搜索范围为文件名搜索 (索引: {filename_index})")
+                else:
+                    # 如果找不到明确的文件名搜索选项，默认使用索引1
+                    if scope_count > 1:
+                        self.main_window.scope_combo.setCurrentIndex(1)
+                        print(f"未找到文件名搜索选项，使用默认索引1")
+                    else:
+                        print(f"搜索范围选项不足，保持当前设置")
             else:
                 print("未找到主窗口的scope_combo控件")
             
             # 执行搜索
             if hasattr(self.main_window, 'start_search_slot'):
                 self.main_window.start_search_slot()
+                print(f"已在主窗口中执行搜索: {query}")
+            else:
+                print("未找到主窗口的start_search_slot方法")
 
 
 # 简单测试代码
