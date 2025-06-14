@@ -14,13 +14,83 @@ import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, 
                              QListWidget, QListWidgetItem, QLabel, QPushButton, 
                              QGraphicsDropShadowEffect, QApplication, QWidget, QMenu,
-                             QProgressBar, QSizePolicy, QFrame, QMessageBox)
-from PySide6.QtCore import Qt, QSize, QEvent, QPoint, QSettings, Signal, QTimer, QPropertyAnimation, QEasingCurve
+                             QProgressBar, QSizePolicy, QFrame, QMessageBox, QStyledItemDelegate, QStyle)
+from PySide6.QtCore import Qt, QSize, QEvent, QPoint, QSettings, Signal, QTimer, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtGui import QIcon, QColor, QFont, QPalette, QKeyEvent, QDesktopServices, QAction, QPainter, QPixmap, QClipboard, QFontMetrics
 from pathlib import Path
 
 # 导入主程序的常量
 from search_gui_pyside import ORGANIZATION_NAME, APPLICATION_NAME
+
+class SearchResultDelegate(QStyledItemDelegate):
+    """自定义委托，支持不同字体大小的文本显示"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+    def paint(self, painter, option, index):
+        """自定义绘制方法"""
+        painter.save()
+        
+        # 获取显示文本
+        text = index.data(Qt.DisplayRole)
+        if not text:
+            painter.restore()
+            return
+            
+        # 分割文本为两行
+        lines = text.split('\n', 1)
+        if len(lines) < 2:
+            # 如果只有一行，使用默认绘制
+            super().paint(painter, option, index)
+            painter.restore()
+            return
+            
+        # 设置绘制区域
+        rect = option.rect
+        
+        # 绘制背景
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(rect, option.palette.highlight())
+        elif option.state & QStyle.State_MouseOver:
+            painter.fillRect(rect, option.palette.alternateBase())
+        else:
+            painter.fillRect(rect, option.palette.base())
+        
+        # 设置文本颜色
+        if option.state & QStyle.State_Selected:
+            painter.setPen(option.palette.highlightedText().color())
+        else:
+            painter.setPen(option.palette.text().color())
+        
+        # 绘制第一行（文件名）- 使用精致字体
+        title_font = QFont()
+        title_font.setPointSize(9)  # 再次减小到9，更精致
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        
+        title_rect = QRect(rect.left() + 10, rect.top() + 5, rect.width() - 20, 16)  # 适应更小字体
+        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter, lines[0])
+        
+        # 绘制第二行（路径和时间）- 使用更小字体
+        if len(lines) > 1:
+            detail_font = QFont()
+            detail_font.setPointSize(7)  # 再次减小到7，更精致紧凑
+            painter.setFont(detail_font)
+            
+            # 设置较淡的颜色
+            detail_color = painter.pen().color()
+            detail_color.setAlpha(130)  # 稍微调淡一些
+            painter.setPen(detail_color)
+            
+            detail_rect = QRect(rect.left() + 10, rect.top() + 23, rect.width() - 20, 14)  # 适应更小字体和高度
+            painter.drawText(detail_rect, Qt.AlignLeft | Qt.AlignVCenter, lines[1])
+        
+        painter.restore()
+    
+    def sizeHint(self, option, index):
+        """返回项目的建议大小"""
+        return QSize(0, 44)  # 进一步减小到44，更紧凑协调
 
 class SearchResultItem(QListWidgetItem):
     """现代化搜索结果列表项 - 性能优化版"""
@@ -49,24 +119,45 @@ class SearchResultItem(QListWidgetItem):
         self.setData(Qt.UserRole, path)
         self.setData(Qt.UserRole + 1, content_preview)
         
-        # 设置项目高度 - 优化显示（减少高度，提升滚动性能）
-        self.setSizeHint(QSize(0, 50))  # 从65减少到50
+        # 设置项目高度 - 紧凑显示（文件名+路径+时间）
+        self.setSizeHint(QSize(0, 44))  # 更紧凑协调的高度，适应两行信息
     
     def _create_fast_display_text(self, title, path, file_type):
-        """创建快速显示文本（避免文件I/O操作）"""
+        """创建快速显示文本（包含路径和修改时间）"""
         # 获取文件图标
         icon = self._get_file_icon(file_type if file_type else Path(path).suffix[1:] if path else '')
         
-        # 快速路径处理 - 只获取父目录名
-        if path:
-            parent_name = Path(path).parent.name
-            if not parent_name:  # 根目录情况
-                parent_name = str(Path(path).parent)
-        else:
-            parent_name = '未知目录'
+        # 获取文件信息
+        file_info = self._get_file_info(path)
         
-        # 构建简化的显示文本（单行，提升性能）
-        display_text = f"{icon} {title}\n  📁 {parent_name}"
+        # 构建显示文本：文件名 + 路径 + 修改时间
+        if path:
+            # 显示相对路径（更简洁）
+            try:
+                # 尝试获取相对于用户目录的路径
+                from pathlib import Path
+                import os
+                home_path = Path.home()
+                file_path_obj = Path(path)
+                
+                try:
+                    # 如果在用户目录下，显示相对路径
+                    relative_path = file_path_obj.relative_to(home_path)
+                    display_path = f"~/{relative_path.parent}"
+                except ValueError:
+                    # 不在用户目录下，显示完整路径但简化
+                    display_path = str(file_path_obj.parent)
+                    # 如果路径太长，只显示最后两级目录
+                    path_parts = Path(display_path).parts
+                    if len(path_parts) > 2:
+                        display_path = f".../{path_parts[-2]}/{path_parts[-1]}"
+            except:
+                display_path = str(Path(path).parent) if path else '未知目录'
+        else:
+            display_path = '未知目录'
+        
+        # 构建多行显示文本（使用更紧凑的格式）
+        display_text = f"{icon} {title}\n    📁 {display_path} • 🕒 {file_info['modified_time']}"
         
         return display_text
     
@@ -330,6 +421,10 @@ class QuickSearchDialog(QDialog):
         self.results_list.setObjectName("modernResultsList")
         self.results_list.setAlternatingRowColors(True)
         
+        # 设置自定义委托以支持不同字体大小
+        self.results_delegate = SearchResultDelegate(self.results_list)
+        self.results_list.setItemDelegate(self.results_delegate)
+        
         # 修复关键配置
         # 1. 启用自定义右键菜单
         self.results_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -553,9 +648,10 @@ class QuickSearchDialog(QDialog):
             }}
             
             #modernResultsList::item {{
-                padding: 12px;
+                padding: 8px 12px;
                 border-bottom: 1px solid {colors['border']};
-                min-height: 35px;
+                min-height: 40px;
+                line-height: 1.3;
             }}
             
             #modernResultsList::item:hover {{

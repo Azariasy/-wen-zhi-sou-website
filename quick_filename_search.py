@@ -114,8 +114,8 @@ class QuickFilenameSearcher(QObject):
                 if len(results) >= max_results:
                     break
             
-            # 按匹配分数排序
-            results.sort(key=lambda x: x['match_score'], reverse=True)
+            # 按修改时间排序（最新的在前），同时考虑匹配分数
+            results.sort(key=lambda x: (x['modified_time'], x['match_score']), reverse=True)
             
             elapsed_time = time.time() - start_time
             print(f"✅ 快速文件名搜索完成：找到 {len(results)} 个结果，耗时 {elapsed_time*1000:.1f}ms")
