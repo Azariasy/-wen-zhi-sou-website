@@ -172,11 +172,6 @@ class QuickSearchDialog(QDialog):
         self._dragging = False
         self._drag_start_position = QPoint()
         
-        # 实时搜索定时器
-        self.search_timer = QTimer()
-        self.search_timer.setSingleShot(True)
-        self.search_timer.timeout.connect(self._perform_search)
-        
         # 加载设置
         self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         
@@ -351,7 +346,15 @@ class QuickSearchDialog(QDialog):
         results_layout.addWidget(self.results_list)
         
         # 空状态提示
-        self.empty_state_label = QLabel("🗂️\n\n输入文件名开始搜索\n\n✨ 快速搜索小贴士：\n• 支持文件名模糊匹配\n• 双击结果打开文件\n• 右键查看更多选项\n• 需要全文搜索请按 Enter 键打开主窗口")
+        self.empty_state_label = QLabel(
+            "🔍 输入关键词后按回车键搜索\n\n"
+            "💡 操作提示：\n"
+            "• Enter: 执行搜索\n"
+            "• 双击结果: 打开文件\n"
+            "• 右键结果: 更多选项\n"
+            "• Ctrl+Enter: 主窗口搜索\n"
+            "• F1: 查看完整帮助"
+        )
         self.empty_state_label.setObjectName("emptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignCenter)
         self.empty_state_label.setVisible(True)
@@ -379,8 +382,8 @@ class QuickSearchDialog(QDialog):
         button_container.setSpacing(15)
         
         # 快捷键提示
-        shortcut_label = QLabel("💡 Enter: 主窗口 | Esc: 关闭 | ↑↓: 选择")
-        shortcut_label.setObjectName("shortcutLabel")
+        shortcut_label = QLabel("Enter: 搜索 | Ctrl+Enter: 主窗口 | F1: 帮助 | Esc: 关闭")
+        shortcut_label.setObjectName("statusLabel")
         shortcut_label.setStyleSheet("color: #666; font-size: 11px;")
         button_container.addWidget(shortcut_label)
         
@@ -402,13 +405,10 @@ class QuickSearchDialog(QDialog):
         self.minimize_button.clicked.connect(self.showMinimized)
         self.close_button.clicked.connect(self.close)
         
-        # 搜索相关
-        self.search_line_edit.textChanged.connect(self._on_search_text_changed)
+        # 搜索相关 - 移除自动搜索，只保留回车键搜索
+        self.search_line_edit.textChanged.connect(self._on_search_text_changed_simple)
         self.search_line_edit.returnPressed.connect(self._on_search_enter)
         self.clear_button.clicked.connect(self._clear_search)
-        
-        # 搜索防抖定时器
-        self.search_timer.timeout.connect(self._perform_search)
         
         # 结果列表
         self.results_list.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -652,8 +652,15 @@ class QuickSearchDialog(QDialog):
         # 恢复原始尺寸
         QTimer.singleShot(50, lambda: self.resize(original_size))
     
-    def _on_search_text_changed(self, text):
-        """搜索文本改变时的处理（性能优化版本）"""
+    def _on_search_text_changed_simple(self, text):
+        """搜索文本改变时的简单处理（仅UI状态更新，不自动搜索）"""
+        print(f"🔤 搜索文本变化：'{text}' (长度: {len(text)})")
+        
+        # 确保搜索框始终可编辑
+        if not self.search_line_edit.isEnabled():
+            print("🔧 重新启用搜索框")
+            self.search_line_edit.setEnabled(True)
+        
         # 显示/隐藏清空按钮
         self.clear_button.setVisible(bool(text))
         
@@ -661,13 +668,7 @@ class QuickSearchDialog(QDialog):
         if hasattr(self, 'main_window_button'):
             self.main_window_button.setEnabled(bool(text.strip()))
         
-        # 重置搜索定时器（防抖优化）
-        self.search_timer.stop()
-        
-        if text.strip():
-            # 性能优化：减少防抖延迟到50ms，提升响应速度
-            self.search_timer.start(50)  # 从100ms减少到50ms
-        else:
+        if not text.strip():
             # 文本为空时，立即清空结果并恢复待搜索状态
             self._clear_results()
             self._hide_search_progress()  # 立即隐藏进度条
@@ -676,19 +677,30 @@ class QuickSearchDialog(QDialog):
             # 更新状态标签
             if hasattr(self, 'status_label'):
                 self.status_label.setText("准备就绪")
+        else:
+            # 有文本时，更新提示信息
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("按回车键搜索")
+    
+    def _on_search_text_changed(self, text):
+        """搜索文本改变时的处理（保留原方法名以兼容）"""
+        self._on_search_text_changed_simple(text)
     
     def _clear_results(self):
         """清空搜索结果"""
+        print("🧹 快速搜索对话框：清空结果")
         self.results_list.clear()
         self.empty_state_label.setVisible(True)
+        self.results_list.setVisible(False)
         if hasattr(self, 'search_stats'):
             self.search_stats.setVisible(False)
         if hasattr(self, 'results_header'):
             self.results_header.setText("搜索结果")
+        if hasattr(self, 'status_label'):
+            self.status_label.setText("准备就绪")
     
     def _on_search_enter(self):
         """处理回车键搜索"""
-        self.search_timer.stop()
         self._perform_search()
     
     def _perform_search(self):
@@ -737,15 +749,28 @@ class QuickSearchDialog(QDialog):
         """显示空状态"""
         self.empty_state_label.setVisible(True)
         self.results_list.setVisible(False)
-        self.search_hint_label.setText("输入关键词开始搜索，支持实时搜索")
-        self.status_label.setText("准备就绪")
-        self.results_header.setText("搜索结果")
+        if hasattr(self, 'search_hint_label'):
+            self.search_hint_label.setText("输入关键词后按回车键搜索")
+        if hasattr(self, 'status_label'):
+            self.status_label.setText("准备就绪")
+        if hasattr(self, 'results_header'):
+            self.results_header.setText("搜索结果")
     
     def _clear_search(self):
         """清空搜索"""
+        print("🧹 清空搜索框")
+        
+        # 确保搜索框可编辑
+        if not self.search_line_edit.isEnabled():
+            print("🔧 启用搜索框以便清空")
+            self.search_line_edit.setEnabled(True)
+        
         self.search_line_edit.clear()
         self.search_line_edit.setFocus()
         self._show_empty_state()
+        
+        # 确保清空按钮隐藏
+        self.clear_button.setVisible(False)
     
     def mousePressEvent(self, event):
         """处理鼠标按下事件，用于窗口拖动"""
@@ -776,18 +801,24 @@ class QuickSearchDialog(QDialog):
     def keyPressEvent(self, event):
         """键盘事件处理（增强版本）"""
         if event.key() == Qt.Key_Escape:
+            print("🔑 快速搜索对话框：按下ESC键，关闭窗口")
+            event.accept()  # 确保事件被处理
             self.close()
+            return
         elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
             if event.modifiers() == Qt.ControlModifier:
                 # Ctrl+Enter: 在主窗口中搜索
                 self._on_main_window_button()
             else:
-                # Enter: 如果有选中项，打开文件；否则在主窗口中搜索
-                current_item = self.results_list.currentItem()
-                if current_item and hasattr(current_item, 'data') and current_item.data(Qt.UserRole):
-                    self._on_item_activated(current_item)
+                # Enter: 如果焦点在搜索框，执行搜索；如果在结果列表且有选中项，打开文件
+                if self.search_line_edit.hasFocus():
+                    # 搜索框有焦点：执行搜索
+                    self._on_search_enter()
                 else:
-                    self._on_main_window_button()
+                    # 结果列表有焦点：打开选中的文件
+                    current_item = self.results_list.currentItem()
+                    if current_item and hasattr(current_item, 'data') and current_item.data(Qt.UserRole):
+                        self._on_item_activated(current_item)
         elif event.key() == Qt.Key_Down:
             # 下箭头：移动到结果列表
             if self.results_list.count() > 0:
@@ -984,33 +1015,49 @@ class QuickSearchDialog(QDialog):
         self._on_main_window_button()
     
     def set_search_results(self, results):
-        """设置搜索结果（性能优化版本）"""
+        """设置搜索结果（修复版本）"""
         import time
         start_time = time.time()
+        
+        print(f"🔄 快速搜索对话框：开始更新结果，数量: {len(results) if results else 0}")
         
         # 性能优化：批量操作，减少UI更新
         self.results_list.setUpdatesEnabled(False)
         self.results_list.clear()
         
+        # 隐藏搜索进度
+        self._hide_search_progress()
+        
         if not results:
             self.results_list.setUpdatesEnabled(True)
             self.empty_state_label.setVisible(True)
+            self.results_list.setVisible(False)
             if hasattr(self, 'results_header'):
                 self.results_header.setText("未找到结果")
             if hasattr(self, 'status_label'):
                 self.status_label.setText("未找到匹配的文件")
+            print("📭 快速搜索对话框：显示空结果状态")
             return
         
-        # 隐藏空状态提示
+        # 显示结果列表，隐藏空状态提示
         self.empty_state_label.setVisible(False)
+        self.results_list.setVisible(True)
         
-        # 快捷搜索显示限制 - 保持10个，但优化渲染
-        display_limit = 10
-        total_count = len(results)
+        # 检查是否包含加载指示器
+        has_loading_indicator = any(result.get('is_loading_indicator', False) for result in results)
+        actual_results = [r for r in results if not r.get('is_loading_indicator', False)]
+        
+        # 快捷搜索显示限制
+        display_limit = 50
+        total_count = len(actual_results)
+        
+        print(f"📊 快速搜索对话框：处理结果 - 总数: {total_count}, 显示限制: {display_limit}, 加载指示器: {has_loading_indicator}")
         
         # 更新结果标题
         if hasattr(self, 'results_header'):
-            if total_count > display_limit:
+            if has_loading_indicator:
+                self.results_header.setText(f"📁 搜索结果 (正在加载更多...)")
+            elif total_count > display_limit:
                 self.results_header.setText(f"📁 文件搜索结果 (显示前{display_limit}个，共找到{total_count}个)")
             else:
                 self.results_header.setText(f"📁 文件搜索结果 (共{total_count}个)")
@@ -1019,7 +1066,8 @@ class QuickSearchDialog(QDialog):
             # 性能优化：预分配列表，批量创建项目
             items_to_add = []
             
-            for result in results[:display_limit]:
+            # 添加实际搜索结果
+            for result in actual_results[:display_limit]:
                 file_path = result.get('file_path', '')
                 content_preview = result.get('content_preview', '')
                 
@@ -1035,12 +1083,18 @@ class QuickSearchDialog(QDialog):
                 item.setData(Qt.UserRole, file_path)
                 items_to_add.append(item)
             
-            # 批量添加到列表（减少UI更新次数）
-            for item in items_to_add:
-                self.results_list.addItem(item)
+            # 如果有加载指示器，添加加载提示项
+            if has_loading_indicator:
+                loading_item = QListWidgetItem()
+                loading_item.setText("⏳ 正在搜索更多结果...\n  🔍 后台正在进行完整搜索，即将显示全部结果")
+                loading_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 不可选择
+                loading_item.setBackground(QColor("#e3f2fd"))  # 浅蓝色背景
+                loading_item.setForeground(QColor("#1976d2"))  # 蓝色文字
+                loading_item.setSizeHint(QSize(0, 60))
+                items_to_add.append(loading_item)
             
-            # 如果有更多结果，添加提示项
-            if total_count > display_limit:
+            # 如果有更多结果（且不是加载状态），添加提示项
+            elif total_count > display_limit:
                 more_item = QListWidgetItem()
                 remaining = total_count - display_limit
                 more_text = f"⚡ 还有 {remaining} 个文件\n\n🖥️ 右键「主窗口查看更多」获取全部结果"
@@ -1049,26 +1103,45 @@ class QuickSearchDialog(QDialog):
                 more_item.setBackground(QColor("#f8f9fa"))
                 more_item.setForeground(QColor("#495057"))
                 more_item.setSizeHint(QSize(0, 60))
-                self.results_list.addItem(more_item)
+                items_to_add.append(more_item)
+            
+            # 批量添加到列表（减少UI更新次数）
+            for item in items_to_add:
+                self.results_list.addItem(item)
         
         finally:
             # 重新启用UI更新
             self.results_list.setUpdatesEnabled(True)
         
-        # 选中第一个结果
-        if self.results_list.count() > 0:
+        # 选中第一个结果（如果不是加载指示器）
+        if self.results_list.count() > 0 and not has_loading_indicator:
             self.results_list.setCurrentRow(0)
         
         # 显示搜索统计
         elapsed_ms = int((time.time() - start_time) * 1000)
-        self._show_search_stats(total_count, elapsed_ms)
+        self._show_search_stats(total_count, elapsed_ms, has_loading_indicator)
         
         # 更新状态
         if hasattr(self, 'status_label'):
-            if total_count > display_limit:
+            if has_loading_indicator:
+                self.status_label.setText(f"找到 {total_count} 个文件，正在搜索更多...")
+            elif total_count > display_limit:
                 self.status_label.setText(f"显示前{display_limit}个文件，共{total_count}个 - 快速搜索")
             else:
                 self.status_label.setText(f"找到 {total_count} 个文件 - 快速搜索")
+        
+        print(f"✅ 快速搜索对话框：结果更新完成，显示 {self.results_list.count()} 个项目")
+    
+    def _show_search_stats(self, count, time_ms, is_loading=False):
+        """显示搜索统计信息（支持加载状态）"""
+        if hasattr(self, 'search_stats'):
+            if is_loading:
+                self.search_stats.setText(f"找到 {count} 个结果，正在搜索更多... ({time_ms}ms)")
+            elif count > 0:
+                self.search_stats.setText(f"找到 {count} 个结果 ({time_ms}ms)")
+            else:
+                self.search_stats.setText("未找到匹配结果")
+            self.search_stats.setVisible(True)
     
     def _get_file_display_name(self, file_path):
         """获取文件显示名称"""
@@ -1093,15 +1166,6 @@ class QuickSearchDialog(QDialog):
             '.mp3': 'audio', '.wav': 'audio'
         }
         return type_map.get(ext, 'file')
-    
-    def _show_search_stats(self, count, time_ms):
-        """显示搜索统计信息"""
-        if hasattr(self, 'search_stats'):
-            if count > 0:
-                self.search_stats.setText(f"找到 {count} 个结果 ({time_ms}ms)")
-            else:
-                self.search_stats.setText("未找到匹配结果")
-            self.search_stats.setVisible(True)
     
     def _get_theme_colors(self):
         """获取当前主题的颜色配置"""
@@ -1302,15 +1366,6 @@ class QuickSearchDialog(QDialog):
         
         layout.addWidget(search_frame)
     
-    def _show_search_stats(self, count, time_ms):
-        """显示搜索统计信息"""
-        if hasattr(self, 'search_stats'):
-            if count > 0:
-                self.search_stats.setText(f"找到 {count} 个结果 ({time_ms}ms)")
-            else:
-                self.search_stats.setText("未找到匹配结果")
-            self.search_stats.setVisible(True)
-    
     def _create_enhanced_results_area(self, layout):
         """创建增强的结果区域"""
         results_frame = QFrame()
@@ -1334,12 +1389,13 @@ class QuickSearchDialog(QDialog):
         
         # 空状态提示
         self.empty_state_label = QLabel(
-            "🔍 输入关键词开始搜索\n\n"
-            "💡 小贴士：\n"
-            "• 支持中英文搜索\n"
-            "• 双击结果打开文件\n"
-            "• 右键查看更多选项\n"
-            "• Enter键在主窗口中搜索"
+            "🔍 输入关键词后按回车键搜索\n\n"
+            "💡 操作提示：\n"
+            "• Enter: 执行搜索\n"
+            "• 双击结果: 打开文件\n"
+            "• 右键结果: 更多选项\n"
+            "• Ctrl+Enter: 主窗口搜索\n"
+            "• F1: 查看完整帮助"
         )
         self.empty_state_label.setObjectName("emptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignCenter)
@@ -1364,7 +1420,7 @@ class QuickSearchDialog(QDialog):
         bottom_layout.addStretch()
         
         # 快捷键提示
-        shortcut_label = QLabel("Enter: 主窗口搜索 | Esc: 关闭")
+        shortcut_label = QLabel("Enter: 搜索 | Ctrl+Enter: 主窗口 | F1: 帮助 | Esc: 关闭")
         shortcut_label.setObjectName("statusLabel")
         bottom_layout.addWidget(shortcut_label)
         
@@ -1375,6 +1431,69 @@ class QuickSearchDialog(QDialog):
         bottom_layout.addWidget(self.main_window_button)
         
         layout.addWidget(bottom_frame)
+
+    def _show_help_dialog(self):
+        """显示帮助对话框"""
+        help_text = """
+🔍 快速搜索帮助
+
+📝 基本操作：
+• 输入关键词后按 Enter 键搜索
+• 双击结果项打开文件
+• 右键点击查看更多选项
+
+⌨️ 快捷键：
+• Enter: 执行搜索（搜索框有焦点时）
+• Enter: 打开文件（结果列表有焦点时）
+• Ctrl+Enter: 在主窗口中搜索
+• ↓: 移动到结果列表
+• ↑: 回到搜索框
+• F5: 刷新搜索
+• Delete: 清空搜索框
+• Ctrl+C: 复制文件路径
+• Ctrl+O: 打开选中文件
+• Ctrl+L: 定位到搜索框
+• Esc: 关闭窗口
+
+🖱️ 鼠标操作：
+• 双击结果: 打开文件
+• 右键结果: 显示操作菜单
+• 拖动标题栏: 移动窗口
+
+💡 搜索提示：
+• 支持中英文文件名搜索
+• 搜索结果按相关性排序
+• 只搜索文件名，不搜索文件内容
+• 按回车键手动搜索，避免误搜索
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("快速搜索帮助")
+        msg_box.setText(help_text)
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        
+        # 设置对话框样式
+        colors = self._get_theme_colors()
+        msg_box.setStyleSheet(f"""
+            QMessageBox {{
+                background-color: {colors['dialog_bg']};
+                color: {colors['text_primary']};
+            }}
+            QMessageBox QPushButton {{
+                background-color: {colors['primary']};
+                color: {colors['surface']};
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {colors['secondary']};
+            }}
+        """)
+        
+        msg_box.exec()
 
 
 # 简单测试代码

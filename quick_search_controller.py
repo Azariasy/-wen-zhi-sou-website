@@ -34,17 +34,27 @@ class QuickSearchController(QObject):
         self.current_theme = "现代蓝"  # 默认主题
         
         # 快速搜索配置
-        self.max_results = 10  # 限制结果数量，提升性能
+        self.max_results = 50  # 限制结果数量，提升性能
         self.preview_length = 100  # 预览文本长度
         
         # 搜索结果缓存
         self.search_results_cache = {}
+        
+        # 智能预测缓存
+        self.prediction_cache = {}
+        self.search_history = []  # 搜索历史记录
+        
+        # 防重复调用机制
+        self._current_search_query = None  # 当前正在处理的搜索词
+        self._search_in_progress = False   # 搜索进行中标志
         
         # 预热缓存 - 同步主窗口的热门搜索
         self._sync_with_main_window_cache()
         
         if hasattr(main_window, 'settings'):
             self.current_theme = main_window.settings.value("ui/theme", "现代蓝")
+            # 加载搜索历史
+            self._load_search_history()
     
     def _sync_with_main_window_cache(self):
         """同步主窗口的搜索历史和缓存，预热快速搜索
@@ -227,56 +237,168 @@ class QuickSearchController(QObject):
         except Exception as e:
             print(f"连接对话框信号时出错: {str(e)}")
     
-    def _handle_search_request(self, query):
-        """处理搜索请求（性能优化版本）"""
-        if not query or not query.strip():
-            return
-        
-        print(f"轻量级搜索：处理搜索请求 '{query}'")
-        
-        # 性能优化：先检查本地缓存
-        if query in self.search_results_cache:
-            print(f"使用快速搜索缓存的结果：'{query}'")
-            cached_results = self.search_results_cache[query]
-            if self.dialog and hasattr(self.dialog, 'set_search_results'):
-                self.dialog.set_search_results(cached_results)
-            return
-        
-        # 性能优化：检查主窗口缓存
-        main_window_results = self._try_get_from_main_window_cache(query)
-        if main_window_results is not None:
-            print(f"使用主窗口缓存的结果：'{query}' ({len(main_window_results)} 个)")
-            # 缓存到本地
-            self.search_results_cache[query] = main_window_results
-            if self.dialog and hasattr(self.dialog, 'set_search_results'):
-                self.dialog.set_search_results(main_window_results)
-            return
-        
-        # 执行新搜索
-        print(f"🔍 执行新搜索：'{query}'")
+    def _get_source_directories(self):
+        """获取搜索源目录"""
         try:
-            # 性能优化：异步执行搜索，避免阻塞UI
-            QTimer.singleShot(10, lambda: self._execute_search_async(query))
+            # 尝试从主窗口获取源目录配置
+            if hasattr(self.main_window, 'settings') and self.main_window.settings:
+                # 获取源目录设置
+                source_dirs = []
+                size = self.main_window.settings.beginReadArray("source_directories")
+                for i in range(size):
+                    self.main_window.settings.setArrayIndex(i)
+                    directory = self.main_window.settings.value("directory", "")
+                    if directory and os.path.exists(directory):
+                        source_dirs.append(directory)
+                self.main_window.settings.endArray()
+                
+                if source_dirs:
+                    print(f"📁 从设置获取源目录: {len(source_dirs)} 个")
+                    return source_dirs
+            
+            # 如果没有配置，使用默认目录
+            default_dirs = [
+                "D:/OneDrive/person/文件搜索工具/测试文件夹",
+                "D:/OneDrive/person/文件搜索工具/新建文件夹",
+                "D:/OneDrive/工作/中移（成都）信息通信科技有限公司/内控及风险管理/内控矩阵相关/2025年上半年修订情况"
+            ]
+            
+            # 过滤存在的目录
+            existing_dirs = [d for d in default_dirs if os.path.exists(d)]
+            if existing_dirs:
+                print(f"📁 使用默认源目录: {len(existing_dirs)} 个")
+                return existing_dirs
+            
+            print("❌ 未找到可用的源目录")
+            return []
+            
         except Exception as e:
-            print(f"搜索请求处理失败: {str(e)}")
+            print(f"❌ 获取源目录失败: {str(e)}")
+            return []
+
+    def _handle_search_request(self, query):
+        """处理搜索请求（全面修复版本）"""
+        if not query or not query.strip():
+            # 清空结果
             if self.dialog and hasattr(self.dialog, 'set_search_results'):
                 self.dialog.set_search_results([])
+            return
+        
+        query = query.strip()
+        
+        # 防重复调用检查 - 增强版本
+        if self._search_in_progress:
+            if self._current_search_query == query:
+                print(f"快捷搜索：跳过重复请求 '{query}'（搜索进行中）")
+                return
+            else:
+                print(f"快捷搜索：取消当前搜索 '{self._current_search_query}'，开始新搜索 '{query}'")
+                # 强制重置状态
+                self._search_in_progress = False
+                self._current_search_query = None
+        
+        # 设置搜索状态
+        self._search_in_progress = True
+        self._current_search_query = query
+        
+        print(f"轻量级搜索：开始处理搜索请求 '{query}'")
+        
+        try:
+            # 🚀 使用新的快速文件名搜索，不依赖主窗口的全文搜索
+            print("🚀 启动快速文件名搜索（独立于全文搜索）")
+            
+            # 先清空当前结果，避免显示旧结果
+            if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                self.dialog.set_search_results([])
+            
+            # 获取源目录
+            source_dirs = self._get_source_directories()
+            if not source_dirs:
+                print("❌ 未配置搜索目录，回退到主窗口搜索")
+                # 回退到原有逻辑
+                main_window_results = self._try_get_from_main_window_cache(query)
+                if main_window_results is not None:
+                    print(f"✅ 获取主窗口结果：'{query}' ({len(main_window_results)} 个)")
+                    if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                        self.dialog.set_search_results(main_window_results)
+                else:
+                    print(f"⚠️ 主窗口无结果：'{query}'")
+                    if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                        self.dialog.set_search_results([])
+                return
+            
+            # 导入快速文件名搜索模块
+            try:
+                from quick_filename_search import QuickFilenameSearcher
+                
+                # 执行快速文件名搜索
+                searcher = QuickFilenameSearcher(source_dirs)
+                results = searcher.search_filenames(query, max_results=self.max_results)
+                
+                print(f"✅ 快速文件名搜索完成：'{query}' ({len(results)} 个)")
+                
+                # 转换结果格式以兼容现有的显示逻辑
+                formatted_results = []
+                for result in results:
+                    formatted_result = {
+                        'file_path': result['file_path'],
+                        'filename': result['filename'],
+                        'directory': result['directory'],
+                        'file_size': result['file_size'],
+                        'modified_time': result['modified_time'],
+                        'file_type': result['file_type'],
+                        'content_preview': f"文件名匹配: {result['filename']}",
+                        'match_score': result['match_score']
+                    }
+                    formatted_results.append(formatted_result)
+                
+                # 确保搜索状态仍然匹配（防止被其他搜索覆盖）
+                if self._current_search_query != query:
+                    print(f"⚠️ 搜索已被新请求覆盖，跳过结果显示：'{query}' -> '{self._current_search_query}'")
+                    return
+                
+                # 立即更新UI
+                if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                    self.dialog.set_search_results(formatted_results)
+                    
+            except ImportError:
+                print("❌ 无法导入快速文件名搜索模块，回退到主窗口搜索")
+                # 回退到原有逻辑
+                main_window_results = self._try_get_from_main_window_cache(query)
+                if main_window_results is not None:
+                    print(f"✅ 获取主窗口结果：'{query}' ({len(main_window_results)} 个)")
+                    if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                        self.dialog.set_search_results(main_window_results)
+                else:
+                    print(f"⚠️ 主窗口无结果：'{query}'")
+                    if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                        self.dialog.set_search_results([])
+            
+        except Exception as e:
+            print(f"❌ 搜索请求处理失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                self.dialog.set_search_results([])
+        finally:
+            # 重置搜索状态（只有当前查询匹配时才重置）
+            if self._current_search_query == query:
+                self._search_in_progress = False
+                self._current_search_query = None
+                print(f"🔄 搜索状态已重置：'{query}'")
     
     def _execute_search_async(self, query):
-        """异步执行搜索（性能优化）"""
+        """异步执行搜索（动态等待优化版本）"""
         try:
-            results = self._execute_search_via_main_window(query)
+            # 执行搜索并等待完成
+            results = self._execute_new_search(query)
             
             # 缓存结果
             if results:
                 self.search_results_cache[query] = results
-                # 限制缓存大小，避免内存泄漏
-                if len(self.search_results_cache) > 50:
-                    # 移除最旧的缓存项
-                    oldest_key = next(iter(self.search_results_cache))
-                    del self.search_results_cache[oldest_key]
+                print(f"快捷搜索：缓存结果 '{query}' ({len(results)} 个)")
             
-            # 更新UI
+            # 显示结果
             if self.dialog and hasattr(self.dialog, 'set_search_results'):
                 self.dialog.set_search_results(results)
                 
@@ -284,15 +406,90 @@ class QuickSearchController(QObject):
             print(f"异步搜索执行失败: {str(e)}")
             if self.dialog and hasattr(self.dialog, 'set_search_results'):
                 self.dialog.set_search_results([])
+        finally:
+            # 确保重置搜索状态
+            self._search_in_progress = False
+            self._current_search_query = None
+            print(f"快捷搜索：搜索状态已重置")
+    
+    def _execute_progressive_search(self, query):
+        """渐进式搜索：先快速返回部分结果，再补充完整结果"""
+        print(f"🚀 开始渐进式搜索：'{query}'")
+        
+        # 第一阶段：快速搜索（限制结果数量，提升速度）
+        print("📊 第一阶段：快速预览搜索...")
+        try:
+            # 快速搜索：只获取前15个结果
+            quick_results = self.main_window._perform_search(
+                query=query,
+                max_results=15,  # 大幅减少结果数量
+                quick_search=True,
+                search_scope="filename"
+            )
+            
+            if quick_results:
+                print(f"⚡ 快速搜索完成：{len(quick_results)} 个结果")
+                # 立即显示快速结果
+                if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                    # 添加"正在加载更多..."提示
+                    enhanced_results = quick_results.copy()
+                    enhanced_results.append({
+                        'file_path': '正在搜索更多结果...',
+                        'content_preview': '⏳ 正在后台搜索完整结果，请稍候...',
+                        'is_loading_indicator': True
+                    })
+                    self.dialog.set_search_results(enhanced_results)
+                
+                # 第二阶段：完整搜索（异步进行）
+                QTimer.singleShot(100, lambda: self._execute_complete_search(query))
+            else:
+                # 如果快速搜索没有结果，直接进行完整搜索
+                self._execute_complete_search(query)
+                
+        except Exception as e:
+            print(f"快速搜索失败，回退到完整搜索: {str(e)}")
+            self._execute_complete_search(query)
+    
+    def _execute_complete_search(self, query):
+        """执行完整搜索"""
+        print("📚 第二阶段：完整搜索...")
+        try:
+            # 完整搜索：获取所有结果
+            complete_results = self.main_window._perform_search(
+                query=query,
+                max_results=self.max_results,  # 使用原始限制
+                quick_search=True,
+                search_scope="filename"
+            )
+            
+            print(f"✅ 完整搜索完成：{len(complete_results)} 个结果")
+            
+            # 缓存完整结果
+            if complete_results:
+                self.search_results_cache[query] = complete_results
+                # 限制缓存大小
+                if len(self.search_results_cache) > 50:
+                    oldest_key = next(iter(self.search_results_cache))
+                    del self.search_results_cache[oldest_key]
+            
+            # 更新UI显示完整结果
+            if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                self.dialog.set_search_results(complete_results)
+                
+        except Exception as e:
+            print(f"完整搜索执行失败: {str(e)}")
+            if self.dialog and hasattr(self.dialog, 'set_search_results'):
+                self.dialog.set_search_results([])
     
     def _try_get_from_main_window_cache(self, query):
-        """尝试从主窗口缓存获取结果（性能优化版本）"""
+        """尝试从主窗口获取搜索结果（修复版本）"""
         if not self.main_window or not hasattr(self.main_window, '_perform_search'):
             return None
         
         try:
-            # 性能优化：直接调用主窗口的缓存搜索方法
-            # 使用与主窗口完全相同的参数确保缓存命中
+            print(f"快捷搜索：为'{query}'清除主窗口缓存，确保结果正确")
+            
+            # 执行搜索，获取新鲜的结果
             results = self.main_window._perform_search(
                 query=query,
                 max_results=self.max_results,
@@ -300,35 +497,47 @@ class QuickSearchController(QObject):
                 search_scope="filename"
             )
             
-            if results:
-                print(f"主窗口缓存命中：'{query}' -> {len(results)} 个结果")
-                return results
-            else:
-                print(f"主窗口搜索完成：'{query}' -> 0 个结果")
-                return []
+            # 确保结果是列表格式
+            if results is None:
+                results = []
+            elif not isinstance(results, list):
+                print(f"⚠️ 主窗口返回的结果不是列表格式: {type(results)}")
+                results = []
+            
+            print(f"✅ 获取主窗口结果：'{query}' ({len(results)} 个)")
+            return results
                 
         except Exception as e:
-            print(f"主窗口缓存检查失败: {str(e)}")
-            return None
+            print(f"❌ 主窗口搜索失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
     
     def _execute_new_search(self, query):
-        """执行新的搜索操作
+        """执行新的搜索操作（简化版本）
         
         Args:
             query: 搜索关键词
+            
+        Returns:
+            list: 格式化后的搜索结果
         """
         try:
             # 确保主窗口有搜索方法
             if not hasattr(self.main_window, '_perform_search') or \
                not callable(getattr(self.main_window, '_perform_search')):
                 print("主窗口没有提供 _perform_search 方法")
-                self._show_search_results([])
-                return
+                return []
             
             print(f"🔍 执行新搜索：'{query}'")
             
-            # 使用主窗口的搜索方法，获取结果
-            raw_results = self._execute_search_via_main_window(query)
+            # 直接调用主窗口搜索，使用动态等待机制
+            raw_results = self.main_window._perform_search(
+                query=query,
+                max_results=self.max_results,
+                quick_search=True,
+                search_scope="filename"
+            )
             
             print(f"获取到原始搜索结果，数量: {len(raw_results) if raw_results else 0}")
             
@@ -337,17 +546,13 @@ class QuickSearchController(QObject):
             
             print(f"格式化后的搜索结果，数量: {len(formatted_results)}")
             
-            # 缓存结果到快速搜索缓存
-            self.search_results_cache[query] = formatted_results
-            
-            # 显示结果
-            self._show_search_results(formatted_results)
+            return formatted_results
             
         except Exception as e:
             print(f"执行新搜索时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
-            self._show_search_results([])
+            return []
     
     def _execute_search_via_main_window(self, query):
         """通过主窗口执行搜索 - 专注于文件名搜索
@@ -540,6 +745,58 @@ class QuickSearchController(QObject):
                 print(f"已在主窗口中执行搜索: {query}")
             else:
                 print("未找到主窗口的start_search_slot方法")
+
+    def _load_search_history(self):
+        """加载搜索历史记录"""
+        try:
+            if hasattr(self.main_window, 'settings'):
+                history = self.main_window.settings.value("search_history", [])
+                if isinstance(history, list):
+                    self.search_history = history[:20]  # 保留最近20个搜索
+                    print(f"加载搜索历史: {len(self.search_history)} 个记录")
+        except Exception as e:
+            print(f"加载搜索历史失败: {str(e)}")
+            self.search_history = []
+    
+    def _predict_search_intent(self, partial_query):
+        """基于部分输入预测搜索意图"""
+        if len(partial_query) < 2:
+            return []
+        
+        # 从搜索历史中找到匹配的项目
+        predictions = []
+        for history_item in self.search_history:
+            if partial_query.lower() in history_item.lower():
+                predictions.append(history_item)
+        
+        # 限制预测数量
+        return predictions[:5]
+    
+    def _preload_predicted_searches(self, partial_query):
+        """预加载预测的搜索结果"""
+        predictions = self._predict_search_intent(partial_query)
+        
+        for predicted_query in predictions:
+            if predicted_query not in self.search_results_cache:
+                # 异步预加载
+                QTimer.singleShot(50, lambda q=predicted_query: self._preload_search_async(q))
+    
+    def _preload_search_async(self, query):
+        """异步预加载搜索结果"""
+        try:
+            if query not in self.search_results_cache:
+                print(f"🔮 预加载搜索: '{query}'")
+                results = self.main_window._perform_search(
+                    query=query,
+                    max_results=15,
+                    quick_search=True,
+                    search_scope="filename"
+                )
+                if results:
+                    self.search_results_cache[query] = results
+                    print(f"✅ 预加载完成: '{query}' -> {len(results)} 个结果")
+        except Exception as e:
+            print(f"预加载搜索失败: {str(e)}")
 
 
 # 简单测试代码

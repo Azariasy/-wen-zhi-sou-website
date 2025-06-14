@@ -338,125 +338,105 @@ class TrayMainWindow(MainWindow):
             if not search_triggered:
                 return []
             
-            # 等待搜索完成并获取结果
+            # 动态等待搜索完成 - 基于搜索状态而非固定时间
             import time
             from PySide6.QtCore import QCoreApplication
             
-            # 对于轻量级搜索，等待更长时间确保获取到真实结果
-            timeout = 80 if quick_search else 50  # 8秒或5秒超时
+            # 🔧 修复动态等待机制：清空旧结果，确保获取新结果
+            # 先清空旧的搜索结果，避免获取到缓存的旧结果
+            if hasattr(self, 'original_search_results'):
+                self.original_search_results = None
+                print(f"{'快捷搜索' if quick_search else '普通搜索'}：已清空旧的original_search_results")
+            
+            # 动态等待策略：基于搜索完成状态，而非固定时间
+            max_wait_time = 30 if not quick_search else 15  # 最大等待时间（防止死锁）
+            check_interval = 0.05  # 更频繁的检查间隔（50ms）
+            
             elapsed = 0
-            results_count = 0
-            last_count = -1
+            search_completed = False
+            results_available = False
             
-            print(f"开始等待搜索结果，超时时间: {timeout/10}秒")
+            print(f"{'快捷搜索' if quick_search else '普通搜索'}：开始动态等待搜索完成...")
             
-            while elapsed < timeout:
+            while elapsed < max_wait_time and not search_completed:
                 QCoreApplication.processEvents()  # 处理Qt事件
-                time.sleep(0.1)
-                elapsed += 1
+                time.sleep(check_interval)
+                elapsed += 1  # 计数器（每次+1代表50ms）
                 
-                # 检查results_table是否有数据
-                if hasattr(self, 'results_table') and self.results_table:
-                    current_count = self.results_table.rowCount()
-                    
-                    # 如果结果数量发生变化，记录
-                    if current_count != last_count:
-                        print(f"  等待{elapsed/10:.1f}秒: results_table行数从{last_count}变为{current_count}")
-                        last_count = current_count
-                    
-                    if current_count > 0:
-                        # 如果结果数量没有变化，说明搜索可能已完成
-                        if current_count == results_count:
-                            # 等待额外的时间确保搜索完全完成
-                            if elapsed > 20:  # 至少等待2秒
-                                print(f"  结果稳定在{current_count}行，搜索完成")
-                                break
-                        else:
-                            results_count = current_count
-                        
-                        # 如果已经获取足够的结果，可以提前结束
-                        if current_count >= max_results:
-                            print(f"  已获取足够的结果({current_count}>={max_results})，提前结束")
-                            break
+                # 检查搜索是否完成的多个指标
+                original_results_ready = (hasattr(self, 'original_search_results') and 
+                                        self.original_search_results is not None and
+                                        len(self.original_search_results) >= 0)  # 包括0个结果的情况
                 
-                # 每秒输出一次进度
-                if elapsed % 10 == 0:
-                    print(f"  等待中... {elapsed/10:.0f}秒")
-            
-            print(f"等待结束，总等待时间: {elapsed/10:.1f}秒")
-            
-            # 从结果表格获取数据
-            results = []
-            
-            # 对于轻量级搜索，优先使用original_search_results
-            if quick_search and hasattr(self, 'original_search_results') and self.original_search_results:
-                print(f"轻量级搜索：直接从original_search_results获取 {len(self.original_search_results)} 个结果")
-                for i, result in enumerate(self.original_search_results[:max_results]):
-                    try:
-                        file_path = result.get('file_path', '')
-                        if file_path:
-                            # 获取预览内容
-                            content_preview = result.get('content_preview', '')
-                            if not content_preview:
-                                # 对于文件名搜索，预览内容可以是文件路径或者简单描述
-                                if search_scope == "filename":
-                                    content_preview = f"文件名包含关键词 '{query}'"
-                                else:
-                                    content_preview = f"包含关键词 '{query}' 的文档"
-                            
-                            results.append({
-                                'file_path': file_path,
-                                'content_preview': content_preview[:200]
-                            })
-                    except Exception as e:
-                        print(f"处理original_search_results第{i}个结果时出错: {e}")
-                        continue
-            elif hasattr(self, 'results_table') and self.results_table:
-                row_count = self.results_table.rowCount()
-                print(f"搜索完成，从results_table获取到 {row_count} 行结果")
+                table_has_results = (hasattr(self, 'results_table') and 
+                                   self.results_table.rowCount() >= 0)  # 包括0个结果的情况
                 
-                for row in range(min(row_count, max_results)):
-                    try:
-                        path_item = self.results_table.item(row, 0)
-                        if path_item:
-                            file_path = path_item.text()
-                            
-                            # 获取预览内容
-                            content_preview = ""
-                            preview_item = self.results_table.item(row, 1)
-                            if preview_item:
-                                content_preview = preview_item.text()[:200]
-                            else:
-                                # 对于文件名搜索，预览内容可以是文件路径或者简单描述
-                                if search_scope == "filename":
-                                    content_preview = f"文件名包含关键词 '{query}'"
-                                else:
-                                    content_preview = path_item.toolTip()[:200] if path_item.toolTip() else f"包含关键词 '{query}' 的文档"
-                            
-                            results.append({
-                                'file_path': file_path,
-                                'content_preview': content_preview
-                            })
-                    except Exception as e:
-                        print(f"处理搜索结果第{row}行时出错: {e}")
-                        continue
+                # 检查搜索进行标志（如果主窗口有这个标志）
+                search_not_in_progress = True
+                if hasattr(self, '_search_in_progress'):
+                    search_not_in_progress = not self._search_in_progress
+                
+                # 判断搜索是否完成 - 修复：确保获取的是新结果
+                if original_results_ready and search_not_in_progress:
+                    results_available = True
+                    search_completed = True
+                    result_count = len(self.original_search_results) if self.original_search_results else 0
+                    print(f"{'快捷搜索' if quick_search else '普通搜索'}：检测到新的original_search_results可用({result_count}个)，搜索完成（{elapsed*0.05:.2f}秒）")
+                    break
+                elif table_has_results and search_not_in_progress:
+                    results_available = True
+                    search_completed = True
+                    table_count = self.results_table.rowCount() if hasattr(self, 'results_table') else 0
+                    print(f"{'快捷搜索' if quick_search else '普通搜索'}：检测到results_table有结果({table_count}个)且搜索不在进行中，搜索完成（{elapsed*0.05:.2f}秒）")
+                    break
+                
+                # 定期输出进度（每1秒输出一次，减少日志噪音）
+                if elapsed % 20 == 0 and elapsed > 0:  # 20 * 0.05 = 1秒
+                    print(f"{'快捷搜索' if quick_search else '普通搜索'}：等待中... {elapsed*0.05:.1f}秒")
             
-            # 恢复原始文件类型设置（仅对轻量级搜索）
-            if quick_search:
-                print("轻量级搜索完成：清除快速搜索模式标志")
-                # 清除快速搜索模式标志
-                if hasattr(self, '_quick_search_mode'):
-                    delattr(self, '_quick_search_mode')
-            
-            if results:
-                print(f"_perform_search 成功获取 {len(results)} 个真实搜索结果")
-                # 打印前几个结果用于调试
-                for i, result in enumerate(results[:3]):
-                    print(f"  结果{i+1}: {os.path.basename(result['file_path'])}")
-                return results
+            # 输出等待结果
+            if search_completed:
+                print(f"{'快捷搜索' if quick_search else '普通搜索'}：搜索完成，总等待时间: {elapsed*0.05:.2f}秒")
             else:
-                print(f"未能获取到搜索结果，可能是搜索没有匹配项 (查询: '{query}', 范围: {search_scope})")
-                return []
+                print(f"{'快捷搜索' if quick_search else '普通搜索'}：等待超时，总等待时间: {elapsed*0.05:.2f}秒")
+            
+            # 优先返回original_search_results
+            if hasattr(self, 'original_search_results') and self.original_search_results is not None:
+                results_count = len(self.original_search_results)
+                print(f"{'快捷搜索' if quick_search else '普通搜索'}：使用original_search_results，共{results_count}个结果")
+                # 确保返回的结果格式正确
+                if results_count > 0:
+                    return self.original_search_results[:max_results]
+                else:
+                    print(f"⚠️ original_search_results为空，尝试从results_table获取")
+            else:
+                print(f"⚠️ original_search_results不可用，尝试从results_table获取")
+            
+            # 备用方案：从results_table获取结果
+            if hasattr(self, 'results_table') and self.results_table.rowCount() > 0:
+                table_rows = self.results_table.rowCount()
+                print(f"{'快捷搜索' if quick_search else '普通搜索'}：从results_table获取结果，共{table_rows}个")
+                results = []
+                for row in range(min(table_rows, max_results)):
+                    try:
+                        file_path_item = self.results_table.item(row, 0)
+                        content_item = self.results_table.item(row, 1)
+                        
+                        if file_path_item:
+                            file_path = file_path_item.text()
+                            content = content_item.text() if content_item else ""
+                            results.append({
+                                'file_path': file_path,
+                                'content_preview': content
+                            })
+                    except Exception as e:
+                        print(f"处理结果行{row}时出错: {str(e)}")
+                        continue
+                
+                return results
+            
+            print(f"{'快捷搜索' if quick_search else '普通搜索'}：未找到任何结果")
+            return []
                 
         except Exception as e:
             print(f"轻量级搜索执行失败: {str(e)}")
