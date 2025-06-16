@@ -111,41 +111,7 @@ class ThemeManager:
             gradient_end="#FB923C"
         ),
         
-        "深色模式": ThemeColors(
-            primary="#3B82F6",
-            secondary="#2563EB",
-            background="#111827",
-            surface="#1F2937",
-            text_primary="#F9FAFB",
-            text_secondary="#D1D5DB", 
-            border="#374151",
-            hover="#374151",
-            accent="#10B981",
-            success="#059669",
-            warning="#D97706",
-            error="#DC2626",
-            info="#3B82F6",
-            gradient_start="#1F2937",
-            gradient_end="#111827"
-        ),
-        
-        "护眼绿": ThemeColors(
-            primary="#059669", 
-            secondary="#047857",
-            background="#F0FDF4",
-            surface="#FFFFFF",
-            text_primary="#1E1E1E",
-            text_secondary="#6B7280",
-            border="#BBF7D0",
-            hover="#DCFCE7",
-            accent="#8B5CF6",
-            success="#059669",
-            warning="#D97706", 
-            error="#DC2626",
-            info="#0891B2",
-            gradient_start="#059669",
-            gradient_end="#34D399"
-        )
+
     }
     
     def __init__(self, default_theme: str = "现代蓝"):

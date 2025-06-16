@@ -215,28 +215,28 @@ class SearchResultItem(QListWidgetItem):
         # 使用类级别缓存避免重复计算
         if not hasattr(SearchResultItem, '_icon_cache'):
             SearchResultItem._icon_cache = {
-                # 文档类型
-                'docx': '📝', 'doc': '📝',
-                'xlsx': '📊', 'xls': '📊', 'csv': '📊',
+            # 文档类型
+            'docx': '📝', 'doc': '📝',
+            'xlsx': '📊', 'xls': '📊', 'csv': '📊',
                 'pptx': '📋', 'ppt': '📋',
                 'pdf': '📕',
-                'txt': '📄', 'md': '📄', 'rtf': '📄',
-                'zip': '📦', 'rar': '📦', '7z': '📦',
-                'html': '🌐', 'htm': '🌐',
-                'eml': '📧', 'msg': '📧',
-                
-                # 视频文件
-                'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬', 'wmv': '🎬', 
-                'mov': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
-                
-                # 音频文件
-                'mp3': '🎵', 'wav': '🎵', 'flac': '🎵', 'aac': '🎵',
-                'ogg': '🎵', 'wma': '🎵', 'm4a': '🎵',
-                
-                # 图片文件
-                'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
-                'bmp': '🖼️', 'tiff': '🖼️', 'webp': '🖼️', 'svg': '🖼️'
-            }
+            'txt': '📄', 'md': '📄', 'rtf': '📄',
+            'zip': '📦', 'rar': '📦', '7z': '📦',
+            'html': '🌐', 'htm': '🌐',
+            'eml': '📧', 'msg': '📧',
+            
+            # 视频文件
+            'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬', 'wmv': '🎬', 
+            'mov': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
+            
+            # 音频文件
+            'mp3': '🎵', 'wav': '🎵', 'flac': '🎵', 'aac': '🎵',
+            'ogg': '🎵', 'wma': '🎵', 'm4a': '🎵',
+            
+            # 图片文件
+            'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+            'bmp': '🖼️', 'tiff': '🖼️', 'webp': '🖼️', 'svg': '🖼️'
+        }
         
         return SearchResultItem._icon_cache.get(file_type.lower(), '📄')
 
@@ -1404,10 +1404,8 @@ class QuickSearchDialog(QDialog):
         colors = self._get_theme_colors()
         if hasattr(self, 'search_icon_label'):
             # 根据主题调整图标
-            if self.current_theme == "深色模式":
-                self.search_icon_label.setText("🔍")
-            else:
-                self.search_icon_label.setText("🔍")
+            # 所有主题都使用相同的搜索图标
+            self.search_icon_label.setText("🔍")
     
     def _refresh_results_display(self):
         """刷新结果显示以应用新主题"""
