@@ -27,6 +27,7 @@ class SearchResultDelegate(QStyledItemDelegate):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.parent_dialog = parent
         
     def paint(self, painter, option, index):
         """自定义绘制方法"""
@@ -49,19 +50,25 @@ class SearchResultDelegate(QStyledItemDelegate):
         # 设置绘制区域
         rect = option.rect
         
+        # 获取主题颜色
+        colors = self._get_theme_colors()
+        
         # 绘制背景
         if option.state & QStyle.State_Selected:
-            painter.fillRect(rect, option.palette.highlight())
+            # 使用主题的选中颜色
+            painter.fillRect(rect, QColor(colors['item_selected']))
         elif option.state & QStyle.State_MouseOver:
-            painter.fillRect(rect, option.palette.alternateBase())
+            # 使用主题的悬停颜色
+            painter.fillRect(rect, QColor(colors['item_hover']))
         else:
-            painter.fillRect(rect, option.palette.base())
+            # 使用主题的背景颜色
+            painter.fillRect(rect, QColor(colors['results_bg']))
         
         # 设置文本颜色
         if option.state & QStyle.State_Selected:
-            painter.setPen(option.palette.highlightedText().color())
+            painter.setPen(QColor(colors['surface']))  # 选中时使用白色文字
         else:
-            painter.setPen(option.palette.text().color())
+            painter.setPen(QColor(colors['text_primary']))  # 正常时使用主题文字颜色
         
         # 绘制第一行（文件名）- 使用精致字体
         title_font = QFont()
@@ -87,6 +94,22 @@ class SearchResultDelegate(QStyledItemDelegate):
             painter.drawText(detail_rect, Qt.AlignLeft | Qt.AlignVCenter, lines[1])
         
         painter.restore()
+    
+    def _get_theme_colors(self):
+        """获取主题颜色"""
+        if self.parent_dialog and hasattr(self.parent_dialog, '_get_theme_colors'):
+            return self.parent_dialog._get_theme_colors()
+        else:
+            # 默认蓝色主题
+            return {
+                "primary": "#007ACC",
+                "secondary": "#005A9E",
+                "surface": "#FFFFFF",
+                "text_primary": "#1E1E1E",
+                "results_bg": "#FFFFFF",
+                "item_hover": "#E3F2FD",
+                "item_selected": "#007ACC"
+            }
     
     def sizeHint(self, option, index):
         """返回项目的建议大小"""
@@ -422,7 +445,7 @@ class QuickSearchDialog(QDialog):
         self.results_list.setAlternatingRowColors(True)
         
         # 设置自定义委托以支持不同字体大小
-        self.results_delegate = SearchResultDelegate(self.results_list)
+        self.results_delegate = SearchResultDelegate(self)  # 传递对话框本身作为父对象
         self.results_list.setItemDelegate(self.results_delegate)
         
         # 修复关键配置

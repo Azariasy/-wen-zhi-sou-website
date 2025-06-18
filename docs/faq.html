@@ -23,10 +23,10 @@
             padding: 0 20px;
         }
         header {
-            background-color: #2c3e50;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
             color: white;
             padding: 1rem 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         header .container {
             display: flex;
@@ -53,19 +53,41 @@
             color: #3498db;
         }
         .faq-header {
-            background-color: #3498db;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
-            padding: 3rem 0;
+            padding: 4rem 0;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .faq-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
+            animation: float 20s infinite linear;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-100px); }
+        }
+        .faq-header-content {
+            position: relative;
+            z-index: 1;
         }
         .faq-header h1 {
-            font-size: 2.5rem;
+            font-size: 3rem;
             margin-bottom: 1rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .faq-header p {
             font-size: 1.2rem;
             max-width: 800px;
             margin: 0 auto;
+            opacity: 0.9;
         }
         .faq-content {
             padding: 3rem 0;
@@ -222,8 +244,10 @@
 
     <section class="faq-header">
         <div class="container">
-            <h1>常见问题解答 (FAQ)</h1>
-            <p>我们收集了用户最常提问的问题，希望能帮助您更好地使用文智搜</p>
+            <div class="faq-header-content">
+                <h1>常见问题解答 <span style="font-size: 0.6em; color: #f1c40f;">托盘版</span></h1>
+                <p>我们收集了用户最常提问的问题，希望能帮助您更好地使用文智搜托盘版</p>
+            </div>
         </div>
     </section>
 
@@ -231,11 +255,98 @@
         <div class="container">
             <div class="faq-categories">
                 <button class="category-button active" data-target="all">所有问题</button>
+                <button class="category-button" data-target="tray">托盘功能</button>
                 <button class="category-button" data-target="install">安装与配置</button>
                 <button class="category-button" data-target="index">索引问题</button>
                 <button class="category-button" data-target="search">搜索功能</button>
                 <button class="category-button" data-target="license">许可证问题</button>
                 <button class="category-button" data-target="troubleshooting">错误与故障排除</button>
+            </div>
+
+            <div class="faq-section" id="tray">
+                <h2>托盘功能</h2>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何使用全局热键快速搜索？</div>
+                    <div class="faq-answer">
+                        <p>托盘版文智搜支持全局热键功能，让您在任何程序中都能快速调出搜索窗口：</p>
+                        <ul>
+                            <li><strong>默认热键：</strong> Ctrl+Alt+Q 调出快速搜索窗口</li>
+                            <li><strong>自定义热键：</strong> 在设置中可以修改热键组合</li>
+                            <li><strong>使用方法：</strong> 按下热键后直接输入搜索关键词，ESC键关闭窗口</li>
+                            <li><strong>快速访问：</strong> 搜索结果可直接双击打开文件</li>
+                        </ul>
+                        <p>这个功能特别适合在工作中需要快速查找文档的场景，无需切换到主窗口。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">托盘图标有什么功能？</div>
+                    <div class="faq-answer">
+                        <p>系统托盘中的文智搜图标提供了丰富的功能：</p>
+                        <ul>
+                            <li><strong>左键单击：</strong> 显示/隐藏主窗口</li>
+                            <li><strong>右键菜单：</strong> 访问所有主要功能</li>
+                            <li><strong>最近搜索：</strong> 快速重复之前的搜索</li>
+                            <li><strong>快速搜索：</strong> 直接调出搜索窗口</li>
+                            <li><strong>设置访问：</strong> 快速进入设置界面</li>
+                        </ul>
+                        <p>托盘图标让文智搜可以在后台运行，不占用任务栏空间，随时可用。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">如何设置开机自启动？</div>
+                    <div class="faq-answer">
+                        <p>托盘版支持开机自启动功能，让文智搜随系统启动：</p>
+                        <ol>
+                            <li>右键点击托盘图标，选择"设置"</li>
+                            <li>在设置窗口中找到"启动选项"</li>
+                            <li>勾选"开机自动启动"选项</li>
+                            <li>可选择"启动时最小化到托盘"</li>
+                        </ol>
+                        <p>这样设置后，每次开机文智搜都会自动在后台运行，您可以随时使用全局热键进行搜索。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">托盘版和完整版有什么区别？</div>
+                    <div class="faq-answer">
+                        <p>托盘版是文智搜的增强版本，在完整版基础上增加了系统集成功能：</p>
+                        <p><strong>托盘版独有功能：</strong></p>
+                        <ul>
+                            <li>🎯 系统托盘集成，支持最小化到托盘</li>
+                            <li>⚡ 全局热键快速搜索 (Ctrl+Alt+Q)</li>
+                            <li>📋 托盘菜单显示最近搜索历史</li>
+                            <li>🚀 开机自启动和后台运行</li>
+                            <li>🔧 自定义全局热键设置</li>
+                        </ul>
+                        <p><strong>共同功能：</strong></p>
+                        <ul>
+                            <li>完整的文档搜索功能</li>
+                            <li>13种文件格式支持</li>
+                            <li>虚拟滚动和高性能渲染</li>
+                            <li>多主题界面（专业版）</li>
+                        </ul>
+                        <p>托盘版更适合需要频繁搜索文档的用户，提供更便捷的访问方式。</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question">快速搜索窗口支持哪些功能？</div>
+                    <div class="faq-answer">
+                        <p>快速搜索窗口是托盘版的核心功能，提供轻量级的搜索体验：</p>
+                        <ul>
+                            <li><strong>即时搜索：</strong> 输入关键词即时显示结果</li>
+                            <li><strong>文件名搜索：</strong> 主要针对文件名进行快速匹配</li>
+                            <li><strong>智能排序：</strong> 根据匹配度和最近访问排序</li>
+                            <li><strong>快速打开：</strong> 双击或回车直接打开文件</li>
+                            <li><strong>键盘导航：</strong> 支持上下箭头键选择结果</li>
+                            <li><strong>拖拽移动：</strong> 可以拖拽窗口到任意位置</li>
+                        </ul>
+                        <p>如需更复杂的搜索功能，可以通过托盘菜单打开完整的主窗口。</p>
+                    </div>
+                </div>
             </div>
 
             <div class="faq-section" id="install">

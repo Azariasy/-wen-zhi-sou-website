@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>下载与安装 - 文智搜</title>
+    <title>下载与安装 - 文智搜 | 高性能本地文档搜索引擎</title>
     <style>
         * {
             margin: 0;
@@ -23,10 +23,10 @@
             padding: 0 20px;
         }
         header {
-            background-color: #2c3e50;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
             color: white;
             padding: 1rem 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         header .container {
             display: flex;
@@ -36,6 +36,7 @@
         .logo {
             font-size: 1.8rem;
             font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         nav ul {
             display: flex;
@@ -47,132 +48,287 @@
         nav ul li a {
             color: white;
             text-decoration: none;
-            transition: color 0.3s;
+            transition: all 0.3s;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
         }
         nav ul li a:hover {
-            color: #3498db;
+            background-color: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
         }
         .page-header {
-            background-color: #3498db;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
-            padding: 3rem 0;
+            padding: 4rem 0;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
+            animation: float 20s infinite linear;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-100px); }
+        }
+        .page-header-content {
+            position: relative;
+            z-index: 1;
         }
         .page-header h1 {
-            font-size: 2.5rem;
+            font-size: 3rem;
             margin-bottom: 1rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .page-header p {
             font-size: 1.2rem;
             max-width: 800px;
-            margin: 0 auto;
+            margin: 0 auto 2rem;
+            opacity: 0.9;
+        }
+        .performance-stats {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .stat {
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
         }
         .content-section {
-            padding: 3rem 0;
+            padding: 4rem 0;
             background-color: white;
         }
         .section-title {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 3rem;
         }
         .section-title h2 {
-            font-size: 2rem;
+            font-size: 2.5rem;
             margin-bottom: 0.5rem;
             color: #2c3e50;
         }
         .section-title p {
             color: #666;
+            font-size: 1.1rem;
+        }
+        .download-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
         }
         .download-box {
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
             text-align: center;
+            transition: all 0.3s;
+            border: 1px solid rgba(52, 152, 219, 0.1);
+        }
+        .download-box:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
         }
         .download-box h3 {
             margin-bottom: 1rem;
             color: #2c3e50;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .download-icon {
+            font-size: 2rem;
         }
         .download-box p {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            color: #666;
+        }
+        .feature-list {
+            text-align: left;
+            margin-bottom: 2rem;
+        }
+        .feature-list li {
+            margin-bottom: 0.5rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        .feature-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #2ecc71;
+            font-weight: bold;
         }
         .btn {
             display: inline-block;
-            padding: 0.8rem 1.5rem;
-            border-radius: 4px;
+            padding: 1rem 2rem;
+            border-radius: 6px;
             text-decoration: none;
             font-weight: bold;
             transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         .btn-primary {
-            background-color: #2ecc71;
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
             color: white;
         }
         .btn-primary:hover {
-            background-color: #27ae60;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .btn-secondary {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+        }
+        .btn-secondary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
         .requirements {
-            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 3rem;
+            border-radius: 12px;
+            margin-bottom: 3rem;
         }
         .requirements h3 {
-            margin-bottom: 1rem;
-            color: #2c3e50;
-        }
-        .requirements ul {
-            margin-left: 1.5rem;
             margin-bottom: 1.5rem;
+            color: #2c3e50;
+            font-size: 1.5rem;
+            text-align: center;
         }
-        .requirements li {
-            margin-bottom: 0.5rem;
+        .req-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        .req-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .req-item h4 {
+            color: #3498db;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
         }
         .installation-guide {
             margin-bottom: 3rem;
         }
         .installation-guide h3 {
-            margin-bottom: 1rem;
+            margin-bottom: 2rem;
             color: #2c3e50;
+            font-size: 1.8rem;
+            text-align: center;
         }
         .guide-step {
+            background: white;
             margin-bottom: 2rem;
-            padding-bottom: 2rem;
-            border-bottom: 1px solid #eee;
-        }
-        .guide-step:last-child {
-            border-bottom: none;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border-left: 4px solid #3498db;
         }
         .guide-step h4 {
             margin-bottom: 1rem;
             color: #3498db;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
-        .guide-step img {
-            max-width: 100%;
-            height: auto;
-            margin: 1rem 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        .step-number {
+            background: #3498db;
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
         }
         .code-block {
-            background-color: #2c3e50;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
-            padding: 1rem;
-            border-radius: 4px;
+            padding: 1.5rem;
+            border-radius: 8px;
             font-family: Consolas, Monaco, 'Andale Mono', monospace;
             overflow-x: auto;
             margin: 1rem 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         .note {
-            background-color: #ffeaa7;
-            padding: 1rem;
-            border-left: 4px solid #fdcb6e;
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 1.5rem;
+            border-left: 4px solid #f39c12;
             margin: 1rem 0;
+            border-radius: 8px;
         }
         .warning {
-            background-color: #fab1a0;
-            padding: 1rem;
-            border-left: 4px solid #e17055;
+            background: linear-gradient(135deg, #f8d7da 0%, #fab1a0 100%);
+            padding: 1.5rem;
+            border-left: 4px solid #e74c3c;
             margin: 1rem 0;
+            border-radius: 8px;
+        }
+        .promo-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            margin: 3rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .promo-banner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
+            animation: float 15s infinite linear;
+        }
+        .promo-content {
+            position: relative;
+            z-index: 1;
+        }
+        .promo-banner h3 {
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+        }
+        .promo-price {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #f1c40f;
+            margin: 0 0.5rem;
         }
         footer {
             background-color: #2c3e50;
@@ -189,26 +345,6 @@
         }
         footer a:hover {
             text-decoration: underline;
-        }
-        .promo-upgrade-banner {
-            background-color: #e8f4fd;
-            border: 1px solid #d1e7fd;
-            color: #0c5464;
-            padding: 1.5rem;
-            margin-top: 2.5rem;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .promo-upgrade-banner p {
-            margin-bottom: 0.8rem;
-        }
-        .promo-upgrade-banner .btn-secondary {
-            background-color: #5cb85c; /* A slightly different green */
-            color: white;
-            border-color: #4cae4c;
-        }
-        .promo-upgrade-banner .btn-secondary:hover {
-            background-color: #449d44;
         }
     </style>
 </head>
@@ -230,140 +366,156 @@
 
     <section class="page-header">
         <div class="container">
-            <h1>下载与安装</h1>
-            <p>获取最新版本的文智搜，并按照指南完成安装</p>
+            <div class="page-header-content">
+                <h1>下载文智搜 <span style="font-size: 0.6em; color: #f1c40f;">托盘版</span></h1>
+                <p>专为中文优化的高性能本地文档搜索引擎，<strong>托盘版支持全局热键、系统托盘、后台运行</strong>，让您在海量文档中瞬间找到所需内容</p>
+                <div class="performance-stats">
+                    <div class="stat">
+                        <div class="stat-number">100ms</div>
+                        <div class="stat-label">搜索响应时间</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">13种</div>
+                        <div class="stat-label">文件格式支持</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">70%</div>
+                        <div class="stat-label">内存使用优化</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
     <section class="content-section">
         <div class="container">
             <div class="section-title">
-                <h2>下载</h2>
-                <p>选择适合您系统的版本</p>
+                <h2>选择适合您的版本</h2>
+                <p>免费版满足基本需求，专业版解锁全部高级功能</p>
             </div>
             
+            <div class="download-grid">
             <div class="download-box">
-                <h3>文智搜 v1.0.0</h3>
-                <p>适用于 Windows 10/11 (64位)</p>
-                <a href="https://github.com/Azariasy/-wen-zhi-sou-website/releases/download/v1.0.0/v1.0.0.zip" class="btn btn-primary">下载安装包</a>
-                <p style="margin-top: 1rem; font-size: 0.9rem;">下载后解压即可使用。详细安装和依赖配置请参考下方的指南。</p>
-
-                <div class="promo-upgrade-banner">
-                    <p><strong>想体验更强大的功能吗？</strong></p>
-                    <p>升级到专业版，畅享PDF OCR搜索、四种现代主题（蓝、紫、红、橙）、便捷的文件夹树视图等全部高级功能！</p>
-                    <a href="purchase.html" class="btn btn-secondary">了解专业版详情 (限时特惠 ¥9.9)</a>
+                    <h3><span class="download-icon">🆓</span>免费版</h3>
+                    <p>适合个人用户的基础文档搜索需求</p>
+                    <ul class="feature-list">
+                        <li>支持Word、Excel、PowerPoint、TXT格式</li>
+                        <li>虚拟滚动高性能渲染</li>
+                        <li>多媒体文件名搜索</li>
+                        <li>基础搜索语法 (AND, OR, NOT)</li>
+                        <li>🎯 系统托盘集成，后台运行</li>
+                        <li>⚡ 全局热键快速搜索 (Ctrl+Alt+Q)</li>
+                        <li>现代蓝主题界面</li>
+                        <li>最多5个源目录</li>
+                    </ul>
+                    <a href="#" class="btn btn-primary">立即下载免费版</a>
                 </div>
 
+                <div class="download-box">
+                    <h3><span class="download-icon">💎</span>专业版</h3>
+                    <p>解锁全部高级功能，提升工作效率</p>
+                    <ul class="feature-list">
+                        <li>包含免费版所有功能</li>
+                        <li>PDF文本和OCR识别</li>
+                        <li>邮件文件支持 (EML, MSG)</li>
+                        <li>通配符搜索 (*, ?)</li>
+                        <li>文件夹树结果导航</li>
+                        <li>🎨 四种现代主题 (蓝、紫、红、橙)</li>
+                        <li>🔧 自定义全局热键设置</li>
+                        <li>📋 托盘菜单最近搜索历史</li>
+                        <li>🚀 开机自启动和最小化到托盘</li>
+                        <li>无限源目录数量</li>
+                        <li>多设备激活 (1-6设备)</li>
+                    </ul>
+                    <a href="purchase.html" class="btn btn-secondary">购买专业版 ¥9.9</a>
+                </div>
+            </div>
+
+            <div class="promo-banner">
+                <div class="promo-content">
+                    <h3>🎉 限时特惠活动</h3>
+                    <p>专业版原价 ¥49.9，现仅需<span class="promo-price">¥9.9</span>永久授权</p>
+                    <p style="font-size: 0.9rem; opacity: 0.8;">支持1-6设备激活，活动有限期，立即购买享受超值优惠</p>
+                </div>
             </div>
             
             <div class="requirements">
                 <h3>系统要求</h3>
-                <ul>
-                    <li>操作系统: Windows 10/11 (64位)</li>
-                    <li>处理器: 双核处理器，1.8GHz 或更高</li>
-                    <li>内存: 最低 4GB RAM</li>
-                    <li>硬盘空间: 最低 100MB 可用空间</li>
-                    <li>显示分辨率: 1366 x 768 或更高</li>
+                <div class="req-grid">
+                    <div class="req-item">
+                        <h4>💻 基础要求</h4>
+                        <ul>
+                            <li>Windows 10/11 (64位)</li>
+                            <li>双核处理器 1.8GHz+</li>
+                            <li>4GB RAM (推荐8GB)</li>
+                            <li>100MB 可用空间</li>
+                            <li>1366x768 分辨率</li>
+                        </ul>
+                    </div>
+                    <div class="req-item">
+                        <h4>⚡ 推荐配置</h4>
+                        <ul>
+                            <li>Windows 11 (64位)</li>
+                            <li>四核处理器 2.4GHz+</li>
+                            <li>8GB RAM 或更多</li>
+                            <li>SSD 固态硬盘</li>
+                            <li>1920x1080 分辨率</li>
+                        </ul>
+                    </div>
+                    <div class="req-item">
+                        <h4>🔧 专业版额外要求</h4>
+                        <ul>
+                            <li>Tesseract OCR (自动安装)</li>
+                            <li>Poppler PDF工具 (自动安装)</li>
+                            <li>更多内存用于OCR处理</li>
+                            <li>网络连接 (激活时)</li>
                 </ul>
-                <p>若要使用高级功能（如OCR识别），建议配置更高的内存和处理器。</p>
+                    </div>
             </div>
-            
-            <div class="section-title">
-                <h2>依赖项安装</h2>
-                <p>要充分利用文智搜的所有功能，需安装以下依赖项</p>
             </div>
             
             <div class="installation-guide">
+                <h3>安装指南</h3>
+                
                 <div class="guide-step">
-                    <h3>1. Tesseract OCR (用于图像和扫描PDF的文字识别)</h3>
-                    <p>Tesseract OCR是专业版文智搜用于从图像和扫描文档中提取文字的引擎。</p>
-                    
-                    <h4>安装步骤：</h4>
-                    <ol>
-                        <li>访问 <a href="https://github.com/UB-Mannheim/tesseract/wiki" target="_blank">Tesseract OCR 下载页面</a></li>
-                        <li>下载最新版本的Windows安装包 (例如: tesseract-ocr-w64-setup-v5.3.0.20221222.exe)</li>
-                        <li>运行安装程序，选择要安装的语言，确保至少选择：
-                            <ul>
-                                <li>中文简体 (chi_sim)</li>
-                                <li>英语 (eng)</li>
-                            </ul>
-                        </li>
-                        <li>安装到默认位置 (<code>C:\Program Files\Tesseract-OCR</code>)</li>
-                    </ol>
-                    
+                    <h4><span class="step-number">1</span>下载安装包</h4>
+                    <p>点击上方下载按钮获取最新版本的文智搜安装包。文件大小约50MB，包含所有必要组件。</p>
                     <div class="note">
-                        <strong>注意：</strong> 安装时请确保选择"将Tesseract添加到系统PATH"选项，这样文智搜可以自动找到Tesseract。
+                        <strong>提示：</strong> 建议从官方网站下载，确保获得最新版本和安全保障。
                     </div>
                 </div>
                 
                 <div class="guide-step">
-                    <h3>2. Poppler (用于PDF处理)</h3>
-                    <p>Poppler是专业版文智搜用于处理和转换PDF文件的库。</p>
-                    
-                    <h4>安装步骤：</h4>
-                    <ol>
-                        <li>访问 <a href="https://github.com/oschwartz10612/poppler-windows/releases/" target="_blank">Poppler Windows 发布页面</a></li>
-                        <li>下载最新版本的ZIP包 (例如: Release-24.05.0-0.zip)</li>
-                        <li>解压缩文件到 <code>C:\Program Files\poppler-24.05.0\</code></li>
-                        <li>添加Poppler的bin目录到系统PATH:
-                            <ol>
-                                <li>右键点击"此电脑"，选择"属性"</li>
-                                <li>点击"高级系统设置"</li>
-                                <li>点击"环境变量"</li>
-                                <li>在"系统变量"部分，找到并选择"Path"变量，然后点击"编辑"</li>
-                                <li>点击"新建"，添加 <code>C:\Program Files\poppler-24.05.0\Library\bin</code></li>
-                                <li>点击"确定"保存更改</li>
-                            </ol>
-                        </li>
-                    </ol>
-                    
+                    <h4><span class="step-number">2</span>运行安装程序</h4>
+                    <p>双击下载的安装包，按照安装向导完成安装。程序会自动检测并安装所需的依赖项。</p>
+                    <div class="code-block">文智搜-v1.0.0-setup.exe</div>
                     <div class="warning">
-                        重要：安装完Poppler后，您需要重新启动电脑或注销后重新登录，以使PATH环境变量的更改生效。
+                        <strong>注意：</strong> 首次安装可能需要管理员权限，请右键选择"以管理员身份运行"。
                     </div>
                 </div>
                 
                 <div class="guide-step">
-                    <h3>3. 验证安装</h3>
-                    <p>安装上述依赖项后，您可以通过以下步骤验证安装是否成功：</p>
-                    
-                    <h4>验证Tesseract:</h4>
-                    <ol>
-                        <li>打开命令提示符 (cmd.exe)</li>
-                        <li>输入以下命令并回车：</li>
-                    </ol>
-                    <div class="code-block">tesseract --version</div>
-                    <p>如果安装正确，您应该看到类似以下的输出：</p>
-                    <div class="code-block">tesseract 5.3.0<br>
- libgif 5.2.1 : libjpeg 9d : libpng 1.6.37 : libtiff 4.4.0 : zlib 1.2.12 : libwebp 1.2.4</div>
-                    
-                    <h4>验证Poppler:</h4>
-                    <ol>
-                        <li>打开命令提示符 (cmd.exe)</li>
-                        <li>输入以下命令并回车：</li>
-                    </ol>
-                    <div class="code-block">pdfinfo -v</div>
-                    <p>如果安装正确，您应该看到类似以下的输出：</p>
-                    <div class="code-block">pdfinfo version 24.05.0</div>
-                </div>
+                    <h4><span class="step-number">3</span>首次启动配置</h4>
+                    <p>安装完成后启动文智搜，程序会引导您完成初始配置：</p>
+                    <ul>
+                        <li>选择索引存储位置（建议选择SSD硬盘）</li>
+                        <li>添加要搜索的文件夹</li>
+                        <li>选择文件类型和索引模式</li>
+                        <li>开始建立索引</li>
+                    </ul>
             </div>
             
-            <div class="section-title">
-                <h2>安装文智搜</h2>
-                <p>完成依赖项安装后，安装文智搜</p>
-            </div>
-            
-            <div class="installation-guide">
                 <div class="guide-step">
-                    <h3>安装步骤</h3>
-                    <ol>
-                        <li>运行您下载的安装包 (文智搜-v1.0.0-setup.exe)</li>
-                        <li>按照安装向导的提示完成安装</li>
-                        <li>安装完成后，从桌面或开始菜单启动"文智搜"</li>
-                        <li>首次启动时，您需要设置索引存储位置和添加要索引的文件夹</li>
-                    </ol>
-                    
+                    <h4><span class="step-number">4</span>开始使用</h4>
+                    <p>索引建立完成后，您就可以开始使用文智搜的强大搜索功能了！</p>
+                    <ul>
+                        <li>在搜索框输入关键词</li>
+                        <li>使用高级搜索语法提高精确度</li>
+                        <li>通过右键菜单快速打开文件</li>
+                        <li>使用全局热键快速调出搜索窗口</li>
+                    </ul>
                     <div class="note">
-                        提示：如果您已安装了依赖项但文智搜无法识别它们，可以在设置中手动指定Tesseract和Poppler的路径。
+                        <strong>小贴士：</strong> 首次索引可能需要一些时间，建议在空闲时进行。后续的增量更新会非常快速。
                     </div>
                 </div>
             </div>

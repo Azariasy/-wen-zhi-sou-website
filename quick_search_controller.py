@@ -275,7 +275,7 @@ class QuickSearchController(QObject):
         except Exception as e:
             print(f"❌ 获取源目录失败: {str(e)}")
             return []
-
+    
     def _handle_search_request(self, query):
         """处理搜索请求（全面修复版本）"""
         if not query or not query.strip():

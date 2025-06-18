@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文智搜 - 为中文优化的本地文件内容搜索引擎</title>
+    <title>文智搜 - 专为中文优化的高性能本地文档搜索引擎</title>
     <style>
         * {
             margin: 0;
@@ -23,10 +23,10 @@
             padding: 0 20px;
         }
         header {
-            background-color: #2c3e50;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
             color: white;
             padding: 1rem 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         header .container {
             display: flex;
@@ -36,6 +36,7 @@
         .logo {
             font-size: 1.8rem;
             font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         nav ul {
             display: flex;
@@ -47,55 +48,116 @@
         nav ul li a {
             color: white;
             text-decoration: none;
-            transition: color 0.3s;
+            transition: all 0.3s;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
         }
         nav ul li a:hover {
-            color: #3498db;
+            background-color: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
         }
         .hero {
-            background-color: #3498db;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
-            padding: 4rem 0;
+            padding: 5rem 0;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
+            animation: float 20s infinite linear;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-100px); }
+        }
+        .hero-content {
+            position: relative;
+            z-index: 1;
         }
         .hero h1 {
-            font-size: 2.5rem;
+            font-size: 3rem;
             margin-bottom: 1rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .hero .subtitle {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
         }
         .hero p {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             max-width: 800px;
             margin: 0 auto 2rem;
+            opacity: 0.9;
+        }
+        .performance-highlight {
+            background: rgba(255,255,255,0.1);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            margin: 2rem auto;
+            max-width: 600px;
+            backdrop-filter: blur(10px);
+        }
+        .performance-stats {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
         }
         .hero-buttons {
             display: flex;
             justify-content: center;
             gap: 1rem;
+            margin-top: 2rem;
         }
         .btn {
             display: inline-block;
-            padding: 0.8rem 1.5rem;
-            border-radius: 4px;
+            padding: 1rem 2rem;
+            border-radius: 6px;
             text-decoration: none;
             font-weight: bold;
             transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         .btn-primary {
-            background-color: #2ecc71;
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
             color: white;
         }
         .btn-primary:hover {
-            background-color: #27ae60;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
         .btn-secondary {
-            background-color: white;
+            background: rgba(255,255,255,0.9);
             color: #3498db;
+            backdrop-filter: blur(10px);
         }
         .btn-secondary:hover {
-            background-color: #f5f5f5;
+            background: white;
+            transform: translateY(-3px);
         }
         .features {
-            padding: 4rem 0;
+            padding: 5rem 0;
             background-color: white;
         }
         .section-title {
@@ -103,77 +165,117 @@
             margin-bottom: 3rem;
         }
         .section-title h2 {
-            font-size: 2rem;
+            font-size: 2.5rem;
             margin-bottom: 0.5rem;
+            color: #2c3e50;
         }
         .section-title p {
             color: #666;
+            font-size: 1.1rem;
         }
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 2rem;
         }
         .feature-card {
-            background-color: #f8f9fa;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            transition: transform 0.3s;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            transition: all 0.3s;
+            border: 1px solid rgba(52, 152, 219, 0.1);
         }
         .feature-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
         }
         .feature-card h3 {
             margin-bottom: 1rem;
             color: #2c3e50;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .feature-icon {
+            font-size: 1.5rem;
         }
         .comparison {
-            padding: 4rem 0;
-            background-color: #f8f9fa;
+            padding: 5rem 0;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
         .comparison-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 2rem;
             background-color: white;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            border-radius: 12px;
             overflow: hidden;
         }
         .comparison-table th, .comparison-table td {
-            padding: 1rem;
-            text-align: left;
+            padding: 1.2rem;
+            text-align: center;
             border-bottom: 1px solid #eee;
         }
         .comparison-table thead {
-            background-color: #2c3e50;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
         }
         .comparison-table tbody tr:hover {
-            background-color: #f5f5f5;
+            background-color: #f8f9fa;
         }
         .check {
             color: #2ecc71;
             font-weight: bold;
+            font-size: 1.2rem;
         }
         .cross {
             color: #e74c3c;
+            font-size: 1.2rem;
+        }
+        .neutral {
+            color: #f39c12;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .highlight-row {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+            font-weight: bold;
         }
         .cta {
-            padding: 4rem 0;
+            padding: 5rem 0;
             text-align: center;
-            background-color: #3498db;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .cta::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
+            animation: float 15s infinite linear;
+        }
+        .cta-content {
+            position: relative;
+            z-index: 1;
         }
         .cta h2 {
             margin-bottom: 1rem;
+            font-size: 2.5rem;
         }
         .cta p {
             margin-bottom: 2rem;
             max-width: 800px;
             margin-left: auto;
             margin-right: auto;
+            font-size: 1.1rem;
         }
         footer {
             background-color: #2c3e50;
@@ -192,100 +294,4374 @@
             text-decoration: underline;
         }
         .interface-showcase {
-            padding: 4rem 0;
-            background-color: #ffffff;
+            padding: 5rem 0;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
             text-align: center;
         }
         .showcase-content {
             display: flex;
-            justify-content: space-around;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            gap: 2rem;
-            margin-top: 1rem;
-        }
-        .showcase-item {
-            flex-basis: calc(50% - 1rem);
-            min-width: 300px;
-            text-align: center;
-        }
-        .showcase-item h4 {
-            margin-bottom: 1rem;
-            color: #3498db;
-            font-size: 1.1rem;
-        }
-        .showcase-item img {
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .promo-banner {
-            background-color: #e67e22; /* Orange background for urgency */
-            color: white;
-            padding: 1rem;
-            border-radius: 5px;
-            margin: 1.5rem auto;
-            max-width: 700px;
-            text-align: center;
-            font-size: 1.1rem;
-        }
-        .promo-banner .promo-price {
-            font-weight: bold;
-            font-size: 1.3rem;
+            align-items: center;
+            gap: 3rem;
+            margin-top: 3rem;
         }
         .features-highlight {
-            display: flex;
-            justify-content: space-around;
-            gap: 20px; /* 项目之间的间距 */
-            flex-wrap: wrap; /* 允许在小屏幕上换行 */
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
             margin-top: 3rem;
-            background-color: #f8f9fa;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
-        }
-        .features-highlight .feature-item {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-        .features-highlight .feature-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         .feature-item {
-            background-color: #ecf0f1;
-            padding: 1.5rem;
-            border-radius: 8px;
-            text-align: center;
-            width: calc(33.333% - 20px); /* Adjust width for gap, assuming 3 items */
-            min-width: 250px; /* Minimum width for responsiveness */
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s;
         }
-        .feature-item img {
-            max-width: 100px; /* Adjust as needed */
-            height: auto;
-            margin-bottom: 1rem;
+        .feature-item:hover {
+            transform: translateY(-5px);
         }
         .feature-item h4 {
             color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        .tech-highlight {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+        .tech-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        .tech-stat {
+            background: rgba(255,255,255,0.1);
+            padding: 2rem;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+        .tech-stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #f1c40f;
             margin-bottom: 0.5rem;
         }
+        .tech-stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        .features-showcase {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+        .feature-showcase {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        .feature-image {
+            position: relative;
+            width: 300px;
+            height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .screenshot-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s;
+        }
+        .screenshot-content {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform: scale(1.1);
+            transition: transform 0.3s;
+        }
+        .screenshot-placeholder:hover {
+            opacity: 0;
+        }
+        .screenshot-placeholder:hover .screenshot-content {
+            transform: scale(1);
+        }
+        .demo-title-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .demo-icon {
+            font-size: 1.5rem;
+            color: white;
+        }
+        .demo-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .demo-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            color: white;
+            cursor: pointer;
+        }
+        .demo-search-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .demo-search-box {
+            background: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .demo-search-icon {
+            font-size: 1.2rem;
+            color: #333;
+        }
+        .demo-search-text {
+            flex: 1;
+            border: none;
+            outline: none;
+        }
+        .demo-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            padding: 1rem;
+            border-radius: 0 0 12px 12px;
+            overflow-y: auto;
+        }
+        .demo-result-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        .demo-file-icon {
+            font-size: 1.5rem;
+            color: #333;
+        }
+        .demo-file-info {
+            flex: 1;
+        }
+        .demo-file-name {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .demo-file-path {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .demo-status {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0 0 12px 12px;
+        }
+        .feature-content {
+            text-align: center;
+        }
+        .feature-highlights {
+            list-style: none;
+            padding-left: 0;
+        }
+        .feature-highlights li {
+            margin-bottom: 0.5rem;
+        }
+        .feature-showcase.reverse {
+            flex-direction: column-reverse;
+        }
+        .tray-demo {
+            position: relative;
+            width: 300px;
+            height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .demo-tray-icon {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .tray-icon {
+            font-size: 2rem;
+            color: white;
+        }
+        .tray-tooltip {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .demo-tray-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+        }
+        .tray-menu-item {
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .tray-menu-item:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+        .tray-menu-separator {
+            height: 1px;
+            background-color: #eee;
+            margin: 0.5rem 0;
+        }
+        .tray-menu-submenu {
+            position: relative;
+        }
+        .tray-menu-item.active {
+            font-weight: bold;
+        }
+        .tray-submenu {
+            position: absolute;
+            top: 0;
+            left: 100%;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 0.5rem;
+            display: none;
+        }
+        .tray-menu-item.active + .tray-submenu {
+            display: block;
+        }
+        .main-window-demo {
+            position: relative;
+            width: 300px;
+            height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .demo-toolbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .demo-search-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .demo-search-icon {
+            font-size: 1.2rem;
+            color: white;
+        }
+        .demo-search-text {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+        }
+        .demo-search-btn {
+            background: none;
+            border: none;
+            font-size: 1rem;
+            color: white;
+            cursor: pointer;
+        }
+        .demo-filters {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .demo-filter {
+            padding: 0.2rem 0.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .demo-filter.active {
+            font-weight: bold;
+        }
+        .demo-results-area {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            padding: 1rem;
+            border-radius: 0 0 12px 12px;
+            overflow-y: auto;
+        }
+        .demo-result-card {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        .demo-result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .demo-file-icon {
+            font-size: 1.5rem;
+            color: #333;
+        }
+        .demo-result-title {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .demo-result-score {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .demo-result-preview {
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .demo-result-meta {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .demo-status-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0 0 12px 12px;
+        }
+        .theme-demo {
+            position: relative;
+            width: 300px;
+            height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .theme-selector {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+        }
+        .theme-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .theme-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .theme-option {
+            flex: 1;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .theme-option.active {
+            font-weight: bold;
+        }
+        .theme-preview {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .theme-preview.blue-theme {
+            background-color: #3498db;
+        }
+        .theme-preview.purple-theme {
+            background-color: #9b59b6;
+        }
+        .theme-preview.red-theme {
+            background-color: #e74c3c;
+        }
+        .theme-preview.orange-theme {
+            background-color: #f39c12;
+        }
+        .theme-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 1rem;
+        }
+        .theme-search {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        .theme-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            padding: 0.5rem;
+            border-radius: 0 0 4px 4px;
+            overflow-y: auto;
+        }
+        .theme-result {
+            padding: 0.2rem 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .theme-result:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        .theme-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* 功能展示区域样式 */
+        .features-showcase {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            margin-top: 3rem;
+        }
+
+        /* 核心功能展示区域样式 */
+        .core-features-showcase {
+            background: white;
+            padding: 4rem 0;
+        }
+
+        .search-features {
+            margin: 3rem 0;
+        }
+
+        .search-feature-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            margin-bottom: 4rem;
+            padding: 2rem;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+
+        .search-feature-item.reverse {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .search-feature-item.reverse .search-feature-content {
+            order: 2;
+        }
+
+        .search-feature-item.reverse .search-feature-demo {
+            order: 1;
+        }
+
+        .search-feature-content h3 {
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        .search-feature-content p {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .feature-highlights {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .highlight-item {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            padding: 0.8rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #1565c0;
+            border-left: 4px solid #2196f3;
+        }
+
+        .search-feature-demo img {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
         .user-quote {
             font-style: italic;
-            color: #555;
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #f5f5f5;
-            border-left: 3px solid #3498db;
-            font-size: 0.9em;
-        }
-        .showcase-item p {
-            margin-bottom: 15px;
             color: #666;
+            border-left: 3px solid #3498db;
+            padding-left: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* 右键菜单功能展示样式 */
+        .context-menu-showcase {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 3rem;
+            border-radius: 16px;
+            margin: 3rem 0;
+        }
+
+        .context-menu-item h3 {
+            text-align: center;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-size: 1.5rem;
+        }
+
+        .context-menu-item p {
+            text-align: center;
+            color: #666;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .menu-features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .menu-feature {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .menu-feature:hover {
+            transform: translateY(-5px);
+        }
+
+        .menu-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .menu-feature h4 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .menu-feature p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .features-highlight {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .features-highlight .feature-item {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .features-highlight .feature-item h4 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+        }
+
+        .features-highlight .feature-item ul {
+            text-align: left;
+            list-style-type: disc;
+            padding-left: 20px;
+            color: #666;
+        }
+
+        .features-highlight .feature-item ul li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* 快捷搜索展示样式 */
+        .quick-search-showcase {
+            margin: 3rem 0;
+        }
+
+        .quick-search-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            padding: 3rem;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .quick-search-content h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        .quick-search-content p {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .quick-search-content kbd {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .hotkey-visual {
+            text-align: center;
+        }
+
+        .key-combo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .key {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .key.active {
+            animation: keyPress 2s infinite;
+        }
+
+        @keyframes keyPress {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5); }
+        }
+
+        .key-plus {
+            font-size: 1.2rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .hotkey-arrow {
+            font-size: 2rem;
+            color: #3498db;
+            margin: 1rem 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* 窗口模拟样式 */
+        .quick-window-mockup, .main-window-mockup, .filename-search-mockup {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .main-window-mockup, .filename-search-mockup {
+            max-width: 600px;
+        }
+
+        .window-header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .control.minimize {
+            background: #f39c12;
+        }
+
+        .control.maximize {
+            background: #27ae60;
+        }
+
+        .control.close {
+            background: #e74c3c;
+        }
+
+        .window-content {
+            padding: 1.5rem;
+        }
+
+        .window-toolbar {
+            padding: 1rem 1.5rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .search-bar, .search-bar-main {
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.5rem;
+            gap: 0.5rem;
+        }
+
+        .search-bar-main {
+            padding: 0.8rem;
+        }
+
+        .search-icon {
+            color: #666;
+        }
+
+        .search-input, .search-input-main {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 0.9rem;
+        }
+
+        .search-input-main {
+            font-size: 1rem;
+        }
+
+        .search-type {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .search-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .view-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-btn {
+            background: white;
+            border: 1px solid #e9ecef;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+
+        .search-results, .window-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item, .result-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .result-item:hover, .result-card:hover {
+            background: #f8f9fa;
+        }
+
+        .result-item.selected {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            margin-top: 0.2rem;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-path {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-preview {
+            font-size: 0.85rem;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .result-preview mark {
+            background: linear-gradient(120deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+        }
+
+        .result-score {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .result-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .window-footer, .window-status {
+            padding: 0.8rem 1.5rem;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .window-footer {
+            padding: 0.8rem 1.5rem;
+        }
+
+        .result-stats {
+            font-weight: bold;
+        }
+
+        .hotkey-hint {
+            color: #999;
+        }
+
+        /* 快速搜索窗口特定样式 */
+        .search-hint {
+            background: #f8f9fa;
+            color: #666;
+            padding: 0.8rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .search-help {
+            color: #666;
+            font-size: 0.85rem;
+            margin: 0.8rem 0;
+            text-align: center;
+        }
+
+        .results-header {
+            color: #2c3e50;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .clear-search-btn {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .clear-search-btn:hover {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .result-content {
+            flex: 1;
+        }
+
+        .result-details {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.3rem;
+        }
+
+        .main-window-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .main-window-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .result-group, .folder-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .group-header, .folder-header {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-bottom: 0.8rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.2rem;
+        }
+
+        .file-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        /* 核心功能展示区域样式 */
+        .core-features {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 5rem 0;
+        }
+
+        .main-features {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-showcase:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .feature-showcase.reverse {
+            direction: rtl;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr;
+        }
+
+        .feature-demo {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+        }
+
+        .feature-content h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        .feature-content p {
+            color: #5a6c7d;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .feature-highlights {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .highlight-item {
+            color: #34495e;
+            font-size: 0.95rem;
+            padding: 0.5rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+        }
+
+        .user-quote {
+            font-style: italic;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            border-left: 3px solid #bdc3c7;
+            padding-left: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* 辅助功能样式 */
+        .auxiliary-features {
+            margin-bottom: 4rem;
+        }
+
+        .aux-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .aux-feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .aux-feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .aux-feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .aux-feature-card h4 {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .aux-feature-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* 应用场景样式 */
+        .use-cases {
+            margin-top: 3rem;
+        }
+
+        .use-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .use-case-item {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .use-case-item:hover {
+            transform: translateY(-3px);
+        }
+
+        .use-case-item h4 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .use-case-item ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .use-case-item li {
+            color: #555;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .use-case-item li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        /* 热键演示样式 */
+        .hotkey-demo {
+            text-align: center;
+        }
+
+        .keyboard-visual {
+            position: relative;
+        }
+
+        .key-combo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .key {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .key.active {
+            animation: keyPress 2s infinite;
+        }
+
+        @keyframes keyPress {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5); }
+        }
+
+        .key-plus {
+            font-size: 1.2rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .hotkey-arrow {
+            font-size: 2rem;
+            color: #3498db;
+            margin: 1rem 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* 窗口模拟样式 */
+        .quick-window-mockup, .main-window-mockup, .filename-search-mockup {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .main-window-mockup, .filename-search-mockup {
+            max-width: 600px;
+        }
+
+        .window-header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .control.minimize {
+            background: #f39c12;
+        }
+
+        .control.maximize {
+            background: #27ae60;
+        }
+
+        .control.close {
+            background: #e74c3c;
+        }
+
+        .window-content {
+            padding: 1.5rem;
+        }
+
+        .window-toolbar {
+            padding: 1rem 1.5rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .search-bar, .search-bar-main {
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.5rem;
+            gap: 0.5rem;
+        }
+
+        .search-bar-main {
+            padding: 0.8rem;
+        }
+
+        .search-icon {
+            color: #666;
+        }
+
+        .search-input, .search-input-main {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 0.9rem;
+        }
+
+        .search-input-main {
+            font-size: 1rem;
+        }
+
+        .search-type {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .search-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .view-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-btn {
+            background: white;
+            border: 1px solid #e9ecef;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+
+        .search-results, .window-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item, .result-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .result-item:hover, .result-card:hover {
+            background: #f8f9fa;
+        }
+
+        .result-item.selected {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            margin-top: 0.2rem;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-path {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-preview {
+            font-size: 0.85rem;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .result-preview mark {
+            background: linear-gradient(120deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+        }
+
+        .result-score {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .result-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .window-footer, .window-status {
+            padding: 0.8rem 1.5rem;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .window-footer {
+            padding: 0.8rem 1.5rem;
+        }
+
+        .result-stats {
+            font-weight: bold;
+        }
+
+        .hotkey-hint {
+            color: #999;
+        }
+
+        .result-group, .folder-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .group-header, .folder-header {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-bottom: 0.8rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.2rem;
+        }
+
+        .file-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        /* 核心功能展示区域样式 */
+        .core-features {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 5rem 0;
+        }
+
+        .main-features {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-showcase:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .feature-showcase.reverse {
+            direction: rtl;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr;
+        }
+
+        .feature-demo {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+        }
+
+        .feature-content h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        .feature-content p {
+            color: #5a6c7d;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .feature-highlights {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .highlight-item {
+            color: #34495e;
+            font-size: 0.95rem;
+            padding: 0.5rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+        }
+
+        .user-quote {
+            font-style: italic;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            border-left: 3px solid #bdc3c7;
+            padding-left: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* 辅助功能样式 */
+        .auxiliary-features {
+            margin-bottom: 4rem;
+        }
+
+        .aux-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .aux-feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .aux-feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .aux-feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .aux-feature-card h4 {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .aux-feature-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* 应用场景样式 */
+        .use-cases {
+            margin-top: 3rem;
+        }
+
+        .use-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .use-case-item {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .use-case-item:hover {
+            transform: translateY(-3px);
+        }
+
+        .use-case-item h4 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .use-case-item ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .use-case-item li {
+            color: #555;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .use-case-item li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        /* 热键演示样式 */
+        .hotkey-demo {
+            text-align: center;
+        }
+
+        .keyboard-visual {
+            position: relative;
+        }
+
+        .key-combo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .key {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .key.active {
+            animation: keyPress 2s infinite;
+        }
+
+        @keyframes keyPress {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5); }
+        }
+
+        .key-plus {
+            font-size: 1.2rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .hotkey-arrow {
+            font-size: 2rem;
+            color: #3498db;
+            margin: 1rem 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* 窗口模拟样式 */
+        .quick-window-mockup, .main-window-mockup, .filename-search-mockup {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .main-window-mockup, .filename-search-mockup {
+            max-width: 600px;
+        }
+
+        .window-header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .control.minimize {
+            background: #f39c12;
+        }
+
+        .control.maximize {
+            background: #27ae60;
+        }
+
+        .control.close {
+            background: #e74c3c;
+        }
+
+        .window-content {
+            padding: 1.5rem;
+        }
+
+        .window-toolbar {
+            padding: 1rem 1.5rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .search-bar, .search-bar-main {
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.5rem;
+            gap: 0.5rem;
+        }
+
+        .search-bar-main {
+            padding: 0.8rem;
+        }
+
+        .search-icon {
+            color: #666;
+        }
+
+        .search-input, .search-input-main {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 0.9rem;
+        }
+
+        .search-input-main {
+            font-size: 1rem;
+        }
+
+        .search-type {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .search-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .view-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-btn {
+            background: white;
+            border: 1px solid #e9ecef;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+
+        .search-results, .window-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item, .result-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .result-item:hover, .result-card:hover {
+            background: #f8f9fa;
+        }
+
+        .result-item.selected {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            margin-top: 0.2rem;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-path {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-preview {
+            font-size: 0.85rem;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .result-preview mark {
+            background: linear-gradient(120deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+        }
+
+        .result-score {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .result-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .window-footer, .window-status {
+            padding: 0.8rem 1.5rem;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .window-footer {
+            padding: 0.8rem 1.5rem;
+        }
+
+        .result-stats {
+            font-weight: bold;
+        }
+
+        .hotkey-hint {
+            color: #999;
+        }
+
+        .result-group, .folder-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .group-header, .folder-header {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-bottom: 0.8rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.2rem;
+        }
+
+        .file-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        /* 核心功能展示区域样式 */
+        .core-features {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 5rem 0;
+        }
+
+        .main-features {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-showcase:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .feature-showcase.reverse {
+            direction: rtl;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr;
+        }
+
+        .feature-demo {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+        }
+
+        .feature-content h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        .feature-content p {
+            color: #5a6c7d;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .feature-highlights {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .highlight-item {
+            color: #34495e;
+            font-size: 0.95rem;
+            padding: 0.5rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+        }
+
+        .user-quote {
+            font-style: italic;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            border-left: 3px solid #bdc3c7;
+            padding-left: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* 辅助功能样式 */
+        .auxiliary-features {
+            margin-bottom: 4rem;
+        }
+
+        .aux-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .aux-feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .aux-feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .aux-feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .aux-feature-card h4 {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .aux-feature-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* 应用场景样式 */
+        .use-cases {
+            margin-top: 3rem;
+        }
+
+        .use-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .use-case-item {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .use-case-item:hover {
+            transform: translateY(-3px);
+        }
+
+        .use-case-item h4 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .use-case-item ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .use-case-item li {
+            color: #555;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .use-case-item li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        /* 热键演示样式 */
+        .hotkey-demo {
+            text-align: center;
+        }
+
+        .keyboard-visual {
+            position: relative;
+        }
+
+        .key-combo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .key {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .key.active {
+            animation: keyPress 2s infinite;
+        }
+
+        @keyframes keyPress {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5); }
+        }
+
+        .key-plus {
+            font-size: 1.2rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .hotkey-arrow {
+            font-size: 2rem;
+            color: #3498db;
+            margin: 1rem 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* 窗口模拟样式 */
+        .quick-window-mockup, .main-window-mockup, .filename-search-mockup {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .main-window-mockup, .filename-search-mockup {
+            max-width: 600px;
+        }
+
+        .window-header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-title {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .control {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .control.minimize {
+            background: #f39c12;
+        }
+
+        .control.maximize {
+            background: #27ae60;
+        }
+
+        .control.close {
+            background: #e74c3c;
+        }
+
+        .window-content {
+            padding: 1.5rem;
+        }
+
+        .window-toolbar {
+            padding: 1rem 1.5rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .search-bar, .search-bar-main {
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.5rem;
+            gap: 0.5rem;
+        }
+
+        .search-bar-main {
+            padding: 0.8rem;
+        }
+
+        .search-icon {
+            color: #666;
+        }
+
+        .search-input, .search-input-main {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 0.9rem;
+        }
+
+        .search-input-main {
+            font-size: 1rem;
+        }
+
+        .search-type {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .search-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .view-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-btn {
+            background: white;
+            border: 1px solid #e9ecef;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+
+        .search-results, .window-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item, .result-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .result-item:hover, .result-card:hover {
+            background: #f8f9fa;
+        }
+
+        .result-item.selected {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            margin-top: 0.2rem;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-path {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-preview {
+            font-size: 0.85rem;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .result-preview mark {
+            background: linear-gradient(120deg, #fff3cd 0%, #ffeaa7 100%);
+            padding: 0.1rem 0.2rem;
+            border-radius: 3px;
+        }
+
+        .result-score {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .result-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .window-footer, .window-status {
+            padding: 0.8rem 1.5rem;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .window-footer {
+            padding: 0.8rem 1.5rem;
+        }
+
+        .result-stats {
+            font-weight: bold;
+        }
+
+        .hotkey-hint {
+            color: #999;
+        }
+
+        .result-group, .folder-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .group-header, .folder-header {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-bottom: 0.8rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.2rem;
+        }
+
+        .file-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        /* 核心功能展示区域样式 */
+        .core-features {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 5rem 0;
+        }
+
+        .main-features {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-showcase:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .feature-showcase.reverse {
+            direction: rtl;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr;
+        }
+
+        .feature-demo {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+        }
+
+        .feature-content h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        .feature-content p {
+            color: #5a6c7d;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .feature-highlights {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .highlight-item {
+            color: #34495e;
+            font-size: 0.95rem;
+            padding: 0.5rem;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+        }
+
+        .user-quote {
+            font-style: italic;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            border-left: 3px solid #bdc3c7;
+            padding-left: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* 辅助功能样式 */
+        .auxiliary-features {
+            margin-bottom: 4rem;
+        }
+
+        .aux-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .aux-feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .aux-feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .aux-feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .aux-feature-card h4 {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .aux-feature-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* 应用场景样式 */
+        .use-cases {
+            margin-top: 3rem;
+        }
+
+        .use-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .use-case-item {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .use-case-item:hover {
+            transform: translateY(-3px);
+        }
+
+        .use-case-item h4 {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .use-case-item ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .use-case-item li {
+            color: #555;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .use-case-item li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        /* 热键演示样式 */
+        .hotkey-demo {
+            text-align: center;
+        }
+
+        .keyboard-visual {
+            position: relative;
+        }
+
+        .key-combo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .key {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .key.active {
+            animation: keyPress 2s infinite;
+        }
+
+        @keyframes keyPress {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5); }
+        }
+
+        .key-plus {
+            font-size: 1.2rem;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .hotkey-arrow {
+            font-size: 2rem;
+            color: #3498db;
+            margin: 1rem 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .quick-window-popup {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            padding: 1.5rem;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+
+        .popup-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .popup-input {
+            width: 100%;
+            padding: 0.8rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .popup-result {
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.3rem;
+            background: #f8f9fa;
+            font-size: 0.85rem;
+        }
+
+        /* 托盘菜单演示样式 */
+        .tray-menu-demo {
+            position: relative;
+        }
+
+        .system-tray {
+            position: relative;
+        }
+
+        .tray-area {
+            background: #2c3e50;
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+
+        .tray-icon-container {
+            position: relative;
+        }
+
+        .tray-icon {
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.3rem;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        .tray-icon.active {
+            background: rgba(52, 152, 219, 0.3);
+        }
+
+        .tray-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            margin-bottom: 0.3rem;
+        }
+
+        .context-menu {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 0.5rem 0;
+            min-width: 200px;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 10;
+        }
+
+        .menu-item {
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.9rem;
+            position: relative;
+        }
+
+        .menu-item:hover {
+            background: #f8f9fa;
+        }
+
+        .menu-item.highlight {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .menu-separator {
+            height: 1px;
+            background: #e9ecef;
+            margin: 0.3rem 0;
+        }
+
+        .menu-item.submenu:hover .submenu-items {
+            display: block;
+        }
+
+        .submenu-items {
+            display: none;
+            position: absolute;
+            left: 100%;
+            top: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 0.5rem 0;
+            min-width: 150px;
+        }
+
+        .submenu-item {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .submenu-item:hover {
+            background: #f8f9fa;
+        }
+
+        /* 视图模式演示样式 */
+        .view-modes-demo {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+            max-width: 400px;
+        }
+
+        .view-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .view-tab {
+            flex: 1;
+            padding: 0.8rem 0.5rem;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background-color 0.2s;
+        }
+
+        .view-tab.active {
+            background: white;
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .view-content {
+            padding: 1rem;
+        }
+
+        .list-item {
+            display: flex;
+            align-items: center;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-icon {
+            font-size: 1.2rem;
+            margin-right: 0.8rem;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+
+        .file-path {
+            color: #666;
+            font-size: 0.75rem;
+            margin-top: 0.2rem;
+        }
+
+        .file-score {
+            color: #27ae60;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .feature-showcase,
+            .feature-showcase.reverse {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+                direction: ltr;
+            }
+
+            .aux-feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .use-case-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .key-combo {
+                flex-wrap: wrap;
+            }
+
+            .quick-window-popup {
+                max-width: 250px;
+            }
+
+            .feature-highlights {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+            padding: 2rem 0;
+        }
+
+        .feature-showcase.reverse {
+            direction: rtl;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr;
+        }
+
+        .feature-image {
+            position: relative;
+        }
+
+        .screenshot-placeholder {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .screenshot-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .quick-search-demo {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            position: relative;
+            height: 280px;
+        }
+
+        .demo-title-bar {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .demo-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .demo-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .demo-search-area {
+            padding: 1.5rem;
+            background: #34495e;
+        }
+
+        .demo-search-box {
+            background: white;
+            border-radius: 6px;
+            padding: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .demo-search-text {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .demo-results {
+            background: white;
+            padding: 1rem;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .demo-result-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .demo-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .demo-file-info {
+            flex: 1;
+        }
+
+        .demo-file-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        .demo-file-path {
+            color: #7f8c8d;
+            font-size: 0.8rem;
+        }
+
+        .demo-status {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+            padding: 0.6rem 1rem;
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .feature-content {
+            padding: 1rem 0;
+        }
+
+        .feature-content h3 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .feature-content p {
+            color: #5a6c7d;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-highlights {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-highlights li {
+            padding: 0.5rem 0;
+            color: #34495e;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* 托盘演示样式 */
+        .tray-demo {
+            background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
+            border-radius: 8px;
+            padding: 2rem;
+            color: white;
+            position: relative;
+            height: 280px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .demo-tray-icon {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .tray-icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .tray-tooltip {
+            background: rgba(0,0,0,0.8);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        .demo-tray-menu {
+            background: rgba(255,255,255,0.95);
+            color: #2c3e50;
+            border-radius: 6px;
+            padding: 0.5rem 0;
+            min-width: 200px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .tray-menu-item {
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .tray-menu-item:hover {
+            background: rgba(52,73,94,0.1);
+        }
+
+        .tray-menu-item.active {
+            background: rgba(52,152,219,0.1);
+            color: #3498db;
+            font-weight: 600;
+        }
+
+        .tray-menu-separator {
+            height: 1px;
+            background: #bdc3c7;
+            margin: 0.3rem 0;
+        }
+
+        /* 主窗口演示样式 */
+        .main-window-demo {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            height: 280px;
+        }
+
+        .demo-toolbar {
+            background: rgba(0,0,0,0.2);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .demo-search-bar {
+            background: white;
+            border-radius: 4px;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1;
+            margin-right: 1rem;
+        }
+
+        .demo-search-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.3rem 0.8rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+
+        .demo-filters {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .demo-filter {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .demo-filter.active {
+            background: rgba(255,255,255,0.3);
+            font-weight: 600;
+        }
+
+        .demo-results-area {
+            background: white;
+            margin: 1rem;
+            border-radius: 6px;
+            padding: 1rem;
+            height: 140px;
+            overflow-y: auto;
+        }
+
+        .demo-result-card {
+            border: 1px solid #ecf0f1;
+            border-radius: 4px;
+            padding: 0.8rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .demo-result-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .demo-result-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .demo-result-title {
+            flex: 1;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+
+        .demo-result-score {
+            background: #27ae60;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .demo-result-preview {
+            color: #5a6c7d;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+        }
+
+        .demo-result-preview mark {
+            background: #f1c40f;
+            padding: 0.1rem 0.2rem;
+            border-radius: 2px;
+        }
+
+        .demo-result-meta {
+            color: #95a5a6;
+            font-size: 0.7rem;
+        }
+
+        .demo-status-bar {
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 0.5rem 1rem;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            font-size: 0.8rem;
+        }
+
+        /* 主题演示样式 */
+        .theme-demo {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            border-radius: 8px;
+            padding: 2rem;
+            height: 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-selector {
+            background: rgba(255,255,255,0.95);
+            border-radius: 8px;
+            padding: 1.5rem;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .theme-title {
+            color: #2c3e50;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .theme-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .theme-option {
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .theme-option:hover {
+            transform: scale(1.05);
+        }
+
+        .theme-option.active {
+            transform: scale(1.1);
+        }
+
+        .theme-preview {
+            width: 60px;
+            height: 40px;
+            border-radius: 4px;
+            margin: 0 auto 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .theme-preview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 12px;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .theme-preview::after {
+            content: '';
+            position: absolute;
+            top: 16px;
+            left: 4px;
+            right: 4px;
+            bottom: 4px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 2px;
+        }
+
+        .blue-theme {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+        }
+
+        .purple-theme {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+        }
+
+        .red-theme {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .orange-theme {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+        }
+
+        .theme-name {
+            color: #2c3e50;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .feature-showcase {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+                text-align: center;
+            }
+
+            .feature-showcase.reverse {
+                direction: ltr;
+            }
+
+            .screenshot-placeholder {
+                min-height: 250px;
+            }
+
+            .quick-search-demo,
+            .tray-demo,
+            .main-window-demo,
+            .theme-demo {
+                height: 220px;
+            }
+        }
+
+        /* 真实界面截图样式 */
+        .real-interface-screenshot {
+            background: #f0f0f0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .screenshot-window {
+            background: white;
+            border: 1px solid #ccc;
+        }
+        
+        .screenshot-window .window-header {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+        
+        .window-menubar {
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 12px;
+            text-align: left;
+        }
+        
+        .menu-item {
+            padding: 4px 8px;
+            margin-right: 8px;
+            color: #333;
+            cursor: pointer;
+            display: inline-block;
+        }
+        
+        .action-buttons {
+            padding: 8px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            text-align: left;
+        }
+        
+        .action-btn {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            margin-right: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        .action-btn.skip-files {
+            background: #007acc;
+        }
+        
+        .search-area {
+            padding: 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .search-bar-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .search-btn {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .clear-btn {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .help-btn {
+            background: #8db4e2;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .search-options {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .option-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .option-select {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .view-mode-bar {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .view-options {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .view-select {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .clear-results-btn {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        .file-type-filters {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .file-type-filters label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        
+        .content-area {
+            display: flex;
+            min-height: 400px;
+        }
+        
+        .sidebar {
+            width: 200px;
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            padding: 12px;
+        }
+        
+        .folder-tree {
+            font-size: 12px;
+        }
+        
+        .tree-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .tree-item {
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        
+        .tree-item:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        
+        .results-area {
+            flex: 1;
+            padding: 12px;
+        }
+        
+        .results-header {
+            font-weight: bold;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+            color: #333;
+        }
+        
+        .search-result-item {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: white;
+        }
+        
+        .result-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .result-title {
+            font-weight: bold;
+            color: #0066cc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .result-path {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .result-highlights {
+            margin-top: 8px;
+        }
+        
+        .highlight-section {
+            margin-bottom: 12px;
+        }
+        
+        .highlight-label {
+            font-weight: bold;
+            color: #333;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        
+        .highlight-text {
+            background: #f9f9f9;
+            padding: 8px;
+            border-left: 3px solid #007acc;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .highlight-text mark {
+            background: #ffeb3b;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+        
+        /* 文件名搜索结果样式 */
+        .filename-results-group {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .group-title {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            font-weight: bold;
+            color: #333;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .filename-result-item {
+            padding: 12px;
+        }
+        
+        .result-meta {
+            display: flex;
+            gap: 16px;
+            color: #666;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        
+        /* 全局覆盖：将所有feature-showcase改为上下布局 */
+        .feature-showcase {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 2rem !important;
+            align-items: stretch !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto 4rem auto !important;
+            padding: 3rem !important;
+            background: white !important;
+            border-radius: 20px !important;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .feature-showcase:hover {
+            transform: translateY(-8px) !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.12) !important;
+        }
+
+        .feature-showcase.reverse {
+            flex-direction: column-reverse !important;
+            direction: ltr !important;
+        }
+
+        .feature-showcase.reverse > * {
+            direction: ltr !important;
+        }
+
+        /* 确保内容在上下布局中居中 */
+        .feature-demo {
+            text-align: center;
+            margin: 0 auto;
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .feature-content {
+            text-align: left;
+            max-width: 1000px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .feature-content h3 {
+            font-size: 2rem !important;
+            margin-bottom: 1rem !important;
+            color: #2c3e50 !important;
+            font-weight: 700 !important;
+            text-align: center !important;
+        }
+
+        .feature-content p {
+            font-size: 1.1rem !important;
+            line-height: 1.7 !important;
+            color: #5a6c7d !important;
+            margin-bottom: 1.5rem !important;
+            text-align: center !important;
+            max-width: 900px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .feature-highlights {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 0.8rem !important;
+            margin-bottom: 1.5rem !important;
+            max-width: 900px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .highlight-item {
+            padding: 0.8rem !important;
+            background: rgba(52, 152, 219, 0.08) !important;
+            border-radius: 8px !important;
+            border-left: 4px solid #3498db !important;
+            font-size: 0.95rem !important;
+            color: #34495e !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .highlight-item:hover {
+            background: rgba(52, 152, 219, 0.12) !important;
+            transform: translateX(5px) !important;
+        }
+
+        .user-quote {
+            font-style: italic !important;
+            color: #7f8c8d !important;
+            font-size: 0.95rem !important;
+            border-left: 4px solid #bdc3c7 !important;
+            padding-left: 1.5rem !important;
+            margin-top: 1.5rem !important;
+            text-align: center !important;
+            max-width: 800px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        /* 真实界面截图优化 */
+        .real-interface-screenshot {
+            background: #f0f0f0 !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1) !important;
+            width: 100% !important;
+            max-width: 1000px !important;
+            margin: 0 auto !important;
+            border: 1px solid #e0e0e0 !important;
+        }
+
+        /* 移除重复的容器样式，使用标准container */
+
+        /* 响应式优化 */
+        @media (max-width: 1240px) {
+            .feature-showcase {
+                margin: 0 0 4rem 0;
+                padding: 2.5rem;
+            }
+            
+            .feature-content,
+            .feature-demo {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .real-interface-screenshot {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .hotkey-demo-horizontal {
+                width: 100%;
+                max-width: 100%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .feature-showcase {
+                margin: 0 0 3rem 0;
+                padding: 2rem;
+                gap: 1.5rem;
+            }
+            
+            .feature-content h3 {
+                font-size: 1.6rem;
+            }
+            
+            .feature-content p {
+                font-size: 1rem;
+                margin-bottom: 1rem;
+            }
+            
+            .feature-highlights {
+                grid-template-columns: 1fr;
+                gap: 0.6rem;
+            }
+            
+            .highlight-item {
+                padding: 0.6rem;
+                font-size: 0.9rem;
+            }
+            
+            .user-quote {
+                font-size: 0.9rem;
+                margin-top: 1rem;
+            }
+            
+            .real-interface-screenshot {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .hotkey-demo-horizontal {
+                width: 100%;
+                max-width: 100%;
+                min-height: 250px;
+            }
+            
+            .hotkey-flow {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .flow-arrow {
+                transform: rotate(90deg);
+            }
+
+            .quick-window-horizontal {
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+
+        /* 折叠按钮样式 */
+        .collapse-btn {
+            color: #666;
+            font-size: 0.8rem;
+            margin-right: 4px;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .collapse-btn:hover {
+            color: #333;
+            transform: scale(1.1);
+        }
+
+        /* 简化feature-showcase样式，使用响应式设计 */
+        .feature-showcase {
+            display: flex;
+            flex-direction: column;
+            gap: 3rem;
+            align-items: stretch;
+            width: 100%;
+            max-width: 100%;
+            margin: 0 0 4rem 0;
+            padding: 4rem;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .quick-window-horizontal {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+            width: 480px;
+            border: 1px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+
+        /* 统一所有section的container样式 */
+        section .container {
+            max-width: 1200px;
+            padding: 0 20px;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -307,100 +4683,476 @@
 
     <section class="hero">
         <div class="container">
-            <h1>文智搜 - 为效率而生的本地文件搜索引擎</h1>
-            <p class="subtitle">快速、精准、跨格式内容检索，助您秒速找到所需信息</p>
-            <div class="promo-banner">
-                <p><strong>限时特惠！</strong> 专业版单设备仅需 <span class="promo-price">¥9.9</span> (原价 ¥49.9)，三设备授权 <span class="promo-price">¥19.9</span>，六设备授权 <span class="promo-price">¥49.9</span>，活动持续15天！永久授权，解锁全部高级功能！</p>
-            </div>
-            <div class="cta-buttons">
-                <a href="download.html" class="btn btn-primary">免费下载</a>
-                <a href="purchase.html" class="btn btn-secondary">了解专业版</a>
-            </div>
-        </div>
-    </section>
-
-    <section class="features">
-        <div class="container">
-            <div class="section-title">
-                <h2>核心功能</h2>
-                <p>专为快速检索本地文档内容而设计</p>
-            </div>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <h3>多格式文件支持</h3>
-                    <p>支持搜索13种文件格式内容，包括Word、Excel、PowerPoint、PDF、邮件、Markdown等，一站式解决各类文档查找难题。</p>
+            <div class="hero-content">
+                <h1>文智搜 <span style="font-size: 0.6em; color: #3498db;">托盘版</span></h1>
+                <div class="subtitle">专为中文优化的高性能本地文档搜索引擎</div>
+                <p>采用企业级Whoosh搜索引擎，支持13种文件格式，虚拟滚动技术实现毫秒级响应。<strong>托盘版新增全局热键快速搜索、系统托盘集成、后台运行等专业功能</strong>，让您在海量文档中瞬间找到所需内容。</p>
+                
+                <div class="performance-highlight">
+                    <div style="font-weight: bold; margin-bottom: 1rem;">🚀 性能突破</div>
+                    <div class="performance-stats">
+                        <div class="stat">
+                            <div class="stat-number">100ms</div>
+                            <div class="stat-label">搜索响应时间</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">95%+</div>
+                            <div class="stat-label">性能提升</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">13种</div>
+                            <div class="stat-label">文件格式</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="feature-card">
-                    <h3>中文分词优化</h3>
-                    <p>采用专业级中文分词引擎，针对中文语境专门优化，相比通用搜索工具更准确定位中文内容，轻松应对专业术语和复杂表达。</p>
-                </div>
-                <div class="feature-card">
-                    <h3>OCR文本识别</h3>
-                    <p>专业版独有功能，智能识别PDF扫描件和图片中的文字，让原本"不可搜索"的内容变得可搜索，再也不怕找不到扫描文档。</p>
-                </div>
-                <div class="feature-card">
-                    <h3>高级搜索语法</h3>
-                    <p>支持AND、OR、NOT逻辑运算符、精确短语匹配和通配符，让搜索更加精准，帮助您在海量文档中快速缩小范围，精确定位所需信息。</p>
-                </div>
-                <div class="feature-card">
-                    <h3>智能结果预览</h3>
-                    <p>搜索结果显示关键词前后文本，无需打开即可浏览内容，直观判断信息相关性，一眼看到最关键内容，节省大量阅读时间。</p>
-                </div>
-                <div class="feature-card">
-                    <h3>完全离线运行</h3>
-                    <p>所有处理都在本地完成，不会上传任何文件，保护数据隐私安全。相比在线服务，访问速度更快，不受网络限制，随时随地可用。</p>
+                
+                <div class="hero-buttons">
+                    <a href="download.html" class="btn btn-primary">免费下载</a>
+                    <a href="purchase.html" class="btn btn-secondary">购买专业版 ¥9.9</a>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="interface-showcase">
+    <section class="tech-highlight">
+        <div class="container">
+            <h2>技术优势</h2>
+            <p>基于现代化技术栈，为中文用户量身定制的文档搜索解决方案</p>
+            <div class="tech-stats">
+                <div class="tech-stat">
+                    <div class="tech-stat-number">虚拟滚动</div>
+                    <div class="tech-stat-label">大量结果瞬间渲染<br>内存使用减少70%</div>
+                </div>
+                <div class="tech-stat">
+                    <div class="tech-stat-number">中文分词</div>
+                    <div class="tech-stat-label">专业算法优化<br>比通用工具更准确</div>
+                </div>
+                <div class="tech-stat">
+                    <div class="tech-stat-number">OCR识别</div>
+                    <div class="tech-stat-label">扫描PDF文字提取<br>专业版独有功能</div>
+                </div>
+                <div class="tech-stat">
+                    <div class="tech-stat-number">本地隐私</div>
+                    <div class="tech-stat-label">数据不上传<br>完全保护隐私</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+
+
+
+
+
+    <section class="core-features">
         <div class="container">
             <div class="section-title">
-                <h2>直观易用的搜索界面</h2>
-                <p>简洁设计，强大功能，让您的文件搜索体验提升到新高度</p>
+                <h2>核心功能特色</h2>
+                <p>专业搜索引擎 + 托盘版专属功能，打造完美的文档搜索体验</p>
             </div>
-            <div class="showcase-content">
-                <div class="showcase-item">
-                    <h4>强大的全文内容搜索</h4>
-                    <p>深入文档内部，精确定位每一处关键信息，支持高级语法让搜索更精准</p>
-                    <img src="images/fulltext-search.jpg" alt="文智搜全文搜索结果界面截图">
-                    <div class="user-quote">"专业的本地文件搜索工具，让文档查找变得简单高效" — 资深用户反馈</div>
+            
+            <!-- 主要功能展示 -->
+            <div class="main-features">
+                <div class="container">
+                <!-- 全局热键快速搜索 -->
+                <div class="feature-showcase">
+                    <div class="feature-content">
+                        <h3>⚡ 全局热键快速搜索</h3>
+                        <p>托盘版独有功能：无论您在使用任何程序，按下 <kbd>Ctrl+Alt+Q</kbd> 即可瞬间调出快速搜索窗口。支持全文搜索和文件名搜索，100毫秒响应时间。</p>
+                        <div class="feature-highlights">
+                            <div class="highlight-item">🔥 任意程序中一键调出</div>
+                            <div class="highlight-item">⚡ 100毫秒响应，即搜即显</div>
+                            <div class="highlight-item">🎯 支持自定义热键组合</div>
+                            <div class="highlight-item">💨 ESC键快速关闭窗口</div>
+                        </div>
+                    </div>
+                    <div class="feature-demo">
+                        <div class="hotkey-demo-horizontal">
+                            <div class="hotkey-flow">
+                                <div class="key-combo-horizontal">
+                                    <div class="key-horizontal">Ctrl</div>
+                                    <span class="key-plus-horizontal">+</span>
+                                    <div class="key-horizontal">Alt</div>
+                                    <span class="key-plus-horizontal">+</span>
+                                    <div class="key-horizontal">Q</div>
+                                </div>
+                                <div class="flow-arrow">→</div>
+                                <div class="quick-window-horizontal">
+                                    <div class="window-header-horizontal">
+                                        <span class="window-title-horizontal">🔍 文智搜 - 快速搜索</span>
+                                        <div class="window-controls-horizontal">
+                                            <span class="control-horizontal minimize">−</span>
+                                            <span class="control-horizontal close">×</span>
+                                        </div>
+                                    </div>
+                                    <div class="window-content-horizontal">
+                                        <div class="search-section-horizontal">
+                                            <div class="search-bar-horizontal">
+                                                <input type="text" value="国民" class="search-input-horizontal" readonly>
+                                                <button class="clear-btn-horizontal">✖</button>
+                                            </div>
+                                        </div>
+                                        <div class="results-section-horizontal">
+                                            <div class="result-item-horizontal selected">
+                                                <div class="result-icon-horizontal">📝</div>
+                                                <div class="result-info-horizontal">
+                                                    <div class="result-title-horizontal">国务院办公厅关于印发"十四五"国民健康规划的通知.docx</div>
+                                                    <div class="result-path-horizontal">📁 .../文件搜索工具/新建文件夹 • 🕒 2025-05-06 13:59</div>
+                                                </div>
+                                                <button class="open-btn-horizontal">🖥️ 打开</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="status-bar-horizontal">
+                                        <span class="status-text">找到 1 个文件 - 快速搜索</span>
+                                        <span class="status-shortcuts">Enter: 搜索 | Ctrl+Enter: 主窗口 | F1: 帮助 | Esc: 关闭</span>
+                                        <button class="main-window-btn">🖥️ 主窗口搜索</button>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="showcase-item">
-                    <h4>精准的文件名搜索</h4>
-                    <p>快速找到需要的文件，支持通配符和多种过滤条件，轻松管理成千上万文件</p>
-                    <img src="images/filename-search.jpg" alt="文智搜文件名搜索结果界面截图">
-                    <div class="user-quote">"文件夹树导航功能节省了大量整理时间，帮我轻松管理项目文档" — 项目经理评价</div>
+
+                <!-- 全文内容搜索 -->
+                <div class="feature-showcase">
+                    <div class="feature-content">
+                        <h3>📄 强大的全文内容搜索</h3>
+                        <p>深入文档内部，精确定位每一处关键信息。支持13种文件格式，包括Word、Excel、PPT、PDF等。提供多种视图模式，让搜索结果一目了然。</p>
+                        <div class="feature-highlights">
+                            <div class="highlight-item">📋 列表视图：简洁高效展示</div>
+                            <div class="highlight-item">⏰ 时间视图：按修改日期分组</div>
+                            <div class="highlight-item">📁 类型视图：按文件格式分类</div>
+                            <div class="highlight-item">🗂️ 文件夹视图：按目录结构组织</div>
+                        </div>
+                        <div class="user-quote">"专业的本地文件搜索工具，让文档查找变得简单高效" — 资深用户反馈</div>
+                    </div>
+                    <div class="feature-demo">
+                        <div class="real-interface-screenshot">
+                            <div class="screenshot-window">
+                                <div class="window-header">
+                                    <div class="window-title">🔍 文智搜 (PySide6)</div>
+                                    <div class="window-controls">
+                                        <span class="control minimize">−</span>
+                                        <span class="control maximize">□</span>
+                                        <span class="control close">×</span>
+                                    </div>
+                                </div>
+                                <div class="window-menubar">
+                                    <span class="menu-item">文件(F)</span>
+                                    <span class="menu-item">搜索(S)</span>
+                                    <span class="menu-item">索引(I)</span>
+                                    <span class="menu-item">设置(T)</span>
+                                    <span class="menu-item">帮助(H)</span>
+                                    <span class="menu-item">专业版</span>
+                                </div>
+                                <div class="action-buttons">
+                                    <button class="action-btn">🔍 索引</button>
+                                    <button class="action-btn skip-files">📁 跳过文件</button>
+                                </div>
+                                <div class="search-area">
+                                    <div class="search-bar-container">
+                                                                <input type="text" class="search-input" value="国民" placeholder="搜索文件内容或文件名">
+                        <button class="search-btn">🔍 搜索</button>
+                        <button class="clear-btn">✖ 清空</button>
+                        <button class="help-btn">❓ 帮助</button>
+                    </div>
+                    <div class="search-options">
+                        <div class="option-group">
+                            <span class="option-label">🔍 范围:</span>
+                            <select class="option-select">
+                                <option selected>全文</option>
+                                <option>文件名</option>
+                            </select>
+                        </div>
+                                        <div class="option-group">
+                                            <span class="option-label">🎯 模式:</span>
+                                            <select class="option-select">
+                                                <option>精确</option>
+                                                <option selected>模糊</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="view-mode-bar">
+                                    <div class="view-options">
+                                        <span class="view-label">📊 视图:</span>
+                                        <select class="view-select">
+                                            <option selected>📋 列表视图</option>
+                                            <option>⏰ 时间视图</option>
+                                            <option>📁 类型视图</option>
+                                            <option>🗂️ 文件夹视图</option>
+                                        </select>
+                                    </div>
+                                    <button class="clear-results-btn">🗑️ 清除结果</button>
+                                </div>
+                                <div class="file-type-filters">
+                                    <span class="filter-icon">📁</span>
+                                    <label><input type="checkbox"> PDF</label>
+                                    <label><input type="checkbox"> Word</label>
+                                    <label><input type="checkbox"> TXT</label>
+                                    <label><input type="checkbox"> Excel</label>
+                                    <label><input type="checkbox"> PPT</label>
+                                    <label><input type="checkbox"> HTML</label>
+                                    <label><input type="checkbox"> MD</label>
+                                    <label><input type="checkbox"> 🎬视频</label>
+                                    <label><input type="checkbox"> 🎵音频</label>
+                                    <label><input type="checkbox"> 🖼️图片</label>
+                                    <label><input type="checkbox"> 📧EML</label>
+                                    <label><input type="checkbox"> 📧MSG</label>
+                                </div>
+                                <div class="content-area">
+                                    <div class="sidebar">
+                                        <div class="folder-tree">
+                                            <div class="tree-title">文件关键句</div>
+                                            <div class="tree-item">
+                                                <span class="tree-icon">📂</span>
+                                                <span class="tree-text">D:\</span>
+                                            </div>
+                                            <div class="tree-item">
+                                                <span class="tree-icon">📂</span>
+                                                <span class="tree-text">OneDrive</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="results-area">
+                                        <div class="results-header">搜索结果</div>
+                                        <div class="search-result-item">
+                                            <div class="result-icon">📄</div>
+                                            <div class="result-content">
+                                                <div class="result-title">1. 国务院办公厅关于印发"十四五"国民健康规划的通知.docx</div>
+                                                <div class="result-path">📂 D:\OneDrive\person\文件搜索工具\论文等文档</div>
+                                                <div class="result-highlights">
+                                                    <div class="highlight-section">
+                                                        <div class="highlight-label">
+                                                            <span class="collapse-btn">▼</span> 章节:
+                                                        </div>
+                                                        <div class="highlight-content">
+                                                            <div class="highlight-item">段落内容</div>
+                                                            <div class="highlight-text">"十四五"<mark>国民</mark>健康规划</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="highlight-section">
+                                                        <div class="highlight-label">
+                                                            <span class="collapse-btn">▼</span> 段落内容
+                                                        </div>
+                                                        <div class="highlight-text">
+                                                            为全面推进健康中国建设，根据《中华人民共和国<mark>国民</mark>经济和社会发展第十四个五年规划和2035年远景目标纲要》、《"健康中国2030"规划纲要》，编制本规划。
+                                                        </div>
+                                                    </div>
+                                                    <div class="highlight-section">
+                                                        <div class="highlight-label">
+                                                            <span class="collapse-btn">▼</span> 段落内容
+                                                        </div>
+                                                        <div class="highlight-text">
+                                                            "十四五"时期，以习近平同志为核心的党中央把保障人民健康放在优先发展的战略地位，作出实施健康中国行动，深入开展爱国卫生运动，完善促进健康的政策体系，全方位干预健康问题和影响因素，努力让广大<mark>国民</mark>群众享有公平可及、系统连续的健康服务。
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 文件名搜索 -->
+                <div class="feature-showcase">
+                    <div class="feature-content">
+                        <h3>📂 精准的文件名搜索</h3>
+                        <p>快速找到需要的文件，支持通配符和多种过滤条件。同样支持多种视图模式，轻松管理成千上万文件。</p>
+                        <div class="feature-highlights">
+                            <div class="highlight-item">🌳 文件夹导航：树形结构快速定位</div>
+                            <div class="highlight-item">📊 类型分组：按格式智能分类</div>
+                            <div class="highlight-item">⏱️ 时间排序：按修改时间组织</div>
+                            <div class="highlight-item">🎯 右键菜单：直接操作文件</div>
+                        </div>
+                        <div class="user-quote">"文件夹树导航功能节省了大量整理时间，帮我轻松管理项目文档" — 项目经理评价</div>
+                    </div>
+                    <div class="feature-demo">
+                        <div class="real-interface-screenshot">
+                            <div class="screenshot-window">
+                                <div class="window-header">
+                                    <div class="window-title">🔍 文智搜 (PySide6)</div>
+                                    <div class="window-controls">
+                                        <span class="control minimize">−</span>
+                                        <span class="control maximize">□</span>
+                                        <span class="control close">×</span>
+                                    </div>
+                                </div>
+                                <div class="window-menubar">
+                                    <span class="menu-item">文件(F)</span>
+                                    <span class="menu-item">搜索(S)</span>
+                                    <span class="menu-item">索引(I)</span>
+                                    <span class="menu-item">设置(T)</span>
+                                    <span class="menu-item">帮助(H)</span>
+                                    <span class="menu-item">专业版</span>
+                                </div>
+                                <div class="action-buttons">
+                                    <button class="action-btn">🔍 索引</button>
+                                    <button class="action-btn skip-files">📁 跳过文件</button>
+                                </div>
+                                <div class="search-area">
+                                    <div class="search-bar-container">
+                                        <input type="text" class="search-input" value="国民" placeholder="搜索文件内容或文件名">
+                                        <button class="search-btn">🔍 搜索</button>
+                                        <button class="clear-btn">✖ 清空</button>
+                                        <button class="help-btn">❓ 帮助</button>
+                                    </div>
+                                    <div class="search-options">
+                                        <div class="option-group">
+                                            <span class="option-label">🔍 范围:</span>
+                                            <select class="option-select">
+                                                <option>全文</option>
+                                                <option selected>文件名</option>
+                                            </select>
+                                        </div>
+                                        <div class="option-group">
+                                            <span class="option-label">🎯 模式:</span>
+                                            <select class="option-select">
+                                                <option>精确</option>
+                                                <option selected>模糊</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="view-mode-bar">
+                                    <div class="view-options">
+                                        <span class="view-label">📊 视图:</span>
+                                        <select class="view-select">
+                                            <option selected>📋 列表视图</option>
+                                            <option>⏰ 时间视图</option>
+                                            <option>📁 类型视图</option>
+                                            <option>🗂️ 文件夹视图</option>
+                                        </select>
+                                    </div>
+                                    <button class="clear-results-btn">🗑️ 清除结果</button>
+                                </div>
+                                <div class="file-type-filters">
+                                    <span class="filter-icon">📁</span>
+                                    <label><input type="checkbox"> PDF</label>
+                                    <label><input type="checkbox"> Word</label>
+                                    <label><input type="checkbox"> TXT</label>
+                                    <label><input type="checkbox"> Excel</label>
+                                    <label><input type="checkbox"> PPT</label>
+                                    <label><input type="checkbox"> HTML</label>
+                                    <label><input type="checkbox"> MD</label>
+                                    <label><input type="checkbox"> 🎬视频</label>
+                                    <label><input type="checkbox"> 🎵音频</label>
+                                    <label><input type="checkbox"> 🖼️图片</label>
+                                    <label><input type="checkbox"> 📧EML</label>
+                                    <label><input type="checkbox"> 📧MSG</label>
+                                </div>
+                                <div class="content-area">
+                                    <div class="sidebar">
+                                        <div class="folder-tree">
+                                            <div class="tree-title">文件关键句</div>
+                                            <div class="tree-item">
+                                                <span class="tree-icon">📂</span>
+                                                <span class="tree-text">D:\</span>
+                                            </div>
+                                            <div class="tree-item">
+                                                <span class="tree-icon">📂</span>
+                                                <span class="tree-text">OneDrive</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="results-area">
+                                        <div class="results-header">搜索结果</div>
+                                        <div class="filename-results-group">
+                                            <div class="group-title">📄 文件名搜索结果 (1 个文件)</div>
+                                            <div class="filename-result-item">
+                                                <div class="result-content">
+                                                    <div class="result-title">
+                                                        <span class="file-icon">📄</span>
+                                                        国务院办公厅关于印发"十四五"国民健康规划的通知.docx
+                                                    </div>
+                                                    <div class="result-path">📂 D:\OneDrive\person\文件搜索工具\论文等文档</div>
+                                                    <div class="result-meta">
+                                                        <span class="file-size">📏 418.4 kB</span>
+                                                        <span class="file-date">📅 2025-05-06 13:59</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 </div>
             </div>
-            <div class="features-highlight">
-                <div class="feature-item">
-                    <h4>适合多种使用场景</h4>
-                    <ul style="text-align: left; list-style-type: disc; padding-left: 20px;">
-                        <li>快速检索工作文档中的关键信息</li>
-                        <li>轻松查找学习资料中的重要知识点</li>
-                        <li>有效管理个人文献和研究资料</li>
-                        <li>迅速定位历史邮件和通讯记录</li>
-                    </ul>
+
+            <!-- 辅助功能特色 -->
+            <div class="auxiliary-features">
+                <div class="container">
+                    <div class="aux-feature-grid">
+                    <div class="aux-feature-card">
+                        <div class="aux-feature-icon">🖱️</div>
+                        <h4>完整右键菜单</h4>
+                        <p>快速搜索窗口和主窗口都支持右键菜单，提供打开文件、打开目录、复制路径、文本选择等功能</p>
+                    </div>
+                    <div class="aux-feature-card">
+                        <div class="aux-feature-icon">🎨</div>
+                        <h4>四种现代主题</h4>
+                        <p>现代蓝、现代紫、现代红、现代橙四种精美主题，界面美观统一，提升使用体验</p>
+                    </div>
+                    <div class="aux-feature-card">
+                        <div class="aux-feature-icon">⚡</div>
+                        <h4>虚拟滚动技术</h4>
+                        <p>大量搜索结果瞬间渲染，内存使用减少70%，万级结果流畅显示</p>
+                    </div>
+                    <div class="aux-feature-card">
+                        <div class="aux-feature-icon">🔒</div>
+                        <h4>本地隐私保护</h4>
+                        <p>所有数据完全本地处理，不上传任何信息，确保文档内容绝对安全</p>
+                    </div>
                 </div>
-                <div class="feature-item">
-                    <h4>专为中文用户设计</h4>
-                    <ul style="text-align: left; list-style-type: disc; padding-left: 20px;">
-                        <li>精准中文分词算法</li>
-                        <li>支持繁简中文混合搜索</li>
-                        <li>中文符号智能处理</li>
-                        <li>针对中文文档的优化排序</li>
-                    </ul>
+            </div>
+
+            <!-- 应用场景 -->
+            <div class="use-cases">
+                <div class="container">
+                    <div class="use-case-grid">
+                    <div class="use-case-item">
+                        <h4>💼 办公场景</h4>
+                        <ul>
+                            <li>快速检索工作文档中的关键信息</li>
+                            <li>轻松查找历史邮件和通讯记录</li>
+                            <li>高效管理项目文档和资料</li>
+                        </ul>
+                    </div>
+                    <div class="use-case-item">
+                        <h4>📚 学习研究</h4>
+                        <ul>
+                            <li>轻松查找学习资料中的重要知识点</li>
+                            <li>有效管理个人文献和研究资料</li>
+                            <li>快速定位论文和参考文献</li>
+                        </ul>
+                    </div>
+                    <div class="use-case-item">
+                        <h4>🏠 个人使用</h4>
+                        <ul>
+                            <li>整理和查找个人文档资料</li>
+                            <li>管理照片和多媒体文件</li>
+                            <li>快速找到重要的个人文件</li>
+                        </ul>
+                    </div>
+                    <div class="use-case-item">
+                        <h4>🇨🇳 中文优化</h4>
+                        <ul>
+                            <li>精准中文分词算法</li>
+                            <li>支持繁简中文混合搜索</li>
+                            <li>针对中文文档的优化排序</li>
+                        </ul>
+                    </div>
                 </div>
-                <div class="feature-item">
-                    <h4>多主题界面风格</h4>
-                    <ul style="text-align: left; list-style-type: disc; padding-left: 20px;">
-                        <li>现代蓝主题 (默认主题)</li>
-                        <li>现代紫主题 (专业版)</li>
-                        <li>现代红主题 (专业版)</li>
-                        <li>现代橙主题 (专业版)</li>
-                    </ul>
                 </div>
             </div>
         </div>
@@ -409,95 +5161,168 @@
     <section class="comparison">
         <div class="container">
             <div class="section-title">
-                <h2>版本对比</h2>
-                <p>选择最适合您需求的版本</p>
+                <h2>与同类工具对比</h2>
+                <p>看看文智搜相比其他搜索工具的优势</p>
             </div>
             <table class="comparison-table">
                 <thead>
                     <tr>
-                        <th>功能</th>
-                        <th>免费版</th>
-                        <th>专业版</th>
+                        <th>功能特性</th>
+                        <th>文智搜</th>
+                        <th>传统文件搜索工具</th>
+                        <th>开源文档检索工具</th>
+                        <th>系统内置搜索</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>基础格式支持 (DOCX, XLSX, PPTX, TXT)</td>
-                        <td><span class="check">✓</span></td>
-                        <td><span class="check">✓</span></td>
+                    <tr class="highlight-row">
+                        <td>中文分词优化</td>
+                        <td><span class="check">✓ 专业优化</span></td>
+                        <td><span class="cross">✗ 基础支持</span></td>
+                        <td><span class="cross">✗ 基础支持</span></td>
+                        <td><span class="cross">✗ 基础支持</span></td>
                     </tr>
                     <tr>
-                        <td>基础搜索语法 (AND, OR, NOT)</td>
-                        <td><span class="check">✓</span></td>
-                        <td><span class="check">✓</span></td>
+                        <td>文档内容搜索</td>
+                        <td><span class="check">✓ 13种格式</span></td>
+                        <td><span class="cross">✗ 仅文件名</span></td>
+                        <td><span class="check">✓ 有限格式</span></td>
+                        <td><span class="check">✓ 有限格式</span></td>
+                    </tr>
+                    <tr class="highlight-row">
+                        <td>搜索性能</td>
+                        <td><span class="check">✓ 100ms响应</span></td>
+                        <td><span class="check">✓ 快速</span></td>
+                        <td><span class="cross">✗ 较慢</span></td>
+                        <td><span class="cross">✗ 较慢</span></td>
                     </tr>
                     <tr>
-                        <td>文件名搜索</td>
-                        <td><span class="check">✓</span></td>
-                        <td><span class="check">✓</span></td>
+                        <td>OCR文字识别</td>
+                        <td><span class="check">✓ 专业版</span></td>
+                        <td><span class="cross">✗ 不支持</span></td>
+                        <td><span class="cross">✗ 不支持</span></td>
+                        <td><span class="cross">✗ 不支持</span></td>
                     </tr>
                     <tr>
-                        <td>PDF文本和OCR支持</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
+                        <td>多媒体文件搜索</td>
+                        <td><span class="check">✓ 文件名搜索</span></td>
+                        <td><span class="check">✓ 文件名</span></td>
+                        <td><span class="cross">✗ 不支持</span></td>
+                        <td><span class="check">✓ 文件名</span></td>
+                    </tr>
+                    <tr class="highlight-row">
+                        <td>界面美观度</td>
+                        <td><span class="check">✓ 现代化设计</span></td>
+                        <td><span class="neutral">△ 经典界面</span></td>
+                        <td><span class="neutral">△ 经典界面</span></td>
+                        <td><span class="neutral">△ 系统默认</span></td>
                     </tr>
                     <tr>
-                        <td>Markdown文件支持</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
+                        <td>虚拟滚动技术</td>
+                        <td><span class="check">✓ 内存优化70%</span></td>
+                        <td><span class="cross">✗ 无</span></td>
+                        <td><span class="cross">✗ 无</span></td>
+                        <td><span class="cross">✗ 无</span></td>
                     </tr>
                     <tr>
-                        <td>邮件文件支持 (EML, MSG)</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
-                    </tr>
-                    <tr>
-                        <td>压缩包内容支持 (ZIP, RAR)</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
-                    </tr>
-                    <tr>
-                        <td>通配符搜索 (*, ?)</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
-                    </tr>
-                    <tr>
-                        <td>文件夹树结果导航</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
-                    </tr>
-                    <tr>
-                        <td>多种界面主题</td>
-                        <td><span class="cross">✗</span> 仅现代蓝</td>
-                        <td><span class="check">✓</span> 全部四种主题</td>
-                    </tr>
-                    <tr>
-                        <td>源目录数量</td>
-                        <td>最多5个</td>
-                        <td>无限制</td>
-                    </tr>
-                    <tr>
-                        <td>优先技术支持</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
-                    </tr>
-                    <tr>
-                        <td>多设备激活</td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="check">✓</span></td>
+                        <td>隐私保护</td>
+                        <td><span class="check">✓ 完全本地</span></td>
+                        <td><span class="check">✓ 本地</span></td>
+                        <td><span class="check">✓ 本地</span></td>
+                        <td><span class="check">✓ 本地</span></td>
                     </tr>
                 </tbody>
             </table>
+            
+            <p style="font-size: 0.85rem; color: #666; margin-top: 1.5rem; text-align: center; line-height: 1.5;">
+                <strong>说明：</strong>以上对比基于公开资料和实际测试结果，仅供参考。具体功能和性能表现以各工具官方说明为准。<br>
+                我们致力于客观公正地展示产品特性，如有疑问欢迎通过GitHub Issues反馈。
+            </p>
+            
+            <div style="margin-top: 3rem;">
+                <div class="section-title">
+                    <h2>版本功能对比</h2>
+                    <p>选择最适合您需求的版本</p>
+                </div>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>功能</th>
+                            <th>免费版</th>
+                            <th>专业版 ¥9.9</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>基础格式支持 (DOCX, XLSX, PPTX, TXT)</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr>
+                            <td>虚拟滚动高性能渲染</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr>
+                            <td>多媒体文件名搜索</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>PDF文本和OCR支持</td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>邮件文件支持 (EML, MSG)</td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>通配符搜索 (*, ?)</td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>文件夹树结果导航</td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>多种界面主题</td>
+                            <td><span class="cross">✗</span> 仅现代蓝</td>
+                            <td><span class="check">✓</span> 四种主题</td>
+                        </tr>
+                        <tr>
+                            <td>源目录数量</td>
+                            <td>最多5个</td>
+                            <td>无限制</td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td>多设备激活</td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span> 1-6设备</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </section>
 
     <section class="cta">
         <div class="container">
-            <h2>立即开始使用</h2>
-            <p>免费版即可满足基本需求，专业版解锁更多高级功能。无需重新安装，购买许可证即可一键升级。</p>
-            <div class="hero-buttons">
-                <a href="download.html" class="btn btn-primary">免费下载</a>
-                <a href="purchase.html" class="btn btn-secondary">购买专业版</a>
+            <div class="cta-content">
+                <h2>立即体验文智搜</h2>
+                <p>免费版即可满足基本需求，专业版解锁更多高级功能。无需重新安装，购买许可证即可一键升级。</p>
+                <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px; margin: 2rem auto; max-width: 600px; backdrop-filter: blur(10px);">
+                    <div style="font-weight: bold; margin-bottom: 1rem; color: #f1c40f;">🎉 限时特惠</div>
+                    <div style="font-size: 1.1rem;">专业版原价 ¥49.9，现仅需 <span style="font-size: 1.5rem; font-weight: bold; color: #f1c40f;">¥9.9</span></div>
+                    <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;">永久授权，支持1-6设备，活动有限期</div>
+                </div>
+                <div class="hero-buttons">
+                    <a href="download.html" class="btn btn-primary">免费下载体验</a>
+                    <a href="purchase.html" class="btn btn-secondary">立即购买专业版</a>
+                </div>
             </div>
         </div>
     </section>
@@ -507,5 +5332,278 @@
             <p>&copy; 2023-2025 文智搜 版权所有 | <a href="privacy.html">隐私政策</a> | <a href="https://github.com/Azariasy/-wen-zhi-sou-website/issues" target="_blank">问题反馈 (GitHub Issues)</a></p>
         </div>
     </footer>
+
+    <style>
+        /* 横版快速搜索窗口样式 */
+        .hotkey-demo-horizontal {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 280px;
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .hotkey-flow {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .key-combo-horizontal {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            flex-shrink: 0;
+        }
+
+        .key-horizontal {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .key-plus-horizontal {
+            color: #666;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .flow-arrow {
+            color: #3498db;
+            font-size: 1.5rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .quick-window-horizontal {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 520px;
+            border: 1px solid #d0d0d0;
+            flex-shrink: 0;
+        }
+
+        .window-header-horizontal {
+            background: linear-gradient(135deg, #1e88e5 0%, #1976d2 100%);
+            color: white;
+            padding: 0.6rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .window-title-horizontal {
+            font-weight: 500;
+        }
+
+        .window-controls-horizontal {
+            display: flex;
+            gap: 0.3rem;
+        }
+
+        .control-horizontal {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .control-horizontal.minimize {
+            background: #f39c12;
+        }
+
+        .control-horizontal.close {
+            background: #e74c3c;
+        }
+
+        .window-content-horizontal {
+            padding: 1.2rem;
+            background: #fafbfc;
+        }
+
+        .search-section-horizontal {
+            margin-bottom: 1rem;
+        }
+
+        .search-bar-horizontal {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: white;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            border: 2px solid #e3f2fd;
+            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.1);
+        }
+
+        .search-input-horizontal {
+            flex: 1;
+            border: none;
+            background: none;
+            font-size: 0.9rem;
+            color: #2c3e50;
+            outline: none;
+            font-weight: 500;
+        }
+
+        .clear-btn-horizontal {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 0.2rem;
+            border-radius: 3px;
+        }
+
+        .clear-btn-horizontal:hover {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .results-section-horizontal {
+            margin-top: 1rem;
+        }
+
+        .result-item-horizontal {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            transition: all 0.2s ease;
+        }
+
+        .result-item-horizontal.selected {
+            background: #e3f2fd;
+            border: 1px solid #1976d2;
+            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.15);
+        }
+
+        .result-icon-horizontal {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .result-info-horizontal {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .result-title-horizontal {
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 0.85rem;
+            margin-bottom: 0.2rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .result-path-horizontal {
+            color: #666;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .open-btn-horizontal {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .open-btn-horizontal:hover {
+            background: #2980b9;
+        }
+
+        .status-bar-horizontal {
+            background: #f0f2f5;
+            padding: 0.8rem 1.2rem;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .status-text {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .status-shortcuts {
+            color: #666;
+            font-size: 0.7rem;
+        }
+
+        .main-window-btn {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .main-window-btn:hover {
+            background: #1565c0;
+        }
+
+        /* 确保所有feature-demo有一致的最小高度 */
+        .feature-demo {
+            min-height: 300px !important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .hotkey-flow {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .flow-arrow {
+                transform: rotate(90deg);
+            }
+
+            .quick-window-horizontal {
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+    </style>
 </body>
 </html> 
