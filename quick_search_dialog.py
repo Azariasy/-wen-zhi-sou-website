@@ -871,9 +871,9 @@ class QuickSearchDialog(QDialog):
         if hasattr(self, 'search_hint_label'):
             self.search_hint_label.setText("输入关键词后按回车键搜索")
         if hasattr(self, 'status_label'):
-        self.status_label.setText("准备就绪")
+            self.status_label.setText("准备就绪")
         if hasattr(self, 'results_header'):
-        self.results_header.setText("搜索结果")
+            self.results_header.setText("搜索结果")
     
     def _clear_search(self):
         """清空搜索"""
@@ -920,9 +920,9 @@ class QuickSearchDialog(QDialog):
     def keyPressEvent(self, event):
         """键盘事件处理（增强版本）"""
         if event.key() == Qt.Key_Escape:
-            print("🔑 快速搜索对话框：按下ESC键，关闭窗口")
+            print("🔑 快速搜索对话框：按下ESC键，隐藏窗口")
             event.accept()  # 确保事件被处理
-            self.close()
+            self.hide()     # 隐藏而不是关闭
             return
         elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
             if event.modifiers() == Qt.ControlModifier:
@@ -935,9 +935,9 @@ class QuickSearchDialog(QDialog):
                     self._on_search_enter()
                 else:
                     # 结果列表有焦点：打开选中的文件
-                current_item = self.results_list.currentItem()
+                    current_item = self.results_list.currentItem()
                     if current_item and hasattr(current_item, 'data') and current_item.data(Qt.UserRole):
-                    self._on_item_activated(current_item)
+                        self._on_item_activated(current_item)
         elif event.key() == Qt.Key_Down:
             # 下箭头：移动到结果列表
             if self.results_list.count() > 0:
@@ -992,7 +992,7 @@ class QuickSearchDialog(QDialog):
         if file_path:
             print(f"优化版快速搜索: 双击打开文件 '{file_path}'")
             self.open_file_signal.emit(file_path)
-            self.close()  # 打开文件后关闭对话框
+            self.hide()  # 打开文件后隐藏对话框
     
     def _on_item_activated(self, item):
         """处理激活事件（回车键）"""
@@ -1003,7 +1003,7 @@ class QuickSearchDialog(QDialog):
         if file_path:
             print(f"优化版快速搜索: 激活打开文件 '{file_path}'")
             self.open_file_signal.emit(file_path)
-            self.close()  # 打开文件后关闭对话框
+            self.hide()  # 打开文件后隐藏对话框
     
     def _on_main_window_button(self):
         """处理在主窗口中打开按钮"""
@@ -1011,12 +1011,12 @@ class QuickSearchDialog(QDialog):
         if search_text:
             print(f"优化版快速搜索: 在主窗口中打开搜索 '{search_text}'")
             self.open_main_window.emit(search_text)
-            self.close()
+            self.hide()
         else:
             # 即使没有搜索文本，也可以打开主窗口
             print("优化版快速搜索: 打开主窗口")
             self.open_main_window.emit("")
-            self.close()
+            self.hide()
     
     def _show_context_menu(self, position):
         """显示简化的右键菜单 - 突出最常用功能"""
@@ -1121,7 +1121,7 @@ class QuickSearchDialog(QDialog):
         """打开文件"""
         if file_path:
             self.open_file_signal.emit(file_path)
-            self.close()
+            self.hide()
     
     def _open_folder(self, file_path):
         """打开文件所在目录"""
@@ -1428,7 +1428,7 @@ class QuickSearchDialog(QDialog):
         if hasattr(self, 'search_icon_label'):
             # 根据主题调整图标
             # 所有主题都使用相同的搜索图标
-                self.search_icon_label.setText("🔍")
+            self.search_icon_label.setText("🔍")
     
     def _refresh_results_display(self):
         """刷新结果显示以应用新主题"""
@@ -1611,6 +1611,12 @@ class QuickSearchDialog(QDialog):
         """)
         
         msg_box.exec()
+
+    def closeEvent(self, event):
+        """重写关闭事件，隐藏窗口而不是关闭"""
+        print("🔒 快速搜索对话框：接收到关闭事件，隐藏窗口")
+        event.ignore()  # 忽略关闭事件
+        self.hide()     # 只是隐藏窗口
 
 
 # 简单测试代码

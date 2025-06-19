@@ -333,7 +333,6 @@ class TrayMainWindow(MainWindow):
                 print(f"通过_start_search_common触发搜索，范围: {scope_param}")
             else:
                 print("没有找到合适的搜索方法")
-                return []
             
             if not search_triggered:
                 return []
@@ -382,13 +381,13 @@ class TrayMainWindow(MainWindow):
                     search_completed = True
                     result_count = len(self.original_search_results) if self.original_search_results else 0
                     print(f"{'快捷搜索' if quick_search else '普通搜索'}：检测到新的original_search_results可用({result_count}个)，搜索完成（{elapsed*0.05:.2f}秒）")
-                                break
+                    break
                 elif table_has_results and search_not_in_progress:
                     results_available = True
                     search_completed = True
                     table_count = self.results_table.rowCount() if hasattr(self, 'results_table') else 0
                     print(f"{'快捷搜索' if quick_search else '普通搜索'}：检测到results_table有结果({table_count}个)且搜索不在进行中，搜索完成（{elapsed*0.05:.2f}秒）")
-                            break
+                    break
                 
                 # 定期输出进度（每1秒输出一次，减少日志噪音）
                 if elapsed % 20 == 0 and elapsed > 0:  # 20 * 0.05 = 1秒
@@ -436,7 +435,7 @@ class TrayMainWindow(MainWindow):
                 return results
             
             print(f"{'快捷搜索' if quick_search else '普通搜索'}：未找到任何结果")
-                return []
+            return []
                 
         except Exception as e:
             print(f"轻量级搜索执行失败: {str(e)}")

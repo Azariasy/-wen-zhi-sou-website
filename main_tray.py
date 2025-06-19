@@ -50,10 +50,31 @@ def main():
     
     # --- 读取启动设置 ---
     settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
-    startup_minimized = settings.value("startup/minimized", False, type=bool)
     
-    # 如果没有指定命令行参数，则使用设置中的配置
-    should_minimize = args.minimized or startup_minimized
+    # 检测是否为首次启动
+    is_first_run = not settings.value("app/has_run_before", False, type=bool)
+    
+    # 启动逻辑优化：区分开机自启动和手动启动
+    if args.minimized:
+        # 命令行指定了--minimized参数（通常是开机自启动）
+        print("检测到开机自启动或命令行最小化启动，将隐藏主窗口")
+        should_minimize = True
+        # 如果是首次启动但通过开机自启动，仍然设置标记
+        if is_first_run:
+            settings.setValue("app/has_run_before", True)
+    elif is_first_run:
+        # 首次手动启动
+        print("检测到首次手动启动，将显示主窗口")
+        settings.setValue("app/has_run_before", True)
+        should_minimize = False  # 首次手动启动总是显示主窗口
+    else:
+        # 非首次手动启动，根据设置决定
+        startup_minimized = settings.value("startup/minimized", False, type=bool)
+        should_minimize = startup_minimized
+        if should_minimize:
+            print("非首次启动且设置为启动时最小化，将隐藏主窗口")
+        else:
+            print("非首次启动且未设置启动时最小化，将显示主窗口")
     
     # --- 配置高DPI支持 ---
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)

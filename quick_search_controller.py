@@ -180,8 +180,8 @@ class QuickSearchController(QObject):
             initial_query: 初始搜索关键词，可选
         """
         try:
-            # 如果对话框不存在或已关闭，创建新的
-            if not self.dialog or not self.dialog.isVisible():
+            # 如果对话框不存在，创建新的
+            if not self.dialog:
                 from quick_search_dialog import QuickSearchDialog
                 self.dialog = QuickSearchDialog()
                 

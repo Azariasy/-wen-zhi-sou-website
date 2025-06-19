@@ -20,23 +20,21 @@ a = Analysis(
 
         # 蓝色主题图标
         ('checkmark_blue.png', '.'),
-        ('down_arrow_blue.png', '.'),
         ('radio_checked_blue.png', '.'),
         
         # 红色主题图标 - 替换绿色主题
         ('checkmark_red.png', '.'),
-        ('down_arrow_red.png', '.'), 
         ('radio_checked_red.png', '.'),
         
         # 紫色主题图标
         ('checkmark_purple.png', '.'),
-        ('down_arrow_purple.png', '.'),
         ('radio_checked_purple.png', '.'),
         
         # 橙色主题图标
         ('checkmark_orange.png', '.'),
-        ('down_arrow_orange.png', '.'),
         ('radio_checked_orange.png', '.'),
+        
+
         
         # 更新检查相关文件
         ('docs/latest_version.json', 'docs'),
@@ -48,6 +46,20 @@ a = Analysis(
         ('device_manager_dialog.py', '.'),
         ('license_manager.py', '.'),
         ('file_version_info.txt', '.'),  # 添加版本信息文件
+        ('main_window_tray.py', '.'),
+        ('tray_app.py', '.'),
+        ('hotkey_manager.py', '.'),
+        ('hotkey_settings.py', '.'),
+        ('startup_settings.py', '.'),
+        ('dynamic_tray_menu.py', '.'),
+        ('quick_search_dialog.py', '.'),
+        ('quick_search_controller.py', '.'),
+        ('quick_filename_search.py', '.'),
+        ('theme_manager.py', '.'),
+        ('tray_settings.py', '.'),
+        ('gui_optimization_settings.py', '.'),
+        ('path_utils.py', '.'),
+        ('file_processing_utils.py', '.'),
     ],
     hiddenimports=[
         # 中文分词
@@ -97,6 +109,20 @@ a = Analysis(
         'PySide6.QtWidgets',
         'PySide6.QtNetwork',
         'PySide6.QtUiTools',
+        
+        # 热键和系统相关
+        'pynput',
+        'pynput.keyboard',
+        'pynput.mouse',
+        'psutil',
+        
+        # 应用程序模块
+        'main_window_tray',
+        'tray_app',
+        'hotkey_manager',
+        'quick_search_dialog',
+        'quick_search_controller',
+        'theme_manager',
     ],
     hookspath=[],
     hooksconfig={},
