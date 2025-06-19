@@ -871,9 +871,9 @@ class QuickSearchDialog(QDialog):
         if hasattr(self, 'search_hint_label'):
             self.search_hint_label.setText("输入关键词后按回车键搜索")
         if hasattr(self, 'status_label'):
-            self.status_label.setText("准备就绪")
+        self.status_label.setText("准备就绪")
         if hasattr(self, 'results_header'):
-            self.results_header.setText("搜索结果")
+        self.results_header.setText("搜索结果")
     
     def _clear_search(self):
         """清空搜索"""
@@ -935,9 +935,9 @@ class QuickSearchDialog(QDialog):
                     self._on_search_enter()
                 else:
                     # 结果列表有焦点：打开选中的文件
-                    current_item = self.results_list.currentItem()
+                current_item = self.results_list.currentItem()
                     if current_item and hasattr(current_item, 'data') and current_item.data(Qt.UserRole):
-                        self._on_item_activated(current_item)
+                    self._on_item_activated(current_item)
         elif event.key() == Qt.Key_Down:
             # 下箭头：移动到结果列表
             if self.results_list.count() > 0:
@@ -1428,7 +1428,7 @@ class QuickSearchDialog(QDialog):
         if hasattr(self, 'search_icon_label'):
             # 根据主题调整图标
             # 所有主题都使用相同的搜索图标
-            self.search_icon_label.setText("🔍")
+                self.search_icon_label.setText("🔍")
     
     def _refresh_results_display(self):
         """刷新结果显示以应用新主题"""
