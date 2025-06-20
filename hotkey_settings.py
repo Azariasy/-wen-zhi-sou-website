@@ -7,7 +7,7 @@ import sys
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, 
                               QGroupBox, QPushButton, QMessageBox, QLabel,
                               QKeySequenceEdit, QTableWidget, QTableWidgetItem,
-                              QHeaderView, QComboBox, QWidget)
+                              QHeaderView, QComboBox, QWidget, QApplication)
 from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QKeySequence
 
@@ -21,8 +21,8 @@ class HotkeySettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("热键设置")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
+        self.setMinimumWidth(600)  # 增加最小宽度
+        self.setMinimumHeight(450)  # 增加最小高度
         
         # 初始化设置对象
         self.settings = QSettings("YourOrganizationName", "DocumentSearchToolPySide")
@@ -67,9 +67,16 @@ class HotkeySettingsDialog(QDialog):
         
         # 设置表格列宽
         header = self.hotkey_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)  # 功能列自适应
+        header.setSectionResizeMode(1, QHeaderView.Fixed)    # 热键列固定宽度
+        header.setSectionResizeMode(2, QHeaderView.Fixed)    # 启用列固定宽度
+        
+        # 设置固定列宽
+        self.hotkey_table.setColumnWidth(1, 150)  # 热键列宽度150px，足够显示Ctrl+Alt+Q
+        self.hotkey_table.setColumnWidth(2, 60)   # 启用列宽度60px
+        
+        # 设置表格行高，确保与热键输入框高度匹配
+        self.hotkey_table.verticalHeader().setDefaultSectionSize(36)  # 行高36px，比输入框高4px提供边距
         
         # 设置表格行为
         self.hotkey_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -136,6 +143,10 @@ class HotkeySettingsDialog(QDialog):
             # 热键输入
             hotkey_edit = QKeySequenceEdit()
             hotkey_edit.setToolTip("点击此处输入新的热键组合")
+            hotkey_edit.setMinimumWidth(140)  # 设置最小宽度确保完整显示
+            hotkey_edit.setMaximumWidth(140)  # 设置最大宽度保持一致
+            hotkey_edit.setMinimumHeight(32)  # 设置最小高度确保文字完整显示
+            hotkey_edit.setMaximumHeight(32)  # 设置最大高度保持一致
             self.hotkey_table.setCellWidget(row, 1, hotkey_edit)
             
             # 启用复选框

@@ -6,6 +6,7 @@
 
 
 
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -800,6 +801,15 @@ class VirtualResultsModel(QAbstractListModel):
                 </div>
                 '''
                 
+            elif item_type == 'welcome_state':
+                # 欢迎状态 - 显示初始状态信息
+                return f'''
+                <div style="text-align: center; padding: 40px; color: #6c757d;">
+                    <div style="font-size: 24px; margin-bottom: 20px;">🔍</div>
+                    <div style="font-size: 16px; margin-bottom: 10px;">文智搜已准备就绪</div>
+                    <div style="font-size: 14px;">请输入搜索关键词开始搜索</div>
+                </div>
+                '''
             else:
                 return f'<div style="margin: 10px; padding: 10px;">未知项目类型: {item_type}</div>'
                 
@@ -2171,34 +2181,29 @@ class SettingsDialog(QDialog):
         
         # 定义支持的文件类型
         supported_types = {
-            # 文档类型
+            # === 基础版文件类型 ===
+            # 文档类型（按使用频率排序）
             'txt': {'display': '📝 文本文件 (.txt)', 'pro_feature': None},
             'docx': {'display': '📄 Word文档 (.docx)', 'pro_feature': None},
             'xlsx': {'display': '📊 Excel表格 (.xlsx)', 'pro_feature': None},
             'pptx': {'display': '📺 PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
-            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
             'html': {'display': '🌐 HTML网页 (.html, .htm)', 'pro_feature': None},
             'rtf': {'display': '📄 RTF富文本 (.rtf)', 'pro_feature': None},
+            # 压缩文件
+            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
+            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
+            
+            # === 专业版文件类型 ===
+            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
             'md': {'display': '📝 Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
             'eml': {'display': '📧 电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
             'msg': {'display': '📧 Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
-            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
-            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
-
-            # 多媒体文件类型（仅文件名索引）
+            
+            # === 专业版多媒体文件类型（仅文件名索引）===
             'mp4': {'display': '🎬 视频文件 (.mp4, .mkv, .avi等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
             'mp3': {'display': '🎵 音频文件 (.mp3, .wav, .flac等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
             'jpg': {'display': '🖼️ 图片文件 (.jpg, .png, .gif等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
         }
-        
-        # 将文件类型分为基础版和专业版两组
-        free_types = []
-        pro_types = []
-        for type_key, type_info in supported_types.items():
-            if type_info['pro_feature'] is None:
-                free_types.append((type_key, type_info))
-            else:
-                pro_types.append((type_key, type_info))
         
         # 创建复选框网格布局
         grid_layout = QGridLayout(scroll_widget)
@@ -2209,50 +2214,58 @@ class SettingsDialog(QDialog):
         self.file_type_checkboxes = {}
         self.file_type_modes = {}
         
-        # 添加基础版文件类型
+        # 按照定义顺序添加所有文件类型（保持排序）
         row = 0
-        for i, (type_key, type_info) in enumerate(free_types):
-            type_layout = QHBoxLayout()
-            type_layout.setSpacing(8)
-
-            # 复选框
-            checkbox = QCheckBox(type_info['display'])
-            checkbox.setChecked(True)
-            self.file_type_checkboxes[type_key] = checkbox
-
-            # 索引模式选择下拉框
-            mode_combo = QComboBox()
-            mode_combo.addItem("完整索引", "full")
-            mode_combo.addItem("仅文件名", "filename_only")
-
-            # 检查是否为仅文件名类型（多媒体文件）
-            if type_info.get('filename_only', False):
-                mode_combo.setCurrentIndex(1)  # 设置为"仅文件名"
-                mode_combo.setEnabled(False)   # 禁用选择
-                mode_combo.setToolTip("多媒体文件只支持文件名索引")
-            else:
-                mode_combo.setCurrentIndex(0)  # 默认为"完整索引"
-
-            mode_combo.setMinimumWidth(85)
-            mode_combo.setMaximumWidth(85)
-            mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
-            self.file_type_modes[type_key] = mode_combo
-
-            type_layout.addWidget(checkbox)
-            type_layout.addStretch()
-            type_layout.addWidget(mode_combo)
-
-            type_widget = QWidget()
-            type_widget.setLayout(type_layout)
-            grid_layout.addWidget(type_widget, row, 0)
-
-            checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
-            row += 1
+        current_section = None
         
-        # 添加专业版文件类型
-        for type_key, type_info in pro_types:
-            pro_feature = type_info['pro_feature']
-            feature_available = self.license_manager.is_feature_available(pro_feature)
+        for type_key, type_info in supported_types.items():
+            # 检测分组并添加分组标题
+            pro_feature = type_info.get('pro_feature')
+            is_multimedia = type_info.get('filename_only', False)
+            
+            if pro_feature is None and current_section != 'basic':
+                # 基础版分组
+                if current_section is not None:
+                    # 添加间距
+                    spacer_widget = QWidget()
+                    spacer_widget.setFixedHeight(8)
+                    grid_layout.addWidget(spacer_widget, row, 0)
+                    row += 1
+                
+                section_label = QLabel("=== 基础版文件类型 ===")
+                section_label.setStyleSheet("font-weight: bold; color: #2E7D32; font-size: 11px; padding: 4px;")
+                grid_layout.addWidget(section_label, row, 0)
+                row += 1
+                current_section = 'basic'
+                
+            elif pro_feature is not None and not is_multimedia and current_section != 'pro':
+                # 专业版分组
+                spacer_widget = QWidget()
+                spacer_widget.setFixedHeight(8)
+                grid_layout.addWidget(spacer_widget, row, 0)
+                row += 1
+                
+                section_label = QLabel("=== 专业版文件类型 ===")
+                section_label.setStyleSheet("font-weight: bold; color: #1976D2; font-size: 11px; padding: 4px;")
+                grid_layout.addWidget(section_label, row, 0)
+                row += 1
+                current_section = 'pro'
+                
+            elif is_multimedia and current_section != 'multimedia':
+                # 专业版多媒体分组
+                spacer_widget = QWidget()
+                spacer_widget.setFixedHeight(8)
+                grid_layout.addWidget(spacer_widget, row, 0)
+                row += 1
+                
+                section_label = QLabel("=== 专业版多媒体文件类型（仅文件名索引）===")
+                section_label.setStyleSheet("font-weight: bold; color: #7B1FA2; font-size: 11px; padding: 4px;")
+                grid_layout.addWidget(section_label, row, 0)
+                row += 1
+                current_section = 'multimedia'
+            
+            # 创建文件类型复选框
+            feature_available = pro_feature is None or self.license_manager.is_feature_available(pro_feature)
             
             type_layout = QHBoxLayout()
             type_layout.setSpacing(8)
@@ -2265,6 +2278,8 @@ class SettingsDialog(QDialog):
                 checkbox.setEnabled(False)
                 checkbox.setToolTip(f"此文件类型需要专业版授权才能使用")
                 checkbox.setStyleSheet("color: #999;")
+            
+            self.file_type_checkboxes[type_key] = checkbox
 
             # 索引模式选择下拉框
             mode_combo = QComboBox()
@@ -2285,7 +2300,6 @@ class SettingsDialog(QDialog):
             mode_combo.setMinimumWidth(85)
             mode_combo.setMaximumWidth(85)
             mode_combo.setStyleSheet("QComboBox { font-size: 11px; }")
-
             self.file_type_modes[type_key] = mode_combo
 
             type_layout.addWidget(checkbox)
@@ -2299,14 +2313,14 @@ class SettingsDialog(QDialog):
                 pro_label.setToolTip("专业版功能")
                 type_layout.addWidget(pro_label)
 
-            row += 1
+            type_widget = QWidget()
             type_widget.setLayout(type_layout)
             grid_layout.addWidget(type_widget, row, 0)
 
             if feature_available:
                 checkbox.stateChanged.connect(self._update_select_all_checkbox_state)
             
-            self.file_type_checkboxes[type_key] = checkbox
+            row += 1
         
         file_types_group_layout.addWidget(scroll_area)
         file_types_layout.addWidget(file_types_group)
@@ -2710,18 +2724,25 @@ class SettingsDialog(QDialog):
 
         # 为所有文件类型设置模式（多媒体文件强制为仅文件名，其他使用保存的设置）
         supported_types = {
+            # === 基础版文件类型 ===
+            # 文档类型（按使用频率排序）
             'txt': {'display': '📝 文本文件 (.txt)', 'pro_feature': None},
             'docx': {'display': '📄 Word文档 (.docx)', 'pro_feature': None},
             'xlsx': {'display': '📊 Excel表格 (.xlsx)', 'pro_feature': None},
             'pptx': {'display': '📺 PowerPoint演示文稿 (.pptx)', 'pro_feature': None},
-            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
             'html': {'display': '🌐 HTML网页 (.html, .htm)', 'pro_feature': None},
             'rtf': {'display': '📄 RTF富文本 (.rtf)', 'pro_feature': None},
+            # 压缩文件
+            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
+            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
+            
+            # === 专业版文件类型 ===
+            'pdf': {'display': '📋 PDF文档 (.pdf)', 'pro_feature': Features.PDF_SUPPORT},
             'md': {'display': '📝 Markdown文档 (.md)', 'pro_feature': Features.MARKDOWN_SUPPORT},
             'eml': {'display': '📧 电子邮件 (.eml)', 'pro_feature': Features.EMAIL_SUPPORT},
             'msg': {'display': '📧 Outlook邮件 (.msg)', 'pro_feature': Features.EMAIL_SUPPORT},
-            'zip': {'display': '🗜️ ZIP压缩包 (.zip)', 'pro_feature': None},
-            'rar': {'display': '🗜️ RAR压缩包 (.rar)', 'pro_feature': None},
+            
+            # === 专业版多媒体文件类型（仅文件名索引）===
             'mp4': {'display': '🎬 视频文件 (.mp4, .mkv, .avi等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
             'mp3': {'display': '🎵 音频文件 (.mp3, .wav, .flac等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
             'jpg': {'display': '🖼️ 图片文件 (.jpg, .png, .gif等)', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'filename_only': True},
@@ -4121,27 +4142,30 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         icon_label.setStyleSheet("font-size: 14px; padding: 0px;")
         main_layout.addWidget(icon_label)
 
-        # 创建文件类型定义（紧凑版本）
+        # 创建文件类型定义（按基础版和专业版排序）
         file_type_configs = [
-            # 文档类型
-            ('pdf', {'display': 'PDF', 'pro_feature': Features.PDF_SUPPORT, 'color': '#dc3545'}),
-            ('docx', {'display': 'Word', 'pro_feature': None, 'color': '#2b5797'}),
+            # === 基础版文件类型 ===
             ('txt', {'display': 'TXT', 'pro_feature': None, 'color': '#6c757d'}),
+            ('docx', {'display': 'Word', 'pro_feature': None, 'color': '#2b5797'}),
             ('xlsx', {'display': 'Excel', 'pro_feature': None, 'color': '#107c41'}),
             ('pptx', {'display': 'PPT', 'pro_feature': None, 'color': '#d83b01'}),
             ('html', {'display': 'HTML', 'pro_feature': None, 'color': '#e34c26'}),
-            ('md', {'display': 'MD', 'pro_feature': Features.MARKDOWN_SUPPORT, 'color': '#333'}),
+            ('rtf', {'display': 'RTF', 'pro_feature': None, 'color': '#8b4513'}),
+            ('zip', {'display': 'ZIP', 'pro_feature': None, 'color': '#495057'}),
+            ('rar', {'display': 'RAR', 'pro_feature': None, 'color': '#495057'}),
             # 分隔符
             ('separator1', {'type': 'separator'}),
-            # 多媒体类型
+            # === 专业版文件类型 ===
+            ('pdf', {'display': 'PDF', 'pro_feature': Features.PDF_SUPPORT, 'color': '#dc3545'}),
+            ('md', {'display': 'MD', 'pro_feature': Features.MARKDOWN_SUPPORT, 'color': '#333'}),
+            ('eml', {'display': '📧EML', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+            ('msg', {'display': '📧MSG', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+            # 分隔符
+            ('separator2', {'type': 'separator'}),
+            # === 专业版多媒体文件类型 ===
             ('mp4', {'display': '🎬视频', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#6f42c1', 'multimedia': ['mp4', 'mkv', 'avi', 'wmv', 'mov', 'flv', 'webm', 'm4v']}),
             ('mp3', {'display': '🎵音频', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#fd7e14', 'multimedia': ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']}),
             ('jpg', {'display': '🖼️图片', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#20c997', 'multimedia': ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'svg']}),
-            # 分隔符
-            ('separator2', {'type': 'separator'}),
-            # 邮件类型
-            ('eml', {'display': '📧EML', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
-            ('msg', {'display': '📧MSG', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
         ]
 
         # 处理函数

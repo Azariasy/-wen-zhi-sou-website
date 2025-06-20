@@ -110,17 +110,21 @@ class LicenseDialog(QDialog):
         
         features_list = QLabel(
             "<ul>"
-            "<li>PDF文本和OCR支持</li>"
-            "<li>Markdown文件支持</li>"
-            "<li>邮件文件支持 (EML, MSG)</li>"
-            "<li>压缩包内容支持 (ZIP, RAR)</li>"
-            "<li>通配符搜索 (*, ?)</li>"
-            "<li>文件夹树结果导航</li>"
-            "<li>多种界面主题 (现代蓝、现代紫、现代红、现代橙)</li>"
-            "<li>无限制源目录数量</li>"
-            "<li>优先技术支持</li>"
-            "<li>多设备激活</li>"
+            "<li><b>📋 PDF文档支持</b> - PDF文本提取和OCR识别</li>"
+            "<li><b>📝 Markdown文件支持</b> - 完整的MD文档索引和搜索</li>"
+            "<li><b>📧 邮件文件支持</b> - EML和MSG邮件文件解析</li>"
+            "<li><b>🎬 多媒体文件索引</b> - 视频、音频、图片文件名搜索</li>"
+            "<li><b>🔍 高级搜索功能</b> - 通配符搜索 (*, ?) 和精确匹配</li>"
+            "<li><b>🗂️ 文件夹树导航</b> - 可视化结果分组和导航</li>"
+            "<li><b>🎨 多种界面主题</b> - 现代蓝、现代紫、现代红、现代橙</li>"
+            "<li><b>📁 无限源目录</b> - 不限制索引目录数量</li>"
+            "<li><b>⚡ 优先技术支持</b> - 专业版用户专属客服</li>"
+            "<li><b>💻 多设备激活</b> - 1台/3台/6台设备选择</li>"
             "</ul>"
+            "<p style='color: #666; font-size: 12px; margin-top: 15px;'>"
+            "<b>基础版包含：</b>TXT、Word、Excel、PPT、HTML、RTF、ZIP、RAR文件支持<br>"
+            "<b>专业版独有：</b>PDF、Markdown、邮件文件、多媒体文件名索引等高级功能"
+            "</p>"
         )
         features_list.setTextFormat(Qt.RichText)
         features_layout.addWidget(features_list)
