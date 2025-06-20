@@ -17,4 +17,5 @@ qdarkstyle
 pdf2image
 pytesseract
 rarfile
-tqdm 
+tqdm
+keyboard 

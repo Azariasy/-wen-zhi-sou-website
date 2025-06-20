@@ -30,6 +30,9 @@ class TrayMainWindow(MainWindow):
         
         # 创建轻量级搜索控制器
         self.quick_search_controller = QuickSearchController(self)
+        
+        # 连接快捷搜索控制器的信号
+        self.quick_search_controller.show_main_window_signal.connect(self._handle_show_main_window_from_quick_search)
     
     def _add_tray_settings_menu(self):
         """添加托盘设置菜单 - 简化版本"""
@@ -71,14 +74,23 @@ class TrayMainWindow(MainWindow):
         # 读取托盘行为设置
         close_to_tray = self.settings.value("tray/close_to_tray", True, type=bool)
         
-        # 如果设置了强制退出或关闭时不最小化到托盘，则正常关闭
-        if self.force_quit or not close_to_tray:
+        # 检查托盘图标是否可用
+        tray_available = (hasattr(self, 'tray_icon') and 
+                         self.tray_icon is not None and 
+                         self.tray_icon.isVisible())
+        
+        print(f"关闭事件: force_quit={getattr(self, 'force_quit', False)}, close_to_tray={close_to_tray}, tray_available={tray_available}")
+        
+        # 如果设置了强制退出、关闭时不最小化到托盘，或托盘图标不可用，则正常关闭
+        if self.force_quit or not close_to_tray or not tray_available:
+            print("正常关闭程序...")
             # 调用原closeEvent进行清理
             self._shutdown_threads()
             super().closeEvent(event)
             return
         
         # 否则，将窗口最小化到托盘
+        print("最小化到托盘...")
         event.ignore()  # 忽略原始关闭事件
         self.hide()     # 隐藏窗口
         
@@ -226,6 +238,45 @@ class TrayMainWindow(MainWindow):
                 print(f"更新托盘菜单时出错: {e}")
                 
         self.statusBar().showMessage("热键设置已更新并立即生效", 3000)
+    
+    def _handle_show_main_window_from_quick_search(self, query):
+        """处理从快捷搜索打开主窗口的信号"""
+        try:
+            print(f"快捷搜索请求打开主窗口: '{query}'")
+            
+            # 关闭快捷搜索窗口
+            if hasattr(self, 'quick_search_controller') and self.quick_search_controller:
+                self.quick_search_controller.hide_quick_search()
+                print("已关闭快捷搜索窗口")
+            
+            # 显示并激活主窗口
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()  # 确保窗口在最前面
+            
+            # 如果有搜索查询，设置到搜索框并执行搜索
+            if query and hasattr(self, 'search_line_edit'):
+                self.search_line_edit.setText(query)
+                
+                # 设置搜索范围为文件名搜索（与快捷搜索保持一致）
+                if hasattr(self, 'scope_combo'):
+                    # 查找文件名搜索选项
+                    for i in range(self.scope_combo.count()):
+                        option_text = self.scope_combo.itemText(i).lower()
+                        if "文件名" in option_text or "filename" in option_text:
+                            self.scope_combo.setCurrentIndex(i)
+                            print(f"设置主窗口搜索范围为文件名搜索 (索引: {i})")
+                            break
+                
+                # 执行搜索
+                if hasattr(self, 'start_search_slot'):
+                    self.start_search_slot()
+                    print(f"已在主窗口中执行搜索: {query}")
+            
+        except Exception as e:
+            print(f"处理快捷搜索打开主窗口时出错: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def show_quick_search_dialog(self, initial_query=None):
         """显示轻量级搜索对话框

@@ -3238,6 +3238,756 @@ def create_button_style(color_type='PRIMARY'):
     
     return create_theme_based_button_style(new_color_type, current_theme)
 
+class MainWindow(QMainWindow):  # Changed base class to QMainWindow
+    # Signal to trigger indexing in the worker thread
+    # --- MODIFIED: Add file_types_to_index parameter ---
+    startIndexingSignal = Signal(list, str, bool, int, int, object) # source_dirs, index_dir, enable_ocr, timeout, txt_limit_kb, file_types_to_index
+    # ---------------------------------------------------------
+    # Signal to trigger search in the worker thread (add types for size, date, file type, and case sensitivity)
+    startSearchSignal = Signal(str, str, object, object, object, object, object, str, bool, str, object) # Added object for search_dirs
+    # --- ADDED: Signal for update check --- 
+    startUpdateCheckSignal = Signal(str, str) # current_version, update_url
+    # ----------------------------------------
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("文智搜 (PySide6)")
+        self.setMinimumSize(600, 450) # ADDED: Set a minimum window size
+        
+        # --- 设置窗口图标 ---
+        try:
+            icon_path = get_resource_path("app_icon.ico")
+            self.setWindowIcon(QIcon(icon_path))
+        except Exception as e:
+            print(f"设置窗口图标时发生错误: {e}")
+        # -------------------
+
+        # --- Initialize Config (using QSettings) --- 
+        self.settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
+        
+        # --- 初始化许可证管理器（放在所有UI元素创建之前) ---
+        self.license_manager = get_license_manager()
+        
+        self.MAX_HISTORY_ITEMS = 10 # Max number of search history items
+        self.worker_thread = None # Initialize worker_thread to None
+        self.worker = None
+        self.search_results = [] # Store current search results (Displayed/Filtered)
+        # --- ADD MISSING INITIALIZATIONS --- 
+        self.original_search_results = [] # Stores results directly from backend before filtering/sorting
+        self.is_busy = False # Flag to prevent concurrent operations
+        self.collapse_states = {} # Stores {key: is_collapsed (bool)} for result display
+        self.blocking_filter_update = False # Flag to temporarily block filter updates
+        # ----------------------------------
+        self.current_sort_key = 'score' # Default sort key
+        self.current_sort_descending = True # Default sort order
+        self.last_search_scope = 'fulltext' # ADDED: Store last search scope, default to fulltext
+        self.skipped_files_dialog = None # ADDED: Initialize skipped files dialog instance
+        
+        # --- 添加文件夹树与搜索结果的过滤变量 ---
+        self.filtered_by_folder = False  # 是否按文件夹进行了过滤
+        self.current_filter_folder = None  # 当前过滤的文件夹路径
+        # ---------------------------------------
+        
+        # --- 添加索引目录搜索变量 ---
+        self.search_directories = []  # 存储用户选择的搜索目录
+        self.index_directories_dialog = None  # 索引目录对话框
+        # ---------------------------
+        
+        # --- 添加防抖搜索功能变量 ---
+        self.search_debounce_timer = QTimer()
+        self.search_debounce_timer.setSingleShot(True)
+        self.debounce_delay = 300  # 300毫秒防抖延迟
+        self.min_search_length = 2  # 最小搜索长度
+        self.instant_search_enabled = False  # 即时搜索默认禁用
+        self.last_search_text = ""  # 上次搜索文本
+        # ---------------------------
+        
+        # --- 添加分组功能变量 ---
+        self.grouping_enabled = False  # 分组功能默认禁用
+        self.current_grouping_mode = 'none'  # 当前分组模式
+        self.group_data = {}  # 分组数据
+        self.group_collapse_states = {}  # 分组折叠状态
+        # -------------------------
+        
+        # --- 添加查看方式功能变量 ---
+        self.current_view_mode = 0  # 默认为列表视图
+        # -------------------------
+        
+
+        
+        # --- 即时搜索和防抖功能初始化 ---
+        self.instant_search_enabled = True  # 默认启用即时搜索
+        self.min_search_length = 2  # 最小搜索长度
+        self.debounce_delay = 500   # 防抖延迟（毫秒）
+        self.last_search_text = ""  # 上次搜索文本
+        self._setting_text_from_history = False  # 标志：是否正在从历史记录设置文本
+        self._history_selection_in_progress = False  # 标志：历史记录选择进行中
+        
+        # 创建防抖计时器
+        self.search_debounce_timer = QTimer()
+        self.search_debounce_timer.setSingleShot(True)
+        self.search_debounce_timer.timeout.connect(self._perform_debounced_search)
+        # --------------------------------------------
+
+        # --- 主题管理系统初始化 ---
+        self.current_theme = "现代蓝"  # 保持兼容性
+        self.theme_manager = ThemeManager("现代蓝")  # 创建统一主题管理器
+        # ---------------------------
+
+        # --- Central Widget and Main Layout ---
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        
+        # --- 移动操作按钮到搜索框上方 ---
+        # --- Action Buttons (移至搜索框上方) ---
+        action_layout = self._create_action_buttons()
+        main_layout.addLayout(action_layout)
+        
+        # 添加水平分隔线增强视觉分隔
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        main_layout.addWidget(separator)
+        
+        # --- Search Bar ---
+        search_bar_layout = self._create_search_bar()
+        main_layout.addLayout(search_bar_layout)
+
+        # --- Filters ---
+        # 移除文件大小筛选条件
+        # 移除修改日期筛选条件
+        view_mode_layout = self._create_view_mode_bar() # 整合排序和分组功能
+        main_layout.addLayout(view_mode_layout)
+        type_filter_layout = self._create_type_filter_bar() # Assume helper exists
+        main_layout.addLayout(type_filter_layout)
+        
+        # --- 不再需要在此处添加操作按钮 ---
+        # --- Action Buttons ---
+        # action_layout = self._create_action_buttons() # Assume helper exists
+        # main_layout.addLayout(action_layout)
+
+        # --- 创建水平分隔器，添加文件夹树视图和搜索结果 ---
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        # 设置分隔器手柄样式
+        self.main_splitter.setHandleWidth(5)
+        self.main_splitter.setChildrenCollapsible(False)
+        
+        # 创建左侧容器（文件夹树及其标题）
+        left_container = QWidget()
+        left_layout = QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        
+        # 创建右侧容器（搜索结果及其标题）
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+        
+        # 添加左侧标题和文件夹树
+        left_title = QLabel("文件夹结构")
+        left_title.setAlignment(Qt.AlignCenter)
+        left_title.setStyleSheet("background-color: #F0F0F0; padding: 5px;")
+        self.folder_tree = FolderTreeWidget(title_visible=False)  # 不在内部显示标题，由外部控制
+        
+        left_layout.addWidget(left_title)
+        left_layout.addWidget(self.folder_tree)
+        
+        # 添加右侧标题和搜索结果
+        right_title = QLabel("搜索结果")
+        right_title.setAlignment(Qt.AlignCenter)
+        right_title.setStyleSheet("background-color: #F0F0F0; padding: 5px;")
+        
+        # 添加搜索警告标签（结果截断提示）
+        self.search_warning_label = QLabel()
+        self.search_warning_label.setVisible(False)  # 默认隐藏
+        self.search_warning_label.setWordWrap(True)  # 允许文字换行
+        self.search_warning_label.setStyleSheet("""
+            QLabel {
+                background-color: #FFF3CD;
+                color: #856404;
+                border: 1px solid #FFEAA7;
+                border-radius: 4px;
+                padding: 8px;
+                margin: 4px;
+                font-weight: bold;
+            }
+        """)
+        
+        # === 创建搜索结果显示区域 - 统一使用虚拟滚动 ===
+        # 创建虚拟滚动组件
+        self.virtual_results_model = VirtualResultsModel(self)
+        self.virtual_results_view = VirtualResultsView(self)
+        self.virtual_results_view.setModel(self.virtual_results_model)
+        self.virtual_results_view.setStyleSheet("border: 1px solid #D0D0D0;")
+        
+        # 直接使用虚拟滚动视图，统一的搜索结果显示
+        self.results_view = self.virtual_results_view
+        
+        right_layout.addWidget(right_title)
+        right_layout.addWidget(self.search_warning_label)  # 添加警告标签
+        right_layout.addWidget(self.results_view)
+        
+        # 将两个容器添加到分隔器
+        self.main_splitter.addWidget(left_container)
+        self.main_splitter.addWidget(right_container)
+        
+        # 设置初始分隔比例 (文件夹树:搜索结果 = 1:3)
+        self.main_splitter.setSizes([200, 600])
+        
+        # 将分隔器添加到主布局
+        main_layout.addWidget(self.main_splitter, 1)
+        # ----------------------------------------------
+
+        # --- Status Bar ---
+        self._setup_status_bar() # Call helper
+
+        # --- Create Menubar --- 
+        self._create_menubar()
+
+        # --- 更新菜单和功能可用性（menubar创建后执行） ---
+        self._update_pro_menu()
+        self._update_feature_availability()
+        
+        # --- Setup Worker Thread --- 
+        self._setup_worker_thread()
+
+        # --- Setup Connections (AFTER UI Elements Created) ---
+        self._setup_connections() # Setup AFTER all UI elements are created
+
+        # --- Restore Window Geometry --- 
+        # 直接在这里实现窗口几何恢复，而不是调用方法
+        geometry = self.settings.value("windowGeometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+        
+        # --- 检查文件夹树功能是否可用 ---
+        folder_tree_available = self.license_manager.is_feature_available(Features.FOLDER_TREE)
+        if hasattr(self, 'main_splitter') and hasattr(self, 'folder_tree'):
+            # 获取主分隔器中的左侧窗口小部件（应该是包含文件夹树的容器）
+            left_container = self.main_splitter.widget(0)
+            
+            if left_container:
+                left_container.setVisible(folder_tree_available)
+                
+                # 调整分隔器大小
+                if folder_tree_available:
+                    # 如果显示文件夹树，设置分隔器位置为1/4处
+                    self.main_splitter.setSizes([200, 600])
+                else:
+                    # 如果不显示文件夹树，将宽度设置为0，让右侧搜索结果占满宽度
+                    self.main_splitter.setSizes([0, self.main_splitter.width()])
+        # ---------------------------------------
+        
+        # --- Apply Initial Settings (AFTER UI Elements Created) ---
+        self.apply_theme(self.settings.value("ui/theme", "系统默认"))
+        
+        # 确保下拉箭头图标正确显示
+        theme_name = self.settings.value("ui/theme", "系统默认")
+        self._update_theme_icons(theme_name)
+            
+        self._load_and_apply_default_sort()
+        self._apply_result_font_size()
+        self._load_search_history() # NOW safe to call
+
+        # --- ADDED: Setup Shortcuts ---
+        self._setup_shortcuts()
+        # ----------------------------
+        
+        # --- REMOVED: Outdated mode buttons state update ---
+        # self._update_mode_buttons_state_slot()  # 已删除
+        # ------------------------------------------------
+        
+        # --- 保存和恢复分隔器位置 ---
+        splitter_state = self.settings.value("ui/splitterState")
+        if splitter_state:
+            self.main_splitter.restoreState(splitter_state)
+            
+        # --- 检查首次启动 ---
+        # 使用QTimer确保界面完全加载后再显示引导对话框
+        QTimer.singleShot(500, self._check_first_launch)
+
+    def _create_search_bar(self):
+        """创建搜索栏 - 使用统一设计规范"""
+        # 创建统一样式的容器
+        container = QFrame()
+        container.setObjectName("search_container")
+        container.setStyleSheet(f"""
+            QFrame#search_container {{
+                background-color: #f0f8f0;
+                border: 2px solid #4CAF50;
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_NORMAL']}px;
+                padding: {UI_CONSTANTS['MARGIN_NORMAL']}px;
+            }}
+        """)
+        
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_SMALL'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_SMALL'], UI_CONSTANTS['MARGIN_SMALL'], 
+                                     UI_CONSTANTS['MARGIN_SMALL'], UI_CONSTANTS['MARGIN_SMALL'])
+        
+        # 第一行：搜索输入 - 统一布局
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(UI_CONSTANTS['SPACING_NORMAL'])
+        
+        search_label = QLabel(UI_CONSTANTS['ICONS']['search'])
+        search_label.setFixedSize(UI_CONSTANTS['ICON_SIZE'] + 4, UI_CONSTANTS['INPUT_HEIGHT'])
+        search_label.setAlignment(Qt.AlignCenter)
+        search_label.setStyleSheet(f"font-size: {UI_CONSTANTS['FONT_SIZE_ICON']};")
+        input_layout.addWidget(search_label)
+        
+        # 搜索输入框 - 统一高度
+        self.search_combo = QComboBox()
+        self.search_combo.setEditable(True)
+        self.search_line_edit = self.search_combo.lineEdit()
+        self.search_line_edit.setPlaceholderText("输入搜索词或选择历史记录...")
+        self.search_line_edit.setMinimumWidth(200)
+        self.search_combo.setFixedHeight(UI_CONSTANTS['INPUT_HEIGHT'])
+        input_layout.addWidget(self.search_combo, 2)
+
+        # 搜索按钮 - 使用SUCCESS配色（绿色系）
+        self.search_button = QPushButton("搜索")
+        self.search_button.setObjectName("search_button")
+        self.search_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.search_button.setMinimumWidth(60)
+        self.search_button.setStyleSheet(create_theme_based_button_style('primary', getattr(self, 'current_theme', '现代蓝')))
+        input_layout.addWidget(self.search_button)
+        
+        # 清空按钮 - 使用DANGER配色（红色系）
+        self.clear_search_button = QPushButton("清空")
+        self.clear_search_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.clear_search_button.setMinimumWidth(50)  # 适应"清空"文字
+        self.clear_search_button.setToolTip("清空搜索")
+        self.clear_search_button.setStyleSheet(create_theme_based_button_style('neutral', getattr(self, 'current_theme', '现代蓝')))
+        input_layout.addWidget(self.clear_search_button)
+
+        # 通配符帮助按钮 - 使用次要色（灰色）
+        wildcard_help_button = QPushButton("帮助")
+        wildcard_help_button.setToolTip("通配符搜索帮助")
+        wildcard_help_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        wildcard_help_button.setMinimumWidth(50)  # 适应"帮助"文字
+        # 使用基于主题的次要色，普通圆角样式
+        settings = QSettings("WenzhiSearch", "Settings")
+        current_theme = settings.value("ui/theme", "现代蓝")
+        wildcard_help_button.setStyleSheet(create_theme_based_button_style('neutral', current_theme))
+        wildcard_help_button.clicked.connect(self.show_wildcard_help_dialog)
+        input_layout.addWidget(wildcard_help_button)
+
+        main_layout.addLayout(input_layout)
+        
+        # 第二行：搜索选项 - 统一布局
+        options_layout = QHBoxLayout()
+        options_layout.setSpacing(UI_CONSTANTS['SPACING_LARGE'])
+        
+        # 范围选择 - 统一样式
+        scope_label = QLabel(f"{UI_CONSTANTS['ICONS']['range']} 范围:")
+        scope_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItems(["全文", "文件名"])
+        self.scope_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.scope_combo.setMinimumWidth(80)
+        options_layout.addWidget(scope_label)
+        options_layout.addWidget(self.scope_combo)
+        
+        # 模式选择 - 统一样式
+        mode_label = QLabel(f"{UI_CONSTANTS['ICONS']['mode']} 模式:")
+        mode_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["精确", "模糊"])
+        self.mode_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.mode_combo.setMinimumWidth(80)
+        options_layout.addWidget(mode_label)
+        options_layout.addWidget(self.mode_combo)
+        
+        # 添加弹性空间
+        options_layout.addStretch(1)
+        
+        main_layout.addLayout(options_layout)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.addWidget(container)
+        return container_layout
+
+    # (Add other _create_* helper methods if they were inline before)
+    def _create_view_mode_bar(self):
+        """创建查看方式栏 - 使用统一设计规范"""
+        # 创建统一的水平布局
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_LARGE'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'], 
+                                     UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'])
+        
+        # 添加统一的背景和边框样式
+        container = QFrame()
+        container.setObjectName("view_container")
+        container.setStyleSheet(f"""
+            QFrame#view_container {{
+                background-color: #f8f9fa;
+                border: 1px solid #C0C0C0;
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_NORMAL']}px;
+                padding: {UI_CONSTANTS['MARGIN_SMALL']}px;
+            }}
+        """)
+        
+        # === 视图方式选择器 ===
+        view_label = QLabel(f"{UI_CONSTANTS['ICONS']['view']} 视图:")
+        view_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
+        
+        self.view_mode_combo = QComboBox()
+        # 定义视图方式 - 使用统一图标
+        view_modes = [
+            f"{UI_CONSTANTS['ICONS']['list']} 列表视图",        # 默认：不分组
+            f"{UI_CONSTANTS['ICONS']['time']} 时间视图",        # 按修改日期分组
+            f"{UI_CONSTANTS['ICONS']['type']} 类型视图",        # 按文件类型分组  
+            f"{UI_CONSTANTS['ICONS']['folder']} 文件夹视图",      # 按文件夹分组
+        ]
+        
+        self.view_mode_combo.addItems(view_modes)
+        self.view_mode_combo.setCurrentIndex(0)  # 默认选择列表视图
+        self.view_mode_combo.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.view_mode_combo.setMinimumWidth(140)
+        
+        main_layout.addWidget(view_label)
+        main_layout.addWidget(self.view_mode_combo)
+        
+        # 添加垂直分隔线
+        separator1 = QFrame()
+        separator1.setFrameShape(QFrame.VLine)
+        separator1.setFrameShadow(QFrame.Sunken)
+        separator1.setFixedWidth(1)
+        separator1.setMaximumHeight(20)
+        separator1.setStyleSheet("QFrame { color: #C0C0C0; }")
+        main_layout.addWidget(separator1)
+        
+
+        
+        # 清除结果按钮 - 使用WARNING配色（橙色系）
+        self.clear_results_button = QPushButton("🗑️ 清除结果")
+        self.clear_results_button.setToolTip("清除当前搜索结果")
+        self.clear_results_button.setFixedHeight(UI_CONSTANTS['COMBO_HEIGHT'])
+        self.clear_results_button.setMinimumWidth(100)
+        self.clear_results_button.setStyleSheet(create_theme_based_button_style('neutral', getattr(self, 'current_theme', '现代蓝')))
+        main_layout.addWidget(self.clear_results_button)
+        
+        # 添加弹性空间
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(container)
+        return container_layout
+
+    def _create_type_filter_bar(self):
+        """创建文件类型过滤栏 - 紧凑美观版本"""
+        self.file_type_checkboxes = {}
+        self.pro_file_types = {}  # 用于存储专业版文件类型的映射
+        
+        # 创建容器
+        container = QFrame()
+        container.setObjectName("filter_container")
+        container.setStyleSheet("""
+            QFrame#filter_container {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 4px;
+            }
+        """)
+        
+        # 使用水平布局，紧凑排列
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+
+        # 添加图标标题
+        icon_label = QLabel("📁")
+        icon_label.setStyleSheet("font-size: 14px; padding: 0px;")
+        main_layout.addWidget(icon_label)
+
+        # 创建文件类型定义（紧凑版本）
+        file_type_configs = [
+            # 文档类型
+            ('pdf', {'display': 'PDF', 'pro_feature': Features.PDF_SUPPORT, 'color': '#dc3545'}),
+            ('docx', {'display': 'Word', 'pro_feature': None, 'color': '#2b5797'}),
+            ('txt', {'display': 'TXT', 'pro_feature': None, 'color': '#6c757d'}),
+            ('xlsx', {'display': 'Excel', 'pro_feature': None, 'color': '#107c41'}),
+            ('pptx', {'display': 'PPT', 'pro_feature': None, 'color': '#d83b01'}),
+            ('html', {'display': 'HTML', 'pro_feature': None, 'color': '#e34c26'}),
+            ('md', {'display': 'MD', 'pro_feature': Features.MARKDOWN_SUPPORT, 'color': '#333'}),
+            # 分隔符
+            ('separator1', {'type': 'separator'}),
+            # 多媒体类型
+            ('mp4', {'display': '🎬视频', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#6f42c1', 'multimedia': ['mp4', 'mkv', 'avi', 'wmv', 'mov', 'flv', 'webm', 'm4v']}),
+            ('mp3', {'display': '🎵音频', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#fd7e14', 'multimedia': ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a']}),
+            ('jpg', {'display': '🖼️图片', 'pro_feature': Features.MULTIMEDIA_SUPPORT, 'color': '#20c997', 'multimedia': ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'svg']}),
+            # 分隔符
+            ('separator2', {'type': 'separator'}),
+            # 邮件类型
+            ('eml', {'display': '📧EML', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+            ('msg', {'display': '📧MSG', 'pro_feature': Features.EMAIL_SUPPORT, 'color': '#0d6efd'}),
+        ]
+
+        # 处理函数
+        def add_checkbox_to_layout(type_key, type_config):
+            if type_config.get('type') == 'separator':
+                # 添加分隔线
+                separator = QFrame()
+                separator.setFrameShape(QFrame.VLine)
+                separator.setFrameShadow(QFrame.Sunken)
+                separator.setFixedWidth(1)
+                separator.setFixedHeight(20)
+                separator.setStyleSheet("color: #dee2e6;")
+                main_layout.addWidget(separator)
+                return
+                
+            display_name = type_config['display']
+            pro_feature = type_config.get('pro_feature')
+            color = type_config.get('color', '#495057')
+            
+            checkbox = QCheckBox(display_name)
+            
+            # 检查此文件类型是否需要专业版
+            is_pro_feature = pro_feature is not None
+            feature_available = not is_pro_feature or self.license_manager.is_feature_available(pro_feature)
+            
+            # 存储复选框和其对应的类型
+            if 'multimedia' in type_config:
+                self.file_type_checkboxes[checkbox] = type_config['multimedia']
+            else:
+                self.file_type_checkboxes[checkbox] = type_key
+            
+            # 设置样式
+            if is_pro_feature and not feature_available:
+                checkbox.setEnabled(False)
+                checkbox.setText(f"{display_name}⭐")
+                checkbox.setStyleSheet(f"""
+                    QCheckBox {{
+                        font-size: 10px;
+                        font-weight: 500;
+                        color: #adb5bd;
+                        padding: 2px 4px;
+                        spacing: 3px;
+                    }}
+                    QCheckBox::indicator {{
+                        width: 12px;
+                        height: 12px;
+                    }}
+                """)
+                
+                self.pro_file_types[checkbox] = {
+                    'feature': pro_feature,
+                    'display_name': display_name.replace('⭐', '')
+                }
+                checkbox.clicked.connect(self._show_pro_feature_dialog)
+            else:
+                checkbox.setEnabled(True)
+                checkbox.setStyleSheet(f"""
+                    QCheckBox {{
+                        font-size: 10px;
+                        font-weight: 500;
+                        color: {color};
+                        padding: 2px 4px;
+                        spacing: 3px;
+                    }}
+                    QCheckBox::indicator {{
+                        width: 12px;
+                        height: 12px;
+                        border: 1px solid {color};
+                        border-radius: 2px;
+                        background-color: white;
+                    }}
+                    QCheckBox::indicator:checked {{
+                        background-color: {color};
+                        border: 1px solid {color};
+                    }}
+                    QCheckBox::indicator:checked:hover {{
+                        background-color: {color};
+                    }}
+                    QCheckBox:hover {{
+                        background-color: rgba(0,0,0,0.05);
+                        border-radius: 3px;
+                    }}
+                """)
+            
+            # 连接复选框状态改变信号
+            checkbox.stateChanged.connect(self._filter_results_by_type_slot)
+            main_layout.addWidget(checkbox)
+
+        # 添加所有文件类型
+        for type_key, type_config in file_type_configs:
+            add_checkbox_to_layout(type_key, type_config)
+        
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(container)
+        return container_layout
+        
+    def _show_pro_feature_dialog(self):
+        """显示专业版功能提示对话框"""
+        # 找出是哪个复选框被点击
+        sender = self.sender()
+        if sender in self.pro_file_types:
+            feature_info = self.pro_file_types[sender]
+            type_name = feature_info['display_name']
+            
+            # 重置复选框状态为未选中
+            sender.blockSignals(True)
+            sender.setChecked(False)
+            sender.blockSignals(False)
+            
+            # 设置过滤更新阻断标志为True，防止触发过滤操作
+            self.blocking_filter_update = True
+            print("DEBUG: Blocking filter updates while showing pro feature dialog")
+            
+            # 使用QTimer确保搜索结果能正确显示
+            QTimer.singleShot(100, lambda: self._show_pro_feature_dialog_message(type_name))
+    
+    def _show_pro_feature_dialog_message(self, type_name):
+        """显示专业版功能对话框的实际消息"""
+        # 显示提示对话框
+        QMessageBox.information(
+                self, 
+                "专业版功能", 
+                f"搜索 {type_name} 文件是专业版功能。\n\n"
+                f"升级到专业版以解锁此功能和更多高级特性。"
+            )
+        # 对话框关闭后，重置过滤更新阻断标志
+        self.blocking_filter_update = False
+        print("DEBUG: Reset filter blocking after pro feature dialog closed")
+        
+        # 确保搜索结果在对话框关闭后不变
+        QTimer.singleShot(100, lambda: self._apply_view_mode_and_display())
+        
+        # 强制刷新UI，确保专业版功能的复选框状态正确显示
+        QTimer.singleShot(200, self._force_ui_refresh)
+
+    def _create_action_buttons(self):
+        """创建操作按钮区域 - 使用统一设计规范"""
+        # 创建统一样式的容器
+        container = QFrame()
+        container.setObjectName("action_container")
+        container.setStyleSheet(f"""
+            QFrame#action_container {{
+                background-color: #f5f5f5;
+                border: 1px solid #C0C0C0;
+                border-radius: {UI_CONSTANTS['BORDER_RADIUS_SMALL']}px;
+                padding: {UI_CONSTANTS['MARGIN_NORMAL']}px;
+            }}
+        """)
+        
+        # 使用统一的水平布局
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(UI_CONSTANTS['SPACING_NORMAL'])
+        main_layout.setContentsMargins(UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'], 
+                                     UI_CONSTANTS['MARGIN_NORMAL'], UI_CONSTANTS['MARGIN_NORMAL'])
+        
+        # 操作标签 - 统一样式
+        action_label = QLabel(f"{UI_CONSTANTS['ICONS']['settings']} 操作:")
+        action_label.setStyleSheet(f"font-weight: bold; color: #333; font-size: {UI_CONSTANTS['FONT_SIZE_NORMAL']};")
+        main_layout.addWidget(action_label)
+        
+        # 创建索引按钮 - 使用PRIMARY配色（青蓝色系）
+        self.index_button = QPushButton(f"{UI_CONSTANTS['ICONS']['index']} 索引")
+        self.index_button.setObjectName("index_button")
+        self.index_button.setToolTip("创建或更新文档索引")
+        self.index_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.index_button.setMinimumWidth(80)
+        self.index_button.setStyleSheet(create_theme_based_button_style('primary', self.current_theme))
+        
+        # 取消索引按钮 - 使用DANGER配色（红色系）
+        self.cancel_index_button = QPushButton(f"{UI_CONSTANTS['ICONS']['cancel']} 取消")
+        self.cancel_index_button.setObjectName("cancel_button")
+        self.cancel_index_button.setToolTip("取消正在进行的索引操作")
+        self.cancel_index_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.cancel_index_button.setMinimumWidth(80)
+        self.cancel_index_button.setVisible(False)
+        self.cancel_index_button.setStyleSheet(create_theme_based_button_style('neutral', self.current_theme))
+        
+        main_layout.addWidget(self.index_button)
+        main_layout.addWidget(self.cancel_index_button)
+        
+        # 添加垂直分隔线 - 统一样式
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setFixedWidth(1)
+        separator.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'] - 6)
+        separator.setStyleSheet("QFrame { color: #C0C0C0; }")
+        main_layout.addWidget(separator)
+        
+        # 查看跳过的文件按钮 - 使用SECONDARY配色（紫色系）
+        self.view_skipped_button = QPushButton(f"{UI_CONSTANTS['ICONS']['files']} 跳过文件")
+        self.view_skipped_button.setToolTip("查看在创建索引过程中被跳过的文件")
+        self.view_skipped_button.setFixedHeight(UI_CONSTANTS['BUTTON_HEIGHT'])
+        self.view_skipped_button.setMinimumWidth(100)
+        self.view_skipped_button.setStyleSheet(create_theme_based_button_style('secondary', self.current_theme))
+        
+        # 为保持兼容性，添加同名变量引用
+        self.view_skipped_files_button = self.view_skipped_button
+        
+        main_layout.addWidget(self.view_skipped_button)
+        
+        # 添加弹性空间
+        main_layout.addStretch(1)
+        
+        # 设置容器的布局
+        container.setLayout(main_layout)
+        
+        # 返回紧凑布局
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除外边距
+        container_layout.addWidget(container)
+        return container_layout
+
+    def _setup_status_bar(self):
+        """Sets up the status bar with progress bar and labels."""
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+
+        # Phase Label (e.g., "Scanning", "Extracting")
+        self.phase_label = QLabel("阶段: ")
+        self.phase_label.setVisible(False) # Initially hidden
+        self.status_bar.addPermanentWidget(self.phase_label)
+
+        # --- ADDED: Detail Label ---
+        self.detail_label = QLabel("") # Initially empty
+        self.detail_label.setMinimumWidth(200) # Give it some space
+        self.detail_label.setVisible(False) # Initially hidden
+        self.status_bar.addPermanentWidget(self.detail_label)
+        # --------------------------
+
+        # Progress Bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumHeight(15) # Make it less tall
+        self.progress_bar.setVisible(False) # Initially hidden
+        self.progress_bar.setTextVisible(True) # Show percentage text
+        self.status_bar.addPermanentWidget(self.progress_bar, 1) # Give it stretch factor
+
+
+
+
+
+
+
+
+
 # --- 导入统一路径处理工具 ---
 from path_utils import normalize_path_for_display, normalize_path_for_index, PathStandardizer
 
@@ -4979,24 +5729,6 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
     # MODIFIED: Accepts mode and query as arguments
     def _start_search_common(self, mode: str, query: str, search_scope: str):
         """Common logic to start search, now takes mode, query, and scope."""
-        
-        # 防重复搜索检查 - 添加时间检查
-        import time
-        current_time = time.time()
-        search_key = f"{mode}_{query}_{search_scope}"
-        
-        # 检查是否与上次搜索相同且时间间隔很短
-        if (hasattr(self, '_last_main_search_time') and 
-            hasattr(self, '_last_main_search_key') and
-            self._last_main_search_key == search_key and
-            current_time - self._last_main_search_time < 1.0):  # 1秒内的重复搜索
-            print(f"主窗口搜索：跳过重复搜索请求 '{query}' (间隔: {(current_time - self._last_main_search_time)*1000:.0f}ms)")
-            return
-        
-        # 记录本次搜索
-        self._last_main_search_time = current_time
-        self._last_main_search_key = search_key
-        
         # 检查是否为历史记录选择，如果是则优先处理
         is_history_selection = getattr(self, '_history_selection_in_progress', False)
 

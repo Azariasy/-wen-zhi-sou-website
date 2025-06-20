@@ -25,18 +25,45 @@ class QuickFilenameSearcher(QObject):
     search_completed = Signal(list)  # 搜索完成信号
     search_progress = Signal(str)    # 搜索进度信号
     
-    def __init__(self, source_directories: List[str] = None):
+    def __init__(self, source_directories: List[str] = None, license_manager=None):
         super().__init__()
         self.source_directories = source_directories or []
-        self.supported_extensions = {
-            '.txt', '.md', '.doc', '.docx', '.pdf', '.xls', '.xlsx', 
-            '.ppt', '.pptx', '.rtf', '.html', '.htm', '.xml', '.json',
-            '.py', '.js', '.css', '.java', '.cpp', '.c', '.h'
-        }
+        self.license_manager = license_manager
+        
+        # 根据许可证设置支持的文件扩展名
+        if self.license_manager:
+            self.supported_extensions = self._get_allowed_extensions()
+        else:
+            # 默认支持所有类型（向后兼容）
+            self.supported_extensions = {
+                '.txt', '.md', '.doc', '.docx', '.pdf', '.xls', '.xlsx', 
+                '.ppt', '.pptx', '.rtf', '.html', '.htm', '.xml', '.json',
+                '.py', '.js', '.css', '.java', '.cpp', '.c', '.h'
+            }
         
     def set_source_directories(self, directories: List[str]):
         """设置搜索目录"""
         self.source_directories = directories
+    
+    def _get_allowed_extensions(self):
+        """根据许可证获取允许的文件扩展名"""
+        # 基础版支持的文件类型
+        allowed = {'.docx', '.xlsx', '.htm', '.html', '.pptx', '.rtf', '.txt'}
+        
+        if self.license_manager:
+            from license_manager import Features
+            # 检查专业版功能
+            if self.license_manager.is_feature_available(Features.PDF_SUPPORT):
+                allowed.add('.pdf')
+            if self.license_manager.is_feature_available(Features.MARKDOWN_SUPPORT):
+                allowed.add('.md')
+            if self.license_manager.is_feature_available(Features.EMAIL_SUPPORT):
+                allowed.update({'.eml', '.msg'})
+            if self.license_manager.is_feature_available(Features.MULTIMEDIA_SUPPORT):
+                allowed.update({'.mp3', '.mp4', '.avi', '.wmv', '.mov', '.jpg', '.jpeg', '.png', '.gif', '.bmp'})
+        
+        print(f"📋 快捷搜索允许的文件类型: {sorted(allowed)}")
+        return allowed
         
     def search_filenames(self, query: str, max_results: int = 100) -> List[Dict]:
         """
@@ -50,6 +77,11 @@ class QuickFilenameSearcher(QObject):
             List[Dict]: 搜索结果列表
         """
         if not query or not query.strip():
+            return []
+        
+        # 检查源目录是否为空 - 与主窗口逻辑保持一致
+        if not self.source_directories:
+            print("⚠️ 快捷搜索：源目录为空，返回空结果")
             return []
             
         query = query.strip().lower()

@@ -3,38 +3,46 @@
 block_cipher = None
 
 a = Analysis(
-    ['search_gui_pyside.py'],
+    ['文智搜.py'],
     pathex=[],
     binaries=[],
     datas=[
-        # QSS 主题样式文件
+        # QSS 主题样式文件 - 只保留4个现代化主题
         ('blue_style.qss', '.'),
-        ('red_style.qss', '.'),        # 替换绿色主题为红色主题
+        ('red_style.qss', '.'),
         ('purple_style.qss', '.'),
         ('orange_style.qss', '.'),
         
         # 图标文件 - 通用图标
         ('checkmark.png', '.'),
         ('down_arrow.png', '.'),
-        ('app_icon.ico', '.'),         # 添加应用图标
+        ('app_icon.ico', '.'),
+        ('app_icon.png', '.'),
+        ('app_icon_16.png', '.'),
+        ('app_icon_32.png', '.'),
 
         # 蓝色主题图标
         ('checkmark_blue.png', '.'),
         ('radio_checked_blue.png', '.'),
+        ('down_arrow_blue.png', '.'),
         
-        # 红色主题图标 - 替换绿色主题
+        # 红色主题图标
         ('checkmark_red.png', '.'),
         ('radio_checked_red.png', '.'),
+        ('down_arrow_red.png', '.'),
         
         # 紫色主题图标
         ('checkmark_purple.png', '.'),
         ('radio_checked_purple.png', '.'),
+        ('down_arrow_purple.png', '.'),
         
         # 橙色主题图标
         ('checkmark_orange.png', '.'),
         ('radio_checked_orange.png', '.'),
+        ('down_arrow_orange.png', '.'),
         
-
+        # 文件类型图标目录
+        ('file_icons/', 'file_icons/'),
         
         # 更新检查相关文件
         ('docs/latest_version.json', 'docs'),
@@ -45,7 +53,7 @@ a = Analysis(
         ('generate_device_id.py', '.'),
         ('device_manager_dialog.py', '.'),
         ('license_manager.py', '.'),
-        ('file_version_info.txt', '.'),  # 添加版本信息文件
+        ('file_version_info.txt', '.'),
         ('main_window_tray.py', '.'),
         ('tray_app.py', '.'),
         ('hotkey_manager.py', '.'),
@@ -60,6 +68,10 @@ a = Analysis(
         ('gui_optimization_settings.py', '.'),
         ('path_utils.py', '.'),
         ('file_processing_utils.py', '.'),
+        ('single_instance.py', '.'),
+        ('main_tray.py', '.'),
+        ('document_search.py', '.'),
+        ('search_gui_pyside.py', '.'),
     ],
     hiddenimports=[
         # 中文分词
@@ -111,18 +123,23 @@ a = Analysis(
         'PySide6.QtUiTools',
         
         # 热键和系统相关
-        'pynput',
-        'pynput.keyboard',
-        'pynput.mouse',
+        'keyboard',
         'psutil',
+        'subprocess',  # 单实例检查需要
+        'tempfile',    # 单实例检查需要
+        'atexit',      # 单实例检查需要
         
         # 应用程序模块
         'main_window_tray',
+        'main_tray',
         'tray_app',
         'hotkey_manager',
         'quick_search_dialog',
         'quick_search_controller',
         'theme_manager',
+        'single_instance',
+        'document_search',
+        'search_gui_pyside',  # 确保主界面模块被包含
     ],
     hookspath=[],
     hooksconfig={},

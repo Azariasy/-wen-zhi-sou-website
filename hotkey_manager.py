@@ -96,38 +96,71 @@ class HotkeyManager(QObject):
         """热键监听线程函数"""
         print("正在启动热键监听...")
         
-        # 取消所有已注册的热键
-        keyboard.unhook_all()
-        
-        # 注册活跃的热键
-        active_hotkeys = {}
-        for name, config in self.hotkeys.items():
-            if config["enabled"]:
-                try:
-                    key = config["key"]
-                    keyboard.add_hotkey(
-                        key, 
-                        lambda n=name: self._hotkey_triggered(n),
-                        suppress=False  # 不阻止热键传递给其他应用
-                    )
-                    active_hotkeys[name] = key
-                    print(f"已注册热键: {name} -> {key}")
-                except Exception as e:
-                    print(f"注册热键 {name} ({config['key']}) 失败: {e}")
-        
-        # 监听事件，直到请求停止
-        print(f"热键监听中... (已注册 {len(active_hotkeys)} 个热键)")
         try:
-            while not self.stop_requested:
-                time.sleep(0.1)
-        finally:
-            # 清理
+            # 取消所有已注册的热键
             keyboard.unhook_all()
-            print("已解除所有热键绑定")
+            
+            # 注册活跃的热键
+            active_hotkeys = {}
+            for name, config in self.hotkeys.items():
+                if config["enabled"]:
+                    try:
+                        key = config["key"]
+                        keyboard.add_hotkey(
+                            key, 
+                            lambda n=name: self._hotkey_triggered(n),
+                            suppress=False  # 不阻止热键传递给其他应用
+                        )
+                        active_hotkeys[name] = key
+                        print(f"已注册热键: {name} -> {key}")
+                    except Exception as e:
+                        print(f"注册热键 {name} ({config['key']}) 失败: {e}")
+            
+            # 监听事件，直到请求停止
+            print(f"热键监听中... (已注册 {len(active_hotkeys)} 个热键)")
+            try:
+                while not self.stop_requested:
+                    time.sleep(0.1)
+            finally:
+                # 清理
+                keyboard.unhook_all()
+                print("已解除所有热键绑定")
+                
+        except ImportError as e:
+            print(f"热键监听失败: keyboard库不可用 - {e}")
+        except Exception as e:
+            print(f"热键监听线程发生错误: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.is_listening = False
+            print("热键监听线程已结束")
     
     def _hotkey_triggered(self, hotkey_name):
         """热键触发处理函数"""
-        print(f"热键触发: {hotkey_name}")
+        import time
+        
+        print(f"🔥 _hotkey_triggered 被调用: {hotkey_name}")
+        
+        # 防止重复触发：检查是否在短时间内重复触发同一个热键
+        current_time = time.time()
+        last_trigger_key = f"_last_trigger_{hotkey_name}"
+        
+        if hasattr(self, last_trigger_key):
+            last_trigger_time = getattr(self, last_trigger_key)
+            interval = current_time - last_trigger_time
+            print(f"🕐 检查重复触发: {hotkey_name}, 间隔: {interval*1000:.0f}ms")
+            # 如果距离上次触发不到500毫秒，忽略此次触发
+            if interval < 0.5:
+                print(f"🚫 热键重复触发被忽略: {hotkey_name} (间隔: {interval*1000:.0f}ms)")
+                return
+        else:
+            print(f"🆕 首次触发热键: {hotkey_name}")
+        
+        # 记录本次触发时间
+        setattr(self, last_trigger_key, current_time)
+        
+        print(f"✅ 热键触发: {hotkey_name}")
         # 发射信号，通知UI线程
         self.hotkey_activated_signal.emit(hotkey_name)
     

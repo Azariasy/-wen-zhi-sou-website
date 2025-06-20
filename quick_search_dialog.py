@@ -820,15 +820,26 @@ class QuickSearchDialog(QDialog):
     
     def _on_search_enter(self):
         """处理回车键搜索"""
+        print("🔑 _on_search_enter 被调用")
+        import traceback
+        print("📍 调用堆栈:")
+        for line in traceback.format_stack()[-3:-1]:  # 显示最近的2层调用
+            print(f"   {line.strip()}")
         self._perform_search()
     
     def _perform_search(self):
         """执行搜索（优化版本）"""
         query = self.search_line_edit.text().strip()
+        print(f"🔍 _perform_search 被调用: '{query}'")
+        import traceback
+        print("📍 调用堆栈:")
+        for line in traceback.format_stack()[-3:-1]:  # 显示最近的2层调用
+            print(f"   {line.strip()}")
+            
         if not query:
             self._clear_results()
             return
-        
+
         # 显示搜索进度
         self._show_search_progress()
         
@@ -842,6 +853,7 @@ class QuickSearchDialog(QDialog):
         
         try:
             # 发出搜索信号
+            print(f"📡 发出搜索信号: '{query}'")
             self.search_executed.emit(query)
             
             # 模拟搜索延迟（实际搜索在控制器中进行）
@@ -929,10 +941,12 @@ class QuickSearchDialog(QDialog):
                 # Ctrl+Enter: 在主窗口中搜索
                 self._on_main_window_button()
             else:
-                # Enter: 如果焦点在搜索框，执行搜索；如果在结果列表且有选中项，打开文件
+                # Enter: 如果焦点在搜索框，不要重复处理（已由returnPressed信号处理）
                 if self.search_line_edit.hasFocus():
-                    # 搜索框有焦点：执行搜索
-                    self._on_search_enter()
+                    # 搜索框有焦点：回车键已经被returnPressed信号处理，这里不重复处理
+                    print("🔑 keyPressEvent: 搜索框回车键事件，已由returnPressed信号处理，跳过")
+                    event.accept()  # 标记事件已处理，避免传播
+                    return
                 else:
                     # 结果列表有焦点：打开选中的文件
                     current_item = self.results_list.currentItem()
@@ -949,8 +963,30 @@ class QuickSearchDialog(QDialog):
             if self.sender() == self.results_list and self.results_list.currentRow() <= 0:
                 self.search_line_edit.setFocus()
         elif event.key() == Qt.Key_F5:
-            # F5: 刷新搜索
-            self._perform_search()
+            # F5: 刷新搜索（添加防重复检查）
+            query = self.search_line_edit.text().strip()
+            if query:
+                # 检查是否刚刚执行过相同的搜索
+                import time
+                current_time = time.time()
+                
+                # 获取上次搜索的时间和查询（如果有的话）
+                last_search_time = getattr(self, '_last_f5_search_time', 0)
+                last_search_query = getattr(self, '_last_f5_search_query', '')
+                
+                # 如果3秒内执行过相同的搜索，跳过
+                if (query == last_search_query and 
+                    current_time - last_search_time < 3.0):
+                    print(f"🚫 F5刷新：跳过重复搜索 '{query}' (间隔: {(current_time - last_search_time)*1000:.0f}ms)")
+                    return
+                
+                # 记录本次F5搜索
+                self._last_f5_search_time = current_time
+                self._last_f5_search_query = query
+                print(f"🔄 F5刷新：执行搜索 '{query}'")
+                self._perform_search()
+            else:
+                print("🚫 F5刷新：搜索框为空，跳过刷新")
         elif event.key() == Qt.Key_Delete:
             # Delete: 清空搜索框
             if self.search_line_edit.hasFocus():
