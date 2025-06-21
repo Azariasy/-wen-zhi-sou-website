@@ -2338,6 +2338,22 @@ class SettingsDialog(QDialog):
         performance_group = QGroupBox("⚡ 性能设置")
         performance_layout = QVBoxLayout(performance_group)
 
+        # --- 多进程设置 ---
+        multiprocess_layout = QHBoxLayout()
+        multiprocess_label = QLabel("🔧 工作进程数:")
+        multiprocess_label.setStyleSheet("font-weight: bold; color: #333;")
+        self.max_workers_combo = QComboBox()
+        self.max_workers_combo.addItems([
+            "自动检测（推荐）", "1个进程", "2个进程", "4个进程", 
+            "8个进程", "12个进程", "16个进程"
+        ])
+        self.max_workers_combo.setToolTip("设置用于索引的工作进程数。自动检测会根据CPU核心数优化配置。")
+        self.max_workers_combo.setMaximumWidth(180)
+        multiprocess_layout.addWidget(multiprocess_label)
+        multiprocess_layout.addWidget(self.max_workers_combo)
+        multiprocess_layout.addStretch()
+        performance_layout.addLayout(multiprocess_layout)
+
         # --- ADDED: Extraction Timeout Setting ---
         timeout_layout = QHBoxLayout()
         timeout_label = QLabel("⏱️ 单个文件提取超时 (秒):")
@@ -2368,7 +2384,72 @@ class SettingsDialog(QDialog):
         txt_limit_layout.addStretch()
         performance_layout.addLayout(txt_limit_layout)
 
+        # --- 批处理设置 ---
+        batch_layout = QHBoxLayout()
+        batch_label = QLabel("📦 批处理大小:")
+        batch_label.setStyleSheet("font-weight: bold; color: #333;")
+        self.batch_size_spinbox = QSpinBox()
+        self.batch_size_spinbox.setRange(10, 1000)
+        self.batch_size_spinbox.setValue(100)
+        self.batch_size_spinbox.setToolTip("每批处理的文件数量，较小的值使用更少内存。")
+        self.batch_size_spinbox.setMaximumWidth(100)
+        batch_layout.addWidget(batch_label)
+        batch_layout.addWidget(self.batch_size_spinbox)
+        batch_layout.addStretch()
+        performance_layout.addLayout(batch_layout)
+
+        # --- 最大文件大小限制 ---
+        max_size_layout = QHBoxLayout()
+        max_size_label = QLabel("📏 最大文件大小 (MB):")
+        max_size_label.setStyleSheet("font-weight: bold; color: #333;")
+        self.max_file_size_spinbox = QSpinBox()
+        self.max_file_size_spinbox.setRange(1, 1000)
+        self.max_file_size_spinbox.setValue(100)
+        self.max_file_size_spinbox.setSuffix(" MB")
+        self.max_file_size_spinbox.setToolTip("跳过超过此大小的文件以避免处理时间过长。")
+        self.max_file_size_spinbox.setMaximumWidth(120)
+        max_size_layout.addWidget(max_size_label)
+        max_size_layout.addWidget(self.max_file_size_spinbox)
+        max_size_layout.addStretch()
+        performance_layout.addLayout(max_size_layout)
+
         advanced_layout.addWidget(performance_group)
+
+        # 索引策略设置分组
+        strategy_group = QGroupBox("🎯 索引策略")
+        strategy_layout = QVBoxLayout(strategy_group)
+
+        # --- 启用增量索引 ---
+        incremental_layout = QHBoxLayout()
+        self.incremental_checkbox = QCheckBox("⚡ 启用增量索引")
+        self.incremental_checkbox.setChecked(True)
+        self.incremental_checkbox.setToolTip("只处理新增或修改的文件，大幅提升重复索引的速度。")
+        self.incremental_checkbox.setStyleSheet("font-weight: bold; color: #333;")
+        incremental_layout.addWidget(self.incremental_checkbox)
+        incremental_layout.addStretch()
+        strategy_layout.addLayout(incremental_layout)
+
+        # --- 跳过系统文件 ---
+        skip_system_layout = QHBoxLayout()
+        self.skip_system_files_checkbox = QCheckBox("🚫 跳过系统文件和临时文件")
+        self.skip_system_files_checkbox.setChecked(True)
+        self.skip_system_files_checkbox.setToolTip("自动跳过系统文件、临时文件和隐藏文件。")
+        self.skip_system_files_checkbox.setStyleSheet("font-weight: bold; color: #333;")
+        skip_system_layout.addWidget(self.skip_system_files_checkbox)
+        skip_system_layout.addStretch()
+        strategy_layout.addLayout(skip_system_layout)
+
+        # --- 动态OCR超时 ---
+        ocr_layout = QHBoxLayout()
+        self.dynamic_ocr_timeout_checkbox = QCheckBox("🔍 启用动态OCR超时")
+        self.dynamic_ocr_timeout_checkbox.setChecked(True)
+        self.dynamic_ocr_timeout_checkbox.setToolTip("根据PDF文件大小自动调整OCR超时时间。\n小于5MB: 60秒\n5-20MB: 180秒\n20-50MB: 300秒\n大于50MB: 使用默认超时")
+        self.dynamic_ocr_timeout_checkbox.setStyleSheet("font-weight: bold; color: #333;")
+        ocr_layout.addWidget(self.dynamic_ocr_timeout_checkbox)
+        ocr_layout.addStretch()
+        strategy_layout.addLayout(ocr_layout)
+
+        advanced_layout.addWidget(strategy_group)
 
         # 索引存储位置设置
         storage_group = QGroupBox("💾 存储设置")
@@ -2402,76 +2483,16 @@ class SettingsDialog(QDialog):
         search_layout.addWidget(search_groupbox)
         search_group_layout = QVBoxLayout(search_groupbox)
 
-        # search_settings_label = QLabel("<b>搜索设置</b>") # Removed, groupbox has title
-        # search_group_layout.addWidget(search_settings_label)
-        self.case_sensitive_checkbox = QCheckBox("区分大小写")
-        search_group_layout.addWidget(self.case_sensitive_checkbox)
-        
-        # --- ADDED: 文件大小筛选控件 ---
-        size_filter_group = QGroupBox("文件大小筛选 (KB)")
-        size_filter_layout = QHBoxLayout(size_filter_group)
-        
-        min_size_label = QLabel("最小:")
-        self.min_size_entry = QLineEdit()
-        self.min_size_entry.setPlaceholderText("可选")
-        self.min_size_entry.setMaximumWidth(120)
-        self.min_size_entry.setValidator(QIntValidator(0, 999999999))
-        
-        max_size_label = QLabel("最大:")
-        self.max_size_entry = QLineEdit()
-        self.max_size_entry.setPlaceholderText("可选")
-        self.max_size_entry.setMaximumWidth(120)
-        self.max_size_entry.setValidator(QIntValidator(0, 999999999))
-        
-        size_filter_layout.addWidget(min_size_label)
-        size_filter_layout.addWidget(self.min_size_entry)
-        size_filter_layout.addWidget(max_size_label)
-        size_filter_layout.addWidget(self.max_size_entry)
-        size_filter_layout.addStretch()
-        
-        search_group_layout.addWidget(size_filter_group)
-        # -----------------------------
-        
-        # --- ADDED: 修改日期筛选控件 ---
-        date_filter_group = QGroupBox("修改日期筛选")
-        date_filter_layout = QVBoxLayout(date_filter_group)
-        
-        date_row_layout = QHBoxLayout()
-        start_date_label = QLabel("从:")
-        self.start_date_edit = QDateEdit()
-        self.start_date_edit.setCalendarPopup(True)
-        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.start_date_edit.setDate(QDate(1900, 1, 1))
-        self.start_date_edit.setMaximumDate(QDate.currentDate())
-        
-        end_date_label = QLabel("到:")
-        self.end_date_edit = QDateEdit()
-        self.end_date_edit.setCalendarPopup(True)
-        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.end_date_edit.setDate(QDate.currentDate())
-        
-        date_row_layout.addWidget(start_date_label)
-        date_row_layout.addWidget(self.start_date_edit)
-        date_row_layout.addWidget(end_date_label)
-        date_row_layout.addWidget(self.end_date_edit)
-        date_row_layout.addStretch()
-        
-        # 添加清除日期按钮
-        clear_dates_layout = QHBoxLayout()
-        self.clear_dates_button = QPushButton("清除日期筛选")
-        self.clear_dates_button.clicked.connect(self._clear_dates)
-        clear_dates_layout.addStretch()
-        clear_dates_layout.addWidget(self.clear_dates_button)
-        
-        date_filter_layout.addLayout(date_row_layout)
-        date_filter_layout.addLayout(clear_dates_layout)
-        
-        search_group_layout.addWidget(date_filter_group)
-        # -----------------------------
+        # 搜索设置已简化，移除了复杂的筛选选项
+        # 现在只保留说明信息，用户可通过主界面进行文件类型和目录筛选
+        search_info = QLabel("💡 搜索功能已优化简化。文件类型和目录筛选可通过主界面实现。")
+        search_info.setStyleSheet("color: #666; font-size: 11px; margin-top: 10px;")
+        search_info.setWordWrap(True)
+        search_group_layout.addWidget(search_info)
         
         # Add more search settings here later if needed
         # search_group_layout.addStretch(1) # Remove stretch
-
+        
         # --- Populate Interface Settings Container ---
         interface_layout = QVBoxLayout(self.interface_settings_widget)
         interface_layout.setContentsMargins(0,0,0,0)
@@ -2813,37 +2834,44 @@ class SettingsDialog(QDialog):
         self.txt_content_limit_spinbox.setValue(txt_content_limit)
         # ------------------------------
         
+        # --- ADDED: Multi-process Settings ---
+        max_workers = self.settings.value("optimization/max_workers", "auto")
+        if max_workers == "auto":
+            self.max_workers_combo.setCurrentIndex(0)
+        else:
+            try:
+                workers_map = {"1": 1, "2": 2, "4": 3, "8": 4, "12": 5, "16": 6}
+                index = workers_map.get(str(max_workers), 0)
+                self.max_workers_combo.setCurrentIndex(index)
+            except:
+                self.max_workers_combo.setCurrentIndex(0)
+        # ---------------------------------------
+        
+        # --- ADDED: Batch Size ---
+        batch_size = self.settings.value("optimization/batch_size", 100, type=int)
+        self.batch_size_spinbox.setValue(batch_size)
+        # -------------------------
+        
+        # --- ADDED: Max File Size ---
+        max_file_size = self.settings.value("optimization/max_file_size_mb", 100, type=int)
+        self.max_file_size_spinbox.setValue(max_file_size)
+        # ----------------------------
+        
+        # --- ADDED: Index Strategy Settings ---
+        incremental = self.settings.value("optimization/incremental", True, type=bool)
+        self.incremental_checkbox.setChecked(incremental)
+        
+        skip_system_files = self.settings.value("optimization/skip_system_files", True, type=bool)
+        self.skip_system_files_checkbox.setChecked(skip_system_files)
+        
+        dynamic_ocr = self.settings.value("optimization/dynamic_ocr_timeout", True, type=bool)
+        self.dynamic_ocr_timeout_checkbox.setChecked(dynamic_ocr)
+        # ---------------------------------------
+        
         # Search Settings
-        case_sensitive = self.settings.value("search/caseSensitive", False, type=bool)
-        self.case_sensitive_checkbox.setChecked(case_sensitive)
+        # 区分大小写选项已移除
         
-        # --- ADDED: Size filter settings ---
-        min_size = self.settings.value("search/minSizeKb", "", type=str)
-        max_size = self.settings.value("search/maxSizeKb", "", type=str)
-        self.min_size_entry.setText(min_size)
-        self.max_size_entry.setText(max_size)
-        # --------------------------------
-        
-        # --- ADDED: Date filter settings ---
-        start_date_str = self.settings.value("search/startDate", "", type=str)
-        end_date_str = self.settings.value("search/endDate", "", type=str)
-        
-        if start_date_str:
-            start_date = QDate.fromString(start_date_str, "yyyy-MM-dd")
-            if start_date.isValid():
-                self.start_date_edit.setDate(start_date)
-        else:
-            # 默认设置为远过去的日期
-            self.start_date_edit.setDate(QDate(1900, 1, 1))
-            
-        if end_date_str:
-            end_date = QDate.fromString(end_date_str, "yyyy-MM-dd")
-            if end_date.isValid():
-                self.end_date_edit.setDate(end_date)
-        else:
-            # 默认设置为当前日期
-            self.end_date_edit.setDate(QDate.currentDate())
-        # ---------------------------------
+        # 文件大小和日期筛选功能已移除，简化搜索设置
         
         # Populate Theme ComboBox
         theme_name = self.settings.value("interface/theme", "默认", type=str)
@@ -2924,32 +2952,42 @@ class SettingsDialog(QDialog):
         self.settings.setValue("indexing/txtContentLimitKb", txt_content_limit)
         # -----------------------------
         
+        # --- ADDED: Multi-process Settings ---
+        workers_text = self.max_workers_combo.currentText()
+        if "自动" in workers_text:
+            max_workers = "auto"
+        else:
+            try:
+                max_workers = int(workers_text.split("个")[0])
+            except:
+                max_workers = "auto"
+        self.settings.setValue("optimization/max_workers", max_workers)
+        # ---------------------------------------
+        
+        # --- ADDED: Performance Settings ---
+        batch_size = self.batch_size_spinbox.value()
+        self.settings.setValue("optimization/batch_size", batch_size)
+        
+        max_file_size = self.max_file_size_spinbox.value()
+        self.settings.setValue("optimization/max_file_size_mb", max_file_size)
+        # -----------------------------------
+        
+        # --- ADDED: Index Strategy Settings ---
+        incremental = self.incremental_checkbox.isChecked()
+        self.settings.setValue("optimization/incremental", incremental)
+        
+        skip_system_files = self.skip_system_files_checkbox.isChecked()
+        self.settings.setValue("optimization/skip_system_files", skip_system_files)
+        
+        dynamic_ocr = self.dynamic_ocr_timeout_checkbox.isChecked()
+        self.settings.setValue("optimization/dynamic_ocr_timeout", dynamic_ocr)
+        # ---------------------------------------
+        
         # Search Settings
-        case_sensitive = self.case_sensitive_checkbox.isChecked()
-        self.settings.setValue("search/caseSensitive", case_sensitive)
+        # 区分大小写选项已移除
         
-        # --- ADDED: Size filter settings ---
-        min_size = self.min_size_entry.text().strip()
-        max_size = self.max_size_entry.text().strip()
-        self.settings.setValue("search/minSizeKb", min_size)
-        self.settings.setValue("search/maxSizeKb", max_size)
-        # --------------------------------
+        # 文件大小和日期筛选功能已移除
         
-        # --- ADDED: Date filter settings ---
-        # 只有当日期不是默认值时才保存
-        if self.start_date_edit.date() != QDate(1900, 1, 1):
-            start_date_str = self.start_date_edit.date().toString("yyyy-MM-dd")
-            self.settings.setValue("search/startDate", start_date_str)
-        else:
-            self.settings.setValue("search/startDate", "")
-            
-        if self.end_date_edit.date() != QDate.currentDate():
-            end_date_str = self.end_date_edit.date().toString("yyyy-MM-dd")
-            self.settings.setValue("search/endDate", end_date_str)
-        else:
-            self.settings.setValue("search/endDate", "")
-        # ---------------------------------
-            
         # Interface Settings - Theme
         theme_name = self.theme_combo.currentText()
         self.settings.setValue("interface/theme", theme_name)
@@ -2989,10 +3027,7 @@ class SettingsDialog(QDialog):
         print("Settings changes rejected.")
         super().reject()
 
-    def _clear_dates(self):
-        """清除日期筛选，恢复为默认值"""
-        self.start_date_edit.setDate(QDate(1900, 1, 1))
-        self.end_date_edit.setDate(QDate.currentDate())
+    # _clear_dates 方法已删除，日期筛选功能已移除
 
     def _toggle_all_file_types(self, state):
         """处理全选复选框状态变更"""
@@ -5032,7 +5067,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             print(f"DEBUG: 历史记录选择优先，停止当前操作")
             if hasattr(self, 'worker') and self.worker:
                 self.worker.stop_requested = True
-            
+        
         # --- 检测精确模式下的逻辑操作符和通配符 ---
         if mode == 'phrase' and query:
             # 检查逻辑操作符
@@ -5099,104 +5134,25 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
              return
         # -------------------------------------------
             
-        # --- 从设置中读取文件大小筛选条件 ---
-        min_size_str = settings.value("search/minSizeKB", "", type=str)
-        max_size_str = settings.value("search/maxSizeKB", "", type=str)
-        # --------------------------------------
-        
-        # --- 从设置中读取日期筛选条件 ---
-        default_start_date = QDate(1900, 1, 1)
-        default_end_date = QDate.currentDate()
-        
-        start_date_str = settings.value("search/startDate", "")
-        start_qdate = QDate.fromString(start_date_str, "yyyy-MM-dd") if start_date_str else default_start_date
-        
-        end_date_str = settings.value("search/endDate", "")
-        end_qdate = QDate.fromString(end_date_str, "yyyy-MM-dd") if end_date_str else default_end_date
-        # --------------------------------------
-        
         # --- 读取目录筛选条件 ---
         selected_dirs = settings.value("search/selectedDirectories", [], type=list)
         # -------------------------
 
-        # --- Validate Size Inputs --- 
-        min_size_kb = None
-        max_size_kb = None
-        try:
-            if min_size_str:
-                min_size_kb = int(min_size_str)
-                if min_size_kb < 0:
-                    QMessageBox.warning(self, "输入错误", "最小文件大小不能为负数。")
-                    return
-            if max_size_str:
-                max_size_kb = int(max_size_str)
-                if max_size_kb < 0:
-                    QMessageBox.warning(self, "输入错误", "最大文件大小不能为负数。")
-                    return
-            if min_size_kb is not None and max_size_kb is not None and min_size_kb > max_size_kb:
-                QMessageBox.warning(self, "输入错误", "最小文件大小不能大于最大文件大小。")
-                return
-        except ValueError:
-            QMessageBox.warning(self, "输入错误", "文件大小必须是有效的整数 (KB)。")
-            return
-        # ---------------------------
-
-        # --- Validate Date Inputs --- 
-        if start_qdate.isValid() and end_qdate.isValid():
-            if start_qdate > end_qdate:
-                QMessageBox.warning(self, "日期错误", "开始日期不能晚于结束日期。")
-                return
-            # Convert QDate to Python date objects (or pass QDate if backend handles it)
-            # Let's pass QDate for now, backend will convert
-            start_date_obj = start_qdate
-            end_date_obj = end_qdate
-            # Alternative: Convert here
-            # start_date_obj = start_qdate.toPython()
-            # end_date_obj = end_qdate.toPython()
-        else:
-            QMessageBox.warning(self, "日期错误", "选择的日期无效。")
-            return
-        # ---------------------------
-
-        # Check if at least query or size filter or date filter is provided
-        # We might need a better way to check if dates are default/cleared
-        # For now, assume if dates are valid, they are intended filters
-        if not query and min_size_kb is None and max_size_kb is None:
-             # We could also check if dates are the default wide range here
-             # if start_date_obj == QDate(2000, 1, 1) and end_date_obj == QDate.currentDate():
-             #      QMessageBox.warning(self, "输入错误", "请输入搜索词或设置文件大小/日期过滤器。")
-             #      return
-             pass  # Allow searching only by date range for now
-        
-        if not query and min_size_kb is None and max_size_kb is None and start_qdate == QDate(1900, 1, 1) and end_qdate == QDate.currentDate():
-            QMessageBox.warning(self, "输入错误", "请输入搜索词或修改搜索设置中的文件大小/日期过滤器以进行搜索。")
+        # 基本查询验证：必须有搜索词
+        if not query.strip():
+            QMessageBox.warning(self, "输入错误", "请输入搜索词。")
             return
             
-        # --- MODIFIED: Use scope in status message (optional, but good) ---
+        # --- 构建搜索状态消息 ---
         search_type_text = "精确" if mode == 'phrase' else "模糊"
         scope_ui_map = {'fulltext': '全文', 'filename': '文件名'}
         scope_text = scope_ui_map.get(search_scope, search_scope)
         
-        # 构建包含筛选条件的状态消息
         status_msg = f"正在进行 {search_type_text} ({scope_text}) 搜索: '{query}'"
-        
-        # 添加筛选条件到状态消息
-        filter_parts = []
-        if min_size_kb is not None:
-            filter_parts.append(f"最小: {min_size_kb}KB")
-        if max_size_kb is not None:
-            filter_parts.append(f"最大: {max_size_kb}KB")
-        if start_date_str:
-            filter_parts.append(f"开始日期: {start_date_str}")
-        if end_date_str:
-            filter_parts.append(f"结束日期: {end_date_str}")
         
         # 添加目录筛选信息
         if selected_dirs and len(selected_dirs) < len(self.settings.value("indexing/sourceDirectories", [], type=list)):
-            filter_parts.append(f"目录: 已选择{len(selected_dirs)}个")
-            
-        if filter_parts:
-            status_msg += f" (筛选条件: {', '.join(filter_parts)})"
+            status_msg += f" (目录: 已选择{len(selected_dirs)}个)"
         
         # --- 增强搜索进度提示 ---
         self.statusBar().showMessage(status_msg + "...", 0)
@@ -5220,7 +5176,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         # --- Get Case Sensitivity Setting --- 
         settings = QSettings(ORGANIZATION_NAME, APPLICATION_NAME) # Re-get settings here
-        case_sensitive = settings.value("search/caseSensitive", False, type=bool)
+        # 区分大小写功能已移除，使用默认的不区分大小写
+        case_sensitive = False
         
         # --- MODIFIED: 正确传递目录过滤参数 ---
         # 获取当前配置的源目录，用于过滤历史索引中已删除目录的结果
@@ -5258,13 +5215,14 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             self.worker.clear_search_cache()
             print("DEBUG: 已清除搜索缓存，确保目录过滤生效")
 
-        # --- MODIFIED: Emit Signal to Worker with scope ---
+        # --- 发送搜索信号到后台线程 ---
+        # 移除了文件大小和日期筛选参数，简化搜索功能
         self.startSearchSignal.emit(query,
                                     mode,
-                                    min_size_kb,
-                                    max_size_kb,
-                                    start_date_obj,
-                                    end_date_obj,
+                                    None,  # 移除 min_size_kb
+                                    None,  # 移除 max_size_kb  
+                                    None,  # 移除 start_date_obj
+                                    None,  # 移除 end_date_obj
                                     selected_file_types,
                                     index_dir, # Pass the index_dir_path
                                     case_sensitive,
@@ -5953,9 +5911,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         
         search_menu.addSeparator()
         
-        search_settings_action = QAction("搜索设置(&P)...", self) # P for Parameters/Preferences
-        search_settings_action.triggered.connect(self.show_search_settings_dialog_slot)
-        search_menu.addAction(search_settings_action)
+        # 搜索设置菜单已删除，搜索配置已简化并移到主界面
         
         # --- Index Menu ---
         index_menu = menu_bar.addMenu("索引(&I)")
@@ -5981,10 +5937,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         interface_settings_action.triggered.connect(self.show_interface_settings_dialog_slot)
         settings_menu.addAction(interface_settings_action)
 
-        # 添加索引优化设置菜单项
-        optimization_settings_action = QAction("索引优化设置(&O)...", self)
-        optimization_settings_action.triggered.connect(self.show_optimization_settings_dialog_slot)
-        settings_menu.addAction(optimization_settings_action)
+        # 索引优化设置已移到主设置对话框的高级设置标签页中
 
         # 添加托盘设置菜单项
         tray_settings_action = QAction("托盘设置(&R)...", self)
@@ -6361,12 +6314,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         dialog = SettingsDialog(self, category_to_show='index')
         dialog.exec() # Settings are saved within dialog's accept()
 
-    @Slot()
-    def show_search_settings_dialog_slot(self):
-        """Shows the Settings dialog filtered for Search settings."""
-        dialog = SettingsDialog(self, category_to_show='search')
-        dialog.exec() # Settings are saved within dialog's accept()
-        # No immediate UI update needed in MainWindow for case sensitivity yet
+    # show_search_settings_dialog_slot 方法已删除
+    # 搜索设置已简化，不再需要独立的搜索设置对话框
 
     @Slot()
     def show_interface_settings_dialog_slot(self):
@@ -7781,19 +7730,8 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             
         self.statusBar().showMessage("热键设置已更新，重启应用程序后生效", 5000)
 
-    @Slot()
-    def show_optimization_settings_dialog_slot(self):
-        """显示索引优化设置对话框"""
-        try:
-            from gui_optimization_settings import OptimizationSettingsDialog
-            dialog = OptimizationSettingsDialog(self)
-            dialog.exec()
-        except ImportError as e:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "索引优化设置", f"索引优化设置功能暂不可用:\n{str(e)}")
-        except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "错误", f"打开索引优化设置时出现错误:\n{str(e)}")
+    # show_optimization_settings_dialog_slot 方法已删除
+    # 索引优化设置已移到主设置对话框的高级设置标签页中
 
     # --- ADDED: 取消索引的槽函数 ---
     @Slot()
