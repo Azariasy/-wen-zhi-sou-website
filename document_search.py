@@ -456,8 +456,32 @@ class OptimizedSearchEngine:
                             merged_results.append(result)
                             seen_paths.add(path)
                             
-                # 按相关度重新排序
-                merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+                # 按相关度和修改时间的加权排序
+                import time
+                current_time = time.time()
+                
+                def calculate_combined_sort_key(result):
+                    relevance_score = result.get('score', 0)
+                    last_modified = result.get('last_modified', 0)
+                    
+                    # 如果没有修改时间，尝试从其他字段获取
+                    if last_modified <= 0:
+                        last_modified = result.get('mtime', 0)
+                    
+                    # 计算时间权重：距离当前时间越近，权重越高
+                    if last_modified > 0:
+                        time_diff_days = (current_time - last_modified) / 86400  # 转换为天数
+                        # 时间权重：最近1天=10分，之后每天递减0.1分，最低1分
+                        time_weight = max(1, 10 - (time_diff_days * 0.1))
+                    else:
+                        time_weight = 1  # 没有时间信息的文件给最低权重
+                    
+                    # 综合分数：相关性权重80%，时间权重20%
+                    combined_score = (relevance_score * 0.8) + (time_weight * 0.2)
+                    
+                    return combined_score
+                
+                merged_results.sort(key=calculate_combined_sort_key, reverse=True)
                 return merged_results[:500]  # 限制最多返回500个结果
         
         # 如果无法并行化，使用单线程搜索
@@ -508,8 +532,33 @@ class OptimizedSearchEngine:
                 merged_results.append(result)
                 seen_paths.add(path)
                 
-        # 按相关度排序
-        merged_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+        # 按相关度重新排序
+        # 按相关度和修改时间的加权排序
+        import time
+        current_time = time.time()
+        
+        def calculate_combined_sort_key(result):
+            relevance_score = result.get('score', 0)
+            last_modified = result.get('last_modified', 0)
+            
+            # 如果没有修改时间，尝试从其他字段获取
+            if last_modified <= 0:
+                last_modified = result.get('mtime', 0)
+            
+            # 计算时间权重：距离当前时间越近，权重越高
+            if last_modified > 0:
+                time_diff_days = (current_time - last_modified) / 86400  # 转换为天数
+                # 时间权重：最近1天=10分，之后每天递减0.1分，最低1分
+                time_weight = max(1, 10 - (time_diff_days * 0.1))
+            else:
+                time_weight = 1  # 没有时间信息的文件给最低权重
+            
+            # 综合分数：相关性权重80%，时间权重20%
+            combined_score = (relevance_score * 0.8) + (time_weight * 0.2)
+            
+            return combined_score
+        
+        merged_results.sort(key=calculate_combined_sort_key, reverse=True)
         return merged_results[:500]  # 限制最多返回500个结果
         
     def clear_cache(self):
