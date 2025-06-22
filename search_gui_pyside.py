@@ -4871,16 +4871,17 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             print("DEBUG: Filter update is currently blocked")  # DEBUG
             return
         
-        # 检查是否是轻量级搜索模式
-        if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
-            print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
-            # 在轻量级搜索模式下，直接使用所有原始结果
-            filtered_results = self.original_search_results.copy()
-            # 保存过滤后的结果
-            self.search_results = filtered_results
-            # 直接调用display_search_results_slot
-            self.display_search_results_slot(filtered_results)
-            return
+        # 检查是否是轻量级搜索模式（已移除此逻辑，文件类型筛选始终生效）
+        # 注释：轻量级搜索模式不应该影响用户的文件类型筛选功能
+        # if hasattr(self, '_quick_search_mode') and self._quick_search_mode:
+        #     print("DEBUG: 轻量级搜索模式：跳过文件类型过滤，直接显示所有结果")
+        #     # 在轻量级搜索模式下，直接使用所有原始结果
+        #     filtered_results = self.original_search_results.copy()
+        #     # 保存过滤后的结果
+        #     self.search_results = filtered_results
+        #     # 直接调用display_search_results_slot
+        #     self.display_search_results_slot(filtered_results)
+        #     return
         
         # 更新状态栏，显示过滤信息
         original_count = len(self.original_search_results) if hasattr(self, 'original_search_results') else 0
@@ -5416,12 +5417,44 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             print("💡 虚拟滚动模式: 显示 0 个结果")
             return
             
-        # 使用默认相关性排序
-        sorted_results = search_results
+        # 检查当前视图模式
+        current_view = self.view_mode_combo.currentText()
+        
+        # 如果是时间视图，需要按时间降序排列
+        if current_view == "⏰ 时间视图":
+            sorted_results = self._sort_results_by_time(search_results)
+            print(f"🕒 时间视图：已按修改时间降序排列 {len(sorted_results)} 个结果")
+        else:
+            # 其他视图使用默认相关性排序
+            sorted_results = search_results
         
         # === 统一使用虚拟滚动模式 ===
         print(f"DEBUG: _apply_view_mode_and_display调用display_search_results_slot（虚拟滚动），结果数量: {len(sorted_results)}")
         self.display_search_results_slot(sorted_results)
+
+    def _sort_results_by_time(self, results):
+        """按修改时间降序排列搜索结果"""
+        import os
+        
+        def get_modification_time(result):
+            """获取文件的修改时间戳"""
+            # 优先从搜索结果获取时间信息
+            mtime = result.get('last_modified', result.get('mtime', 0))
+            
+            # 如果搜索结果没有时间信息，从文件系统获取
+            if mtime <= 0:
+                file_path = result.get('file_path', result.get('path', ''))
+                if file_path and os.path.exists(file_path):
+                    try:
+                        mtime = os.path.getmtime(file_path)
+                    except (OSError, FileNotFoundError):
+                        mtime = 0
+            
+            return mtime
+        
+        # 按修改时间降序排序（最新的在前面）
+        sorted_results = sorted(results, key=get_modification_time, reverse=True)
+        return sorted_results
             
 
             
@@ -5698,9 +5731,10 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         print("Hiding progress bar and phase label explicitly...") # DEBUG
         self.progress_bar.setVisible(False)
         self.phase_label.setVisible(False)
-        # --- 修复: 也隐藏detail_label ---
+        # --- 修复: 隐藏并清空detail_label ---
+        self.detail_label.setText("")  # 清空文本内容
         self.detail_label.setVisible(False)
-        # -------------------------------
+        # ------------------------------------
         print("Calling set_busy_state(False)...") # DEBUG
         self.set_busy_state(False, "index")
         print("--- indexing_finished_slot finished ---") # DEBUG
@@ -5716,10 +5750,11 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
         self.statusBar().showMessage(f"操作出错: {error_message[:100]}...", 0)  # Show truncated error persistently
         # Ensure progress bar is hidden on error
         self.progress_bar.setVisible(False)
-        # --- 修复: 同时隐藏phase_label和detail_label ---
+        # --- 修复: 隐藏并清空phase_label和detail_label ---
         self.phase_label.setVisible(False)
+        self.detail_label.setText("")  # 清空文本内容
         self.detail_label.setVisible(False)
-        # -------------------------------------------
+        # -----------------------------------------------
         # Reset busy state
         self.set_busy_state(False, "index")
 

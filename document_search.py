@@ -2946,11 +2946,180 @@ def should_skip_system_file(file_path: Path) -> tuple[bool, str]:
     except Exception as e:
         return True, f"检查系统文件时出错: {e}"
 
+def check_directory_changes(directory_path: Path, file_cache: dict) -> bool:
+    """
+    检查目录是否有变更（基于目录修改时间）
+    
+    Args:
+        directory_path: 目录路径
+        file_cache: 文件缓存字典
+        
+    Returns:
+        bool: True表示目录有变更，需要扫描；False表示无变更，可跳过
+    """
+    try:
+        # 获取目录的修改时间
+        dir_mtime = int(directory_path.stat().st_mtime)
+        
+        # 检查是否有该目录的缓存记录
+        dir_key = f"__DIR__{normalize_path_for_index(str(directory_path))}"
+        
+        if dir_key in file_cache:
+            cached_entry = file_cache[dir_key]
+            # 兼容不同的缓存格式
+            if isinstance(cached_entry, (int, float)):
+                cached_dir_mtime = int(cached_entry)
+            elif isinstance(cached_entry, dict):
+                cached_dir_mtime = int(cached_entry.get('mtime', 0))
+            else:
+                # 未知格式，认为有变更
+                file_cache[dir_key] = dir_mtime
+                return True
+            
+            if cached_dir_mtime == dir_mtime:
+                return False  # 目录未变更
+        
+        # 目录有变更或首次扫描，更新缓存
+        file_cache[dir_key] = dir_mtime
+        return True
+        
+    except Exception as e:
+        # 如果无法获取目录信息，默认认为有变更
+        print(f"检查目录变更时出错 {directory_path}: {e}")
+        return True
+
+
+def smart_directory_scan(directory_path: Path, file_cache: dict, allowed_extensions: list, 
+                        filename_only_extensions: list, processed_paths: set,
+                        max_file_size_mb: int, skip_system_files: bool, 
+                        cancel_callback=None) -> tuple[list[Path], list[Path], list[dict], int, int]:
+    """
+    智能目录扫描，基于文件级别的缓存进行优化
+    
+    Returns:
+        tuple: (found_files, filename_only_files, skipped_files, cache_hits, cache_misses)
+    """
+    found_files = []
+    filename_only_files = []
+    skipped_files = []
+    cache_hits = 0
+    cache_misses = 0
+    
+    def scan_directory_recursive(current_dir: Path, depth: int = 0):
+        nonlocal cache_hits, cache_misses
+        
+        try:
+            # 直接扫描目录中的所有项目
+            try:
+                for item in current_dir.iterdir():
+                    if cancel_callback and cancel_callback():
+                        raise InterruptedError("用户取消操作")
+                    
+                    if item.is_file():
+                        # 处理文件
+                        process_single_file(item)
+                    elif item.is_dir():
+                        # 递归处理子目录
+                        scan_directory_recursive(item, depth + 1)
+                        
+            except PermissionError:
+                print(f"权限不足，跳过目录: {current_dir}")
+            except Exception as e:
+                print(f"扫描目录出错 {current_dir}: {e}")
+                
+        except Exception as e:
+            print(f"目录扫描异常 {current_dir}: {e}")
+    
+    def process_single_file(item: Path):
+        nonlocal cache_hits, cache_misses
+        
+        try:
+            # 检查取消状态
+            if cancel_callback and cancel_callback():
+                raise InterruptedError("用户取消操作")
+            
+            # 路径去重检查
+            normalized_path = normalize_path_for_index(str(item))
+            if normalized_path in processed_paths:
+                return
+            processed_paths.add(normalized_path)
+            
+            # 检查文件扩展名
+            file_ext = item.suffix.lower()
+            if file_ext not in allowed_extensions and file_ext not in filename_only_extensions:
+                return
+            
+            # 检查文件大小限制
+            should_skip_size, size_reason = should_skip_large_file(item, max_file_size_mb)
+            if should_skip_size:
+                skipped_files.append({
+                    'path': str(item),
+                    'reason': size_reason
+                })
+                return
+            
+            # 检查系统文件
+            if skip_system_files:
+                should_skip_sys, sys_reason = should_skip_system_file(item)
+                if should_skip_sys:
+                    skipped_files.append({
+                        'path': str(item),
+                        'reason': sys_reason
+                    })
+                    return
+            
+            # 检查文件缓存状态
+            if normalized_path in file_cache:
+                # 文件在缓存中，检查是否有变更
+                cached_entry = file_cache[normalized_path]
+                current_entry = get_file_cache_entry(item, "full" if file_ext in allowed_extensions else "filename_only")
+                
+                # 兼容旧缓存格式
+                if isinstance(cached_entry, str):
+                    cached_hash = cached_entry  
+                else:
+                    cached_hash = cached_entry.get("hash", "")
+                
+                current_hash = current_entry["hash"]
+                
+                if cached_hash == current_hash:
+                    # 文件未变更，跳过
+                    cache_hits += 1
+                    return
+                else:
+                    # 文件有变更，需要处理
+                    cache_misses += 1
+            else:
+                # 新文件，需要处理
+                cache_misses += 1
+            
+            # 根据文件类型分类
+            if file_ext in allowed_extensions:
+                found_files.append(item)
+            elif file_ext in filename_only_extensions:
+                filename_only_files.append(item)
+                
+        except InterruptedError:
+            raise  # 重新抛出取消异常
+        except Exception as e:
+            print(f"处理文件时出错 {item}: {e}")
+    
+    # 开始扫描
+    try:
+        scan_directory_recursive(directory_path, 0)
+    except InterruptedError:
+        raise  # 重新抛出取消异常
+    
+    return found_files, filename_only_files, skipped_files, cache_hits, cache_misses
+
+
 def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100, 
                            skip_system_files: bool = True, file_types_to_index=None, 
-                           filename_only_types=None, cancel_callback=None) -> tuple[list[Path], list[Path], list[dict]]:
+                           filename_only_types=None, cancel_callback=None, file_cache=None) -> tuple[list[Path], list[Path], list[dict]]:
     """
     优化的文档扫描函数，支持多个目录和文件过滤
+    
+    增量优化：如果提供了file_cache，会在扫描时进行智能跳过，减少不必要的文件系统操作
 
     Args:
         directory_paths: 要扫描的目录路径列表（可以是字符串或Path对象）
@@ -2958,6 +3127,7 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
         skip_system_files: 是否跳过系统文件
         file_types_to_index: 要完整索引的文件类型列表，如['txt', 'docx']
         filename_only_types: 只索引文件名的文件类型列表，如['pdf', 'xlsx']
+        file_cache: 文件缓存字典，用于增量扫描优化
 
     Returns:
         tuple[list[Path], list[Path], list[dict]]: (完整索引文件列表, 仅文件名索引文件列表, 跳过的文件信息列表)
@@ -2968,6 +3138,10 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
     
     # 用于去重的集合，防止重复添加同一文件
     processed_paths = set()  # 存储已处理的规范化路径
+    
+    # 增量扫描统计
+    cache_hits = 0  # 缓存命中次数（文件未变更）
+    cache_misses = 0  # 缓存未命中次数（新文件或变更文件）
 
     # 转换为Path对象
     path_objects = []
@@ -3011,69 +3185,83 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
         print(f"扫描目录: {directory_path}")
 
         try:
-            file_count = 0
-            for item in directory_path.rglob('*'):
-                # 每扫描50个文件检查一次取消状态
-                file_count += 1
-                periodic_cancellation_check(cancel_callback, 50, file_count, "文件扫描")
+            # 使用智能目录扫描
+            if file_cache:
+                print(f"扫描目录: {directory_path}")
+                dir_found, dir_filename_only, dir_skipped, dir_cache_hits, dir_cache_misses = smart_directory_scan(
+                    directory_path, file_cache, allowed_extensions, filename_only_extensions,
+                    processed_paths, max_file_size_mb, skip_system_files, cancel_callback
+                )
+                
+                # 合并结果
+                found_files.extend(dir_found)
+                filename_only_files.extend(dir_filename_only)
+                skipped_files.extend(dir_skipped)
+                cache_hits += dir_cache_hits
+                cache_misses += dir_cache_misses
+                
+            else:
+                # 没有缓存时使用原始遍历
+                print(f"使用传统扫描: {directory_path}")
+                file_count = 0
+                
+                for item in directory_path.rglob('*'):
+                    # 每扫描50个文件检查一次取消状态
+                    file_count += 1
+                    periodic_cancellation_check(cancel_callback, 50, file_count, "文件扫描")
+                        
+                    if not item.is_file():
+                        continue
+
+                    # 规范化文件路径用于去重检查
+                    normalized_path = normalize_path_for_index(str(item))
+                    if normalized_path in processed_paths:
+                        continue
                     
-                if not item.is_file():
-                    continue
+                    # 检查文件扩展名的处理策略
+                    file_ext = item.suffix.lower()
+                    
+                    if file_ext in allowed_extensions:
+                        file_category = "full_index"
+                    elif file_ext in filename_only_extensions:
+                        file_category = "filename_only"
+                    else:
+                        if file_types_to_index or filename_only_types:
+                            skipped_files.append({
+                                'path': str(item),
+                                'reason': f'文件类型 {item.suffix} 未被选择索引',
+                                'type': 'file_type_not_selected'
+                            })
+                        continue
 
-                # 规范化文件路径用于去重检查
-                normalized_path = normalize_path_for_index(str(item))
-                if normalized_path in processed_paths:
-                    # 跳过重复文件
-                    print(f"跳过重复文件: {item.name} (路径: {normalized_path})")
-                    continue
-                
-                # 检查文件扩展名的处理策略
-                file_ext = item.suffix.lower()
-                
-                if file_ext in allowed_extensions:
-                    # 完整索引
-                    file_category = "full_index"
-                elif file_ext in filename_only_extensions:
-                    # 仅文件名索引
-                    file_category = "filename_only"
-                else:
-                    # 跳过此文件
-                    if file_types_to_index or filename_only_types:
+                    # 检查是否跳过大文件
+                    should_skip_large, large_reason = should_skip_large_file(item, max_file_size_mb)
+                    if should_skip_large:
                         skipped_files.append({
                             'path': str(item),
-                            'reason': f'文件类型 {item.suffix} 未被选择索引',
-                            'type': 'file_type_not_selected'
-                        })
-                    continue
-
-                # 检查是否跳过大文件
-                should_skip_large, large_reason = should_skip_large_file(item, max_file_size_mb)
-                if should_skip_large:
-                    skipped_files.append({
-                        'path': str(item),
-                        'reason': large_reason,
-                        'type': 'large_file'
-                    })
-                    continue
-                            
-                # 检查是否跳过系统文件
-                if skip_system_files:
-                    should_skip_sys, sys_reason = should_skip_system_file(item)
-                    if should_skip_sys:
-                        skipped_files.append({
-                            'path': str(item),
-                            'reason': sys_reason,
-                            'type': 'system_file'
+                            'reason': large_reason,
+                            'type': 'large_file'
                         })
                         continue
-                
-                # 根据文件类别添加到相应列表
-                if file_category == "full_index":
-                    found_files.append(item)
-                    processed_paths.add(normalized_path)  # 记录已处理的路径
-                elif file_category == "filename_only":
-                    filename_only_files.append(item)
-                    processed_paths.add(normalized_path)  # 记录已处理的路径
+                                
+                    # 检查是否跳过系统文件
+                    if skip_system_files:
+                        should_skip_sys, sys_reason = should_skip_system_file(item)
+                        if should_skip_sys:
+                            skipped_files.append({
+                                'path': str(item),
+                                'reason': sys_reason,
+                                'type': 'system_file'
+                            })
+                            continue
+                    
+                    # 根据文件类别添加到相应列表
+                    if file_category == "full_index":
+                        found_files.append(item)
+                        processed_paths.add(normalized_path)
+                    elif file_category == "filename_only":
+                        filename_only_files.append(item)
+                        processed_paths.add(normalized_path)
 
         except InterruptedError:
             # 重新抛出取消异常
@@ -3082,7 +3270,14 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
             print(f"扫描目录时出错 {directory_path}: {e}")
             continue
 
-    print(f"扫描完成. 完整索引: {len(found_files)} 个文档, 仅文件名索引: {len(filename_only_files)} 个文档, 跳过: {len(skipped_files)} 个文件")
+    # 输出扫描统计信息
+    if file_cache:
+        total_checked = cache_hits + cache_misses
+        print(f"智能扫描完成. 遍历了所有文件，缓存命中 {cache_hits} 个（跳过），详细检查 {cache_misses} 个")
+        print(f"完整索引: {len(found_files)} 个文档, 仅文件名索引: {len(filename_only_files)} 个文档, 跳过: {len(skipped_files)} 个文件")
+    else:
+        print(f"扫描完成. 完整索引: {len(found_files)} 个文档, 仅文件名索引: {len(filename_only_files)} 个文档, 跳过: {len(skipped_files)} 个文件")
+    
     return found_files, filename_only_files, skipped_files
 
 def estimate_processing_time(files: list[Path]) -> dict:
@@ -3192,10 +3387,23 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         # 检查是否需要取消
         check_cancellation(cancel_callback, "开始文件扫描")
 
-        # 1. 扫描文件
+        # 1. 智能扫描文件（增量模式优化）
         print("开始扫描文档...")
+        
+        # 加载文件缓存（用于增量索引）
+        file_cache = {}
+        if incremental:
+            progress.update({
+                'stage': 'loading_cache',
+                'message': '加载索引缓存...'
+            })
+            yield progress
+            file_cache = load_file_index_cache(index_dir_path)
+            print(f"已加载缓存信息：{len(file_cache)} 个文件")
+        
+        # 智能扫描：在扫描阶段就利用缓存信息
         all_files, filename_only_files, skipped_files = scan_documents_optimized(
-            directories, max_file_size_mb, skip_system_files, file_types_to_index, filename_only_types, cancel_callback
+            directories, max_file_size_mb, skip_system_files, file_types_to_index, filename_only_types, cancel_callback, file_cache
         )
 
         total_files = len(all_files) + len(filename_only_files)
@@ -3218,9 +3426,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             yield progress
             return
 
-        # 2. 加载文件缓存（用于增量索引）
-        file_cache = {}
-        # 合并所有需要处理的文件
+        # 2. 增量检测（已加载缓存）
         files_to_process = all_files + filename_only_files
 
         if incremental:
@@ -3234,15 +3440,18 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             if cancel_callback and cancel_callback():
                 raise InterruptedError("操作被用户取消")
 
-            file_cache = load_file_index_cache(index_dir_path)
             new_files, modified_files, deleted_files = detect_file_changes(all_files, file_cache, filename_only_files)
 
             files_to_process = new_files + modified_files
+            
+            # 详细的增量检测反馈
+            total_scanned = len(all_files) + len(filename_only_files)
+            unchanged_files = total_scanned - len(new_files) - len(modified_files)
 
             progress.update({
                 'stage': 'change_detection_complete',
                 'total': len(files_to_process),
-                'message': f'增量检测完成: {len(new_files)} 个新文件, {len(modified_files)} 个修改文件, {len(deleted_files)} 个删除文件'
+                'message': f'增量检测完成: {len(new_files)} 个新文件, {len(modified_files)} 个修改文件, {unchanged_files} 个未变更文件, {len(deleted_files)} 个删除文件'
             })
             yield progress
 
@@ -3254,7 +3463,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
             if not files_to_process and not deleted_files:
                 progress.update({
                     'stage': 'complete',
-                    'message': '没有文件变更，索引已是最新'
+                    'message': f'没有文件变更，索引已是最新（检查了 {total_scanned} 个文件）'
                 })
                 yield progress
                 return
@@ -3559,6 +3768,13 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                 file_path, reason = skip_info
                 record_skipped_file(index_dir_path, str(file_path), reason)
 
+        # 9. 显示正在完成状态
+        progress.update({
+            'stage': 'finalizing',
+            'message': '正在完成索引操作...'
+        })
+        yield progress
+
         # 完成
         progress.update({
             'stage': 'complete',
@@ -3634,12 +3850,17 @@ def load_file_index_cache(index_dir_path: str) -> dict:
         dict: 文件路径到哈希值的映射
     """
     cache_file = Path(index_dir_path) / "file_cache.json"
+    print(f"尝试加载文件缓存: {cache_file}")
     if cache_file.exists():
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                cache = json.load(f)
+            print(f"文件缓存加载成功，条目数量: {len(cache)}")
+            return cache
         except Exception as e:
             print(f"加载文件缓存失败: {e}")
+    else:
+        print(f"缓存文件不存在: {cache_file}")
     return {}
 
 def save_file_index_cache(index_dir_path: str, cache: dict):
@@ -3652,10 +3873,17 @@ def save_file_index_cache(index_dir_path: str, cache: dict):
     """
     cache_file = Path(index_dir_path) / "file_cache.json"
     try:
+        print(f"正在保存文件缓存到: {cache_file}")
+        print(f"缓存条目数量: {len(cache)}")
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
+        print(f"文件缓存保存成功: {cache_file}")
     except Exception as e:
         print(f"保存文件缓存失败: {e}")
+        print(f"索引目录: {index_dir_path}")
+        print(f"缓存文件路径: {cache_file}")
+        import traceback
+        traceback.print_exc()
 
 def detect_file_changes(files: list[Path], cache: dict, filename_only_files: list[Path] = None) -> tuple[list[Path], list[Path], list[str]]:
     """
