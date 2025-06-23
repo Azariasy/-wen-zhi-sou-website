@@ -125,6 +125,11 @@ def record_skipped_file(index_dir_path: str, file_path: str, reason: str) -> Non
     """
     记录被跳过的文件信息到TSV文件中。
     
+    新设计逻辑：
+    - 只记录当次索引的跳过文件
+    - 反映真实的当前状态，不是历史累积
+    - 每次索引开始时会清空记录
+    
     Args:
         index_dir_path: 索引目录路径
         file_path: 被跳过的文件路径
@@ -135,12 +140,12 @@ def record_skipped_file(index_dir_path: str, file_path: str, reason: str) -> Non
         log_file_path = os.path.join(index_dir_path, "index_skipped_files.tsv")
         
         # 获取当前时间戳
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # 检查文件是否存在，如果不存在则添加表头
         file_exists = os.path.isfile(log_file_path)
         
-        # 以追加模式打开文件
+        # 以追加模式打开文件（在索引开始时会清空，这里只追加当次的跳过文件）
         with open(log_file_path, 'a', encoding='utf-8', newline='') as f:
             writer = csv.writer(f, delimiter='\t')
             
@@ -149,14 +154,34 @@ def record_skipped_file(index_dir_path: str, file_path: str, reason: str) -> Non
                 writer.writerow(["文件路径", "跳过原因", "时间"])
             
             # 写入记录
-            writer.writerow([file_path, reason, timestamp])
+            writer.writerow([file_path, reason, current_time])
             
     except Exception as e:
         # 如果记录过程中出错，打印错误但不中断程序
         print(f"Warning: Failed to record skipped file {file_path}: {e}", file=sys.stderr)
         pass
 
-# --- 用于处理跳过原因的格式化函数 ---
+def clear_skipped_files_record(index_dir_path: str) -> None:
+    """
+    清空跳过文件记录，为新的索引操作做准备。
+    
+    每次索引开始时调用，确保跳过文件列表反映最新状态。
+    
+    Args:
+        index_dir_path: 索引目录路径
+    """
+    try:
+        log_file_path = os.path.join(index_dir_path, "index_skipped_files.tsv")
+        
+        # 删除现有文件（如果存在）
+        if os.path.exists(log_file_path):
+            os.remove(log_file_path)
+            print("已清空跳过文件记录，准备记录当次索引状态")
+            
+    except Exception as e:
+        print(f"Warning: 清空跳过文件记录时出错: {e}", file=sys.stderr)
+
+
 def format_skip_reason(reason_type: str, detail: str = "") -> str:
     """
     格式化跳过文件的原因，使其更易于理解。
@@ -2992,7 +3017,7 @@ def check_directory_changes(directory_path: Path, file_cache: dict) -> bool:
 def smart_directory_scan(directory_path: Path, file_cache: dict, allowed_extensions: list, 
                         filename_only_extensions: list, processed_paths: set,
                         max_file_size_mb: int, skip_system_files: bool, 
-                        cancel_callback=None) -> tuple[list[Path], list[Path], list[dict], int, int]:
+                        cancel_callback=None, index_dir_path: str = None) -> tuple[list[Path], list[Path], list[dict], int, int]:
     """
     智能目录扫描，基于文件级别的缓存进行优化
     
@@ -3056,6 +3081,9 @@ def smart_directory_scan(directory_path: Path, file_cache: dict, allowed_extensi
                     'path': str(item),
                     'reason': size_reason
                 })
+                # 记录跳过文件到TSV
+                if index_dir_path:
+                    record_skipped_file(index_dir_path, str(item), f"文件过大 - {size_reason}")
                 return
             
             # 检查系统文件
@@ -3066,6 +3094,9 @@ def smart_directory_scan(directory_path: Path, file_cache: dict, allowed_extensi
                         'path': str(item),
                         'reason': sys_reason
                     })
+                    # 记录跳过文件到TSV
+                    if index_dir_path:
+                        record_skipped_file(index_dir_path, str(item), f"系统文件 - {sys_reason}")
                     return
             
             # 检查文件缓存状态
@@ -3115,7 +3146,8 @@ def smart_directory_scan(directory_path: Path, file_cache: dict, allowed_extensi
 
 def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100, 
                            skip_system_files: bool = True, file_types_to_index=None, 
-                           filename_only_types=None, cancel_callback=None, file_cache=None) -> tuple[list[Path], list[Path], list[dict]]:
+                           filename_only_types=None, cancel_callback=None, file_cache=None,
+                           index_dir_path: str = None) -> tuple[list[Path], list[Path], list[dict]]:
     """
     优化的文档扫描函数，支持多个目录和文件过滤
     
@@ -3190,7 +3222,7 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                 print(f"扫描目录: {directory_path}")
                 dir_found, dir_filename_only, dir_skipped, dir_cache_hits, dir_cache_misses = smart_directory_scan(
                     directory_path, file_cache, allowed_extensions, filename_only_extensions,
-                    processed_paths, max_file_size_mb, skip_system_files, cancel_callback
+                    processed_paths, max_file_size_mb, skip_system_files, cancel_callback, index_dir_path
                 )
                 
                 # 合并结果
@@ -3232,6 +3264,9 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                                 'reason': f'文件类型 {item.suffix} 未被选择索引',
                                 'type': 'file_type_not_selected'
                             })
+                            # 记录跳过文件到TSV
+                            if index_dir_path:
+                                record_skipped_file(index_dir_path, str(item), f"文件类型未选择 - {item.suffix} 未被选择索引")
                         continue
 
                     # 检查是否跳过大文件
@@ -3242,6 +3277,9 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                             'reason': large_reason,
                             'type': 'large_file'
                         })
+                        # 记录跳过文件到TSV
+                        if index_dir_path:
+                            record_skipped_file(index_dir_path, str(item), f"文件过大 - {large_reason}")
                         continue
                                 
                     # 检查是否跳过系统文件
@@ -3253,6 +3291,9 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
                                 'reason': sys_reason,
                                 'type': 'system_file'
                             })
+                            # 记录跳过文件到TSV
+                            if index_dir_path:
+                                record_skipped_file(index_dir_path, str(item), f"系统文件 - {sys_reason}")
                             continue
                     
                     # 根据文件类别添加到相应列表
@@ -3387,7 +3428,10 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         # 检查是否需要取消
         check_cancellation(cancel_callback, "开始文件扫描")
 
-        # 1. 智能扫描文件（增量模式优化）
+        # 1. 清空跳过文件记录，准备记录当次索引状态
+        clear_skipped_files_record(index_dir_path)
+        
+        # 2. 智能扫描文件（增量模式优化）
         print("开始扫描文档...")
         
         # 加载文件缓存（用于增量索引）
@@ -3403,7 +3447,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         
         # 智能扫描：在扫描阶段就利用缓存信息
         all_files, filename_only_files, skipped_files = scan_documents_optimized(
-            directories, max_file_size_mb, skip_system_files, file_types_to_index, filename_only_types, cancel_callback, file_cache
+            directories, max_file_size_mb, skip_system_files, file_types_to_index, filename_only_types, cancel_callback, file_cache, index_dir_path
         )
 
         total_files = len(all_files) + len(filename_only_files)
@@ -3419,9 +3463,16 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         check_cancellation(cancel_callback, "扫描完成后检查")
 
         if not all_files and not filename_only_files:
+            # --- OPTIMIZATION: 改进"没有找到文件"的消息 ---
             progress.update({
                 'stage': 'complete',
-                'message': '没有找到需要索引的文件'
+                'message': f'📋 扫描完成！共检查了 {len(skipped_files)} 个文件\n' +
+                          f'⚠️ 没有找到符合条件的文件进行索引\n' +
+                          f'💡 可能原因：许可证限制、文件类型不匹配或文件已是最新\n' +
+                          f'📄 点击"查看跳过文件"了解详细信息',
+                'files_processed': 0,
+                'files_skipped': len(skipped_files),
+                'errors': 0
             })
             yield progress
             return
@@ -3461,20 +3512,52 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
 
             # 如果没有变更，直接返回
             if not files_to_process and not deleted_files:
+                # --- OPTIMIZATION 1: 智能跳过收尾阶段 ---
+                # 当没有文件需要处理时，只进行必要的缓存保存，跳过其他收尾步骤
+                progress.update({
+                    'stage': 'fast_complete',
+                    'message': f'✅ 索引已是最新！扫描了 {total_scanned} 个文件，无需更新'
+                })
+                yield progress
+                
+                # 仅保存缓存（确保扫描结果被记录）
+                if incremental and file_cache:
+                    try:
+                        save_file_index_cache(index_dir_path, file_cache)
+                        print(f"快速完成：缓存已更新，记录了 {len(file_cache)} 个文件状态")
+                    except Exception as e:
+                        print(f"警告：缓存保存失败，但不影响索引完整性: {e}")
+                
+                # 快速完成，跳过所有收尾处理
                 progress.update({
                     'stage': 'complete',
-                    'message': f'没有文件变更，索引已是最新（检查了 {total_scanned} 个文件）'
+                    'message': f'🚀 索引检查完成！所有 {total_scanned} 个文件均为最新，无需处理',
+                    'files_processed': 0,
+                    'files_skipped': len(skipped_files),
+                    'errors': 0
                 })
                 yield progress
                 return
+                # --- END OPTIMIZATION 1 ---
 
-        # 3. 估算处理时间
+        # --- OPTIMIZATION 2: 改进UI进度反馈 ---
+        # 3. 估算处理时间（提供更详细的信息）
         estimated_time_info = estimate_processing_time(files_to_process)
+        
+        # 分析文件类型分布
+        file_type_summary = []
+        for ext, count in estimated_time_info['file_type_counts'].items():
+            file_type_summary.append(f"{ext}({count}个)")
+        
         progress.update({
             'stage': 'processing_start',
-            'message': f'开始处理 {len(files_to_process)} 个文件，预计需要 {estimated_time_info["estimated_time_formatted"]}'
+            'message': f'📋 准备处理 {len(files_to_process)} 个文件\n' +
+                      f'📊 文件类型: {", ".join(file_type_summary[:5])}{"..." if len(file_type_summary) > 5 else ""}\n' +
+                      f'⏱️ 预计用时: {estimated_time_info["estimated_time_formatted"]}\n' +
+                      f'💾 总大小: {estimated_time_info["total_size_mb"]:.1f}MB'
         })
         yield progress
+        # --- END OPTIMIZATION 2 PART 1 ---
 
         # 检查是否需要取消
         if cancel_callback and cancel_callback():
@@ -3505,7 +3588,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         if files_to_process:
             progress.update({
                 'stage': 'extracting',
-                'message': '开始提取文件内容...'
+                'message': f'🔍 开始提取文件内容...\n📁 共 {len(files_to_process)} 个文件等待处理'
             })
             yield progress
 
@@ -3567,13 +3650,15 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                     if Path(file_path) in files_to_process_full or Path(file_path) in files_to_process_filename_only:
                         processed_count += 1
                         file_name = args.get('display_name', args.get('path_key', 'unknown'))
-                        detail = f"正在处理: {file_name}"
+                        file_type = "📄 文件名索引" if is_filename_only else "📝 全文索引"
                         
                         progress.update({
                             'stage': 'extracting',
                             'current': processed_count,
                             'total': real_processing_total,
-                            'message': detail
+                            'message': f'🔍 正在处理 ({processed_count}/{real_processing_total})\n' +
+                                     f'{file_type}: {file_name}\n' +
+                                     f'⏳ 进度: {(processed_count/real_processing_total)*100:.1f}%'
                         })
                         yield progress
                     
@@ -3665,12 +3750,15 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                             
                             # 发送进度更新
                             current = i + 1
-                            detail = f"跳过错误文件: {result.get('display_name', result['path_key'])}"
+                            file_name = result.get('display_name', result['path_key'])
                             progress.update({
                                 'stage': 'indexing',
                                 'current': current,
                                 'total': total_results,
-                                'message': detail
+                                'message': f'📚 索引进度 ({current}/{total_results})\n' +
+                                         f'⚠️ 跳过错误文件: {file_name}\n' +
+                                         f'✅ 成功: {success_count} | ❌ 错误: {error_count}\n' +
+                                         f'⏳ 进度: {(current/total_results)*100:.1f}%'
                             })
                             yield progress
                             continue
@@ -3690,12 +3778,15 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                         
                         # 发送进度更新
                         current = i + 1
-                        detail = f"已索引: {result.get('display_name', result['path_key'])}"
+                        file_name = result.get('display_name', result['path_key'])
                         progress.update({
                             'stage': 'indexing',
                             'current': current,
                             'total': total_results,
-                            'message': detail
+                            'message': f'📚 索引进度 ({current}/{total_results})\n' +
+                                     f'✅ 已索引: {file_name}\n' +
+                                     f'✅ 成功: {success_count} | ❌ 错误: {error_count}\n' +
+                                     f'⏳ 进度: {(current/total_results)*100:.1f}%'
                         })
                         yield progress
                         
@@ -3737,7 +3828,7 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
                 
             progress.update({
                 'stage': 'updating_cache',
-                'message': '更新文件缓存...'
+                'message': f'💾 正在更新文件缓存...\n📋 处理 {len(all_files) + len(filename_only_files)} 个文件的缓存信息'
             })
             yield progress
 
@@ -3771,14 +3862,22 @@ def create_or_update_index(directories: list[str], index_dir_path: str, enable_o
         # 9. 显示正在完成状态
         progress.update({
             'stage': 'finalizing',
-            'message': '正在完成索引操作...'
+            'message': f'🔄 正在完成索引操作...\n📊 统计结果并保存索引'
         })
         yield progress
 
         # 完成
+        total_processed = progress.get("files_processed", 0)
+        total_skipped = progress.get("files_skipped", 0)
+        total_errors = progress.get("errors", 0)
+        
         progress.update({
             'stage': 'complete',
-            'message': f'索引完成！处理了 {progress["files_processed"]} 个文件，跳过 {progress["files_skipped"]} 个文件，{progress["errors"]} 个错误'
+            'message': f'🎉 索引操作完成！\n' +
+                      f'✅ 成功处理: {total_processed} 个文件\n' +
+                      f'⏭️ 跳过文件: {total_skipped} 个\n' +
+                      f'❌ 处理错误: {total_errors} 个\n' +
+                      f'📚 索引已更新，可以开始搜索'
         })
         yield progress
 
@@ -4422,6 +4521,71 @@ def convert_progress_to_legacy_format(new_progress):
         }
 
 # --- 结束兼容性包装函数 ---
+
+def get_skipped_files_summary(index_dir_path: str) -> dict:
+    """
+    获取当前跳过文件的统计摘要信息。
+    
+    注意：这里返回的是最新一次索引的跳过文件统计，不是历史累积。
+    
+    Returns:
+        dict: 包含统计信息的字典
+        {
+            'total_files': int,           # 当次索引跳过的文件总数
+            'reasons_breakdown': dict,    # 按原因分类的统计
+            'has_records': bool,          # 是否有记录
+            'index_time': str            # 索引时间（最新记录的时间）
+        }
+    """
+    log_file_path = os.path.join(index_dir_path, "index_skipped_files.tsv")
+    
+    summary = {
+        'total_files': 0,
+        'reasons_breakdown': {},
+        'has_records': False,
+        'index_time': ''
+    }
+    
+    if not os.path.exists(log_file_path):
+        return summary
+    
+    try:
+        latest_time = None
+        
+        with open(log_file_path, 'r', encoding='utf-8', newline='') as f:
+            reader = csv.reader(f, delimiter='\t')
+            headers = next(reader, None)
+            
+            if not headers:
+                return summary
+            
+            summary['has_records'] = True
+            
+            for row in reader:
+                if len(row) >= 2:
+                    summary['total_files'] += 1
+                    
+                    # 统计原因分布
+                    reason = row[1]
+                    summary['reasons_breakdown'][reason] = summary['reasons_breakdown'].get(reason, 0) + 1
+                    
+                    # 记录最新时间
+                    if len(row) >= 3:
+                        try:
+                            record_time = datetime.strptime(row[2], "%Y-%m-%d %H:%M:%S")
+                            if latest_time is None or record_time > latest_time:
+                                latest_time = record_time
+                        except ValueError:
+                            pass
+        
+        # 设置索引时间
+        if latest_time:
+            summary['index_time'] = latest_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+    except Exception as e:
+        print(f"Warning: 获取跳过文件统计时出错: {e}", file=sys.stderr)
+    
+    return summary
 
 if __name__ == "__main__":
     # 如果直接运行此文件，执行测试

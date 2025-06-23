@@ -7178,7 +7178,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     layout = QVBoxLayout(self)
                     
                     # 添加说明标签
-                    info_label = QLabel("以下文件在索引过程中被跳过：")
+                    info_label = QLabel("跳过的文件：")
                     layout.addWidget(info_label)
                     
                     # 创建表格
@@ -7375,10 +7375,65 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                     if not index_dir or not os.path.exists(index_dir):
                         return
                     
+                    # 获取统计摘要信息
+                    try:
+                        from document_search import get_skipped_files_summary
+                        summary = get_skipped_files_summary(index_dir)
+                        
+                        # 更新窗口标题显示当前状态统计
+                        if summary['has_records']:
+                            title = f"跳过的文件 (当前: {summary['total_files']} 个文件)"
+                            self.setWindowTitle(title)
+                            
+                            # 更新说明标签显示简化统计
+                            info_text = f"共 {summary['total_files']} 个文件被跳过"
+                            
+                            # 查找info_label并更新文本
+                            for child in self.findChildren(QLabel):
+                                if child.text().startswith("跳过的文件") or "✅" in child.text():
+                                    child.setText(info_text)
+                                    child.setWordWrap(True)  # 允许文本换行
+                                    break
+                        else:
+                            # 没有记录时的处理
+                            self.setWindowTitle("跳过的文件 (当前: 0 个文件)")
+                            
+                            # 更新说明标签显示无记录状态
+                            info_text = "✅ 没有跳过任何文件"
+                            
+                            # 查找info_label并更新文本
+                            for child in self.findChildren(QLabel):
+                                if child.text().startswith("跳过的文件") or "✅" in child.text():
+                                    child.setText(info_text)
+                                    child.setWordWrap(True)  # 允许文本换行
+                                    break
+                            
+                            # 无记录时直接返回，不需要读取TSV文件
+                            self._apply_filter()  # 清空表格显示
+                            return
+                            
+                    except ImportError:
+                        # 如果导入失败，使用原有逻辑
+                        pass
+                    except Exception as e:
+                        print(f"获取跳过文件统计时出错: {e}")
+                    
                     # 构建日志文件路径
                     log_file_path = os.path.join(index_dir, "index_skipped_files.tsv")
                     
                     if not os.path.exists(log_file_path):
+                        # 文件不存在时，确保UI显示正确的无记录状态
+                        self.setWindowTitle("跳过的文件 (当前: 0 个文件)")
+                        info_text = "✅ 没有跳过任何文件"
+                        
+                        # 查找info_label并更新文本
+                        for child in self.findChildren(QLabel):
+                            if child.text().startswith("跳过的文件") or "✅" in child.text():
+                                child.setText(info_text)
+                                child.setWordWrap(True)
+                                break
+                        
+                        self._apply_filter()  # 清空表格显示
                         return
                     
                     try:
@@ -7388,7 +7443,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                             # 跳过表头行
                             headers = next(reader, None)
                             
-                            # 针对旧版本可能的不同表头进行兼容处理
+                            # 针对表头进行处理
                             path_idx, reason_idx, time_idx = 0, 1, 2
                             if headers:
                                 for i, header in enumerate(headers):
@@ -7405,6 +7460,7 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                                     file_path = row[path_idx]
                                     reason = row[reason_idx]
                                     timestamp = row[time_idx]
+                                    
                                     self.skipped_files.append({
                                         'path': file_path,
                                         'reason': reason,
@@ -7423,6 +7479,15 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                 def _apply_filter(self):
                     """应用过滤器并更新表格"""
                     filter_text = self.filter_entry.text().lower()
+                    
+                    # 设置表格为3列格式
+                    self.table.setColumnCount(3)
+                    self.table.setHorizontalHeaderLabels(["文件路径", "跳过原因", "时间"])
+                    # 设置列宽
+                    self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+                    self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                    self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+                    
                     self.table.setRowCount(0)
                     
                     if not self.skipped_files:
@@ -7434,27 +7499,32 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
                         if not filter_text or \
                            filter_text in item['path'].lower() or \
                            filter_text in item['reason'].lower() or \
-                           filter_text in item['time'].lower():
+                           filter_text in item.get('time', '').lower():
                             
                             row = self.table.rowCount()
                             self.table.insertRow(row)
                             
+                            # 文件路径
                             path_item = QTableWidgetItem(item['path'])
                             path_item.setToolTip(item['path'])
                             self.table.setItem(row, 0, path_item)
                             
+                            # 跳过原因
                             reason_item = QTableWidgetItem(item['reason'])
                             reason_item.setToolTip(item['reason'])
                             self.table.setItem(row, 1, reason_item)
                             
-                            time_item = QTableWidgetItem(item['time'])
+                            # 时间
+                            time_item = QTableWidgetItem(item.get('time', ''))
                             self.table.setItem(row, 2, time_item)
                     
                     # 更新标题以显示过滤结果
                     if filter_text:
                         self.setWindowTitle(f"跳过的文件 (已过滤: {self.table.rowCount()}/{len(self.skipped_files)})")
                     else:
-                        self.setWindowTitle(f"跳过的文件 ({len(self.skipped_files)})")
+                        # 如果没有过滤，显示当前状态标题（如果已设置）
+                        if not self.windowTitle().startswith("跳过的文件 (当前"):
+                            self.setWindowTitle(f"跳过的文件 ({len(self.skipped_files)})")
                         
                     # 更新按钮状态
                     self._update_button_states()
@@ -7501,10 +7571,9 @@ class MainWindow(QMainWindow):  # Changed base class to QMainWindow
             # 创建我们刚刚定义的对话框
             self.skipped_files_dialog = SimpleSkippedFilesDialog(self)
             
-            # 设置对话框在当前窗口之上
+            # 设置对话框属性（移除置顶设置）
             self.skipped_files_dialog.setWindowFlags(
                 self.skipped_files_dialog.windowFlags() | 
-                Qt.WindowStaysOnTopHint | 
                 Qt.WindowMaximizeButtonHint
             )
             

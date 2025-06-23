@@ -401,8 +401,8 @@ class QuickSearchDialog(QDialog):
         search_layout = QVBoxLayout(search_frame)
         search_layout.setContentsMargins(20, 15, 20, 15)
         
-        # 搜索提示 - 明确说明这是文件名搜索
-        self.search_hint_label = QLabel("🗂️ 快速文件名搜索 - 输入关键词快速找到文件")
+        # 搜索提示 - 简化提示
+        self.search_hint_label = QLabel("🔍 文件名搜索")
         self.search_hint_label.setObjectName("searchHint")
         search_layout.addWidget(self.search_hint_label)
         
@@ -434,8 +434,8 @@ class QuickSearchDialog(QDialog):
         
         search_layout.addLayout(search_container)
         
-        # 搜索说明
-        help_text = "💡 支持文件名模糊搜索，实时显示结果。需要全文搜索请使用主窗口。"
+        # 搜索说明 - 简化提示
+        help_text = "💡 按Enter搜索，全文搜索请用主窗口"
         self.help_label = QLabel(help_text)
         self.help_label.setObjectName("helpLabel")
         self.help_label.setStyleSheet("color: #666; font-size: 11px; margin-top: 5px;")
@@ -489,13 +489,8 @@ class QuickSearchDialog(QDialog):
         
         # 空状态提示
         self.empty_state_label = QLabel(
-            "🔍 输入关键词后按回车键搜索\n\n"
-            "💡 操作提示：\n"
-            "• Enter: 执行搜索\n"
-            "• 双击结果: 打开文件\n"
-            "• 右键结果: 更多选项\n"
-            "• Ctrl+Enter: 主窗口搜索\n"
-            "• F1: 查看完整帮助"
+            "🔍 输入关键词后按Enter搜索\n\n"
+            "💡 双击打开文件，右键更多选项"
         )
         self.empty_state_label.setObjectName("emptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignCenter)
@@ -513,7 +508,7 @@ class QuickSearchDialog(QDialog):
         bottom_layout.setContentsMargins(20, 10, 20, 10)
         
         # 状态信息
-        self.status_label = QLabel("就绪 - 快速文件名搜索")
+        self.status_label = QLabel("就绪")
         self.status_label.setObjectName("statusLabel")
         bottom_layout.addWidget(self.status_label)
         
@@ -1303,7 +1298,7 @@ class QuickSearchDialog(QDialog):
             
             # 简化提示信息
             self.status_label.setText("已复制文件路径")
-            QTimer.singleShot(2000, lambda: self.status_label.setText("就绪 - 快速文件名搜索"))
+            QTimer.singleShot(2000, lambda: self.status_label.setText("就绪"))
     
     def _open_file(self, file_path):
         """打开文件"""
@@ -1396,7 +1391,7 @@ class QuickSearchDialog(QDialog):
                     self.shortcut_hint_label.setVisible(False)
                 # 恢复正常提示
                 if hasattr(self, 'search_hint_label'):
-                    self.search_hint_label.setText("🗂️ 快速文件名搜索 - 输入关键词快速找到文件")
+                    self.search_hint_label.setText("🔍 文件名搜索")
                     self.search_hint_label.setVisible(True)
         
         try:
