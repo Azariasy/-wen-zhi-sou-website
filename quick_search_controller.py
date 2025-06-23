@@ -384,14 +384,14 @@ class QuickSearchController(QObject):
                 quick_search=True,
                 search_scope="filename"
             )
-            
+                
             print(f"✅ 主窗口索引搜索完成：'{query}' ({len(raw_results) if raw_results else 0} 个)")
-            
+                
             # 格式化结果
             formatted_results = self._format_search_results(raw_results)
             
             print(f"✅ 格式化后的搜索结果：{len(formatted_results)} 个")
-            
+                
             # 确保搜索状态仍然匹配（防止被其他搜索覆盖）
             if self._current_search_query != query:
                 print(f"⚠️ 搜索已被新请求覆盖，跳过结果显示：'{query}' -> '{self._current_search_query}'")

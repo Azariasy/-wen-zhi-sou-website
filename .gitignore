@@ -39,3 +39,8 @@
 
     # Node.js dependencies
     node_modules/
+
+    # 忽略其他大文件
+    *.zip
+    *.rar
+    *.7z

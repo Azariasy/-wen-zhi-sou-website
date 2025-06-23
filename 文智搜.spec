@@ -72,6 +72,10 @@ a = Analysis(
         ('main_tray.py', '.'),
         ('document_search.py', '.'),
         ('search_gui_pyside.py', '.'),
+        
+        # 添加许可证和说明文件
+        ('license.txt', '.'),
+        ('安装说明.txt', '.'),
     ],
     hiddenimports=[
         # 中文分词
@@ -95,6 +99,8 @@ a = Analysis(
         'chardet',
         'extract_msg',
         'lxml',
+        'zipfile',  # 添加压缩文件处理
+        'rarfile',  # 添加RAR文件处理
         
         # 搜索引擎
         'whoosh',

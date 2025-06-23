@@ -991,7 +991,7 @@ class QuickSearchDialog(QDialog):
                 event.accept()
                 return
             
-            # 检查是否点击在标题栏区域（拖动窗口）
+                        # 检查是否点击在标题栏区域（拖动窗口）
             title_frame = self.findChild(QFrame, "titleFrame")
             if title_frame and title_frame.geometry().contains(event.position().toPoint()):
                 self._dragging = True
@@ -999,7 +999,7 @@ class QuickSearchDialog(QDialog):
                 event.accept()
                 return
         
-        super().mousePressEvent(event)
+            super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
         """处理鼠标移动事件，用于窗口拖动和调整大小"""
@@ -1054,12 +1054,12 @@ class QuickSearchDialog(QDialog):
             if self._is_in_resize_area(event.position().toPoint()):
                 resize_direction = self._get_resize_direction(event.position().toPoint())
                 cursor = self._get_resize_cursor(resize_direction)
-            else:
-                cursor = Qt.ArrowCursor
-            
-            # 只有当光标需要改变时才设置
-            if self.cursor().shape() != cursor:
-                self.setCursor(cursor)
+        else:
+            cursor = Qt.ArrowCursor
+        
+        # 只有当光标需要改变时才设置
+        if self.cursor().shape() != cursor:
+            self.setCursor(cursor)
         
         super().mouseMoveEvent(event)
     
@@ -1366,7 +1366,7 @@ class QuickSearchDialog(QDialog):
         else:
             total_count = len(actual_results)
         
-        print(f"📊 快速搜索对话框：处理结果 - 总数: {total_count}, 显示限制: {display_limit}, 加载指示器: {has_loading_indicator}")
+            print(f"📊 快速搜索对话框：处理结果 - 总数: {total_count}, 显示限制: {display_limit}, 加载指示器: {has_loading_indicator}")
         
         # 对结果按时间降序排序
         actual_results = self._sort_results_by_time(actual_results)

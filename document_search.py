@@ -3235,74 +3235,74 @@ def scan_documents_optimized(directory_paths: list, max_file_size_mb: int = 100,
             else:
                 # 没有缓存时使用原始遍历
                 print(f"使用传统扫描: {directory_path}")
-                file_count = 0
+            file_count = 0
                 
-                for item in directory_path.rglob('*'):
-                    # 每扫描50个文件检查一次取消状态
-                    file_count += 1
-                    periodic_cancellation_check(cancel_callback, 50, file_count, "文件扫描")
-                        
-                    if not item.is_file():
-                        continue
-
-                    # 规范化文件路径用于去重检查
-                    normalized_path = normalize_path_for_index(str(item))
-                    if normalized_path in processed_paths:
-                        continue
+            for item in directory_path.rglob('*'):
+                # 每扫描50个文件检查一次取消状态
+                file_count += 1
+                periodic_cancellation_check(cancel_callback, 50, file_count, "文件扫描")
                     
-                    # 检查文件扩展名的处理策略
-                    file_ext = item.suffix.lower()
-                    
-                    if file_ext in allowed_extensions:
-                        file_category = "full_index"
-                    elif file_ext in filename_only_extensions:
-                        file_category = "filename_only"
-                    else:
-                        if file_types_to_index or filename_only_types:
-                            skipped_files.append({
-                                'path': str(item),
-                                'reason': f'文件类型 {item.suffix} 未被选择索引',
-                                'type': 'file_type_not_selected'
-                            })
-                            # 记录跳过文件到TSV
-                            if index_dir_path:
-                                record_skipped_file(index_dir_path, str(item), f"文件类型未选择 - {item.suffix} 未被选择索引")
-                        continue
+                if not item.is_file():
+                    continue
 
-                    # 检查是否跳过大文件
-                    should_skip_large, large_reason = should_skip_large_file(item, max_file_size_mb)
-                    if should_skip_large:
+                # 规范化文件路径用于去重检查
+                normalized_path = normalize_path_for_index(str(item))
+                if normalized_path in processed_paths:
+                    continue
+                
+                # 检查文件扩展名的处理策略
+                file_ext = item.suffix.lower()
+                
+                if file_ext in allowed_extensions:
+                    file_category = "full_index"
+                elif file_ext in filename_only_extensions:
+                    file_category = "filename_only"
+                else:
+                    if file_types_to_index or filename_only_types:
                         skipped_files.append({
                             'path': str(item),
-                            'reason': large_reason,
-                            'type': 'large_file'
+                            'reason': f'文件类型 {item.suffix} 未被选择索引',
+                            'type': 'file_type_not_selected'
+                        })
+                    # 记录跳过文件到TSV
+                    if index_dir_path:
+                            record_skipped_file(index_dir_path, str(item), f"文件类型未选择 - {item.suffix} 未被选择索引")
+                    continue
+
+                # 检查是否跳过大文件
+                should_skip_large, large_reason = should_skip_large_file(item, max_file_size_mb)
+                if should_skip_large:
+                    skipped_files.append({
+                        'path': str(item),
+                        'reason': large_reason,
+                        'type': 'large_file'
+                    })
+                    # 记录跳过文件到TSV
+                    if index_dir_path:
+                            record_skipped_file(index_dir_path, str(item), f"文件过大 - {large_reason}")
+                    continue
+                            
+                # 检查是否跳过系统文件
+                if skip_system_files:
+                    should_skip_sys, sys_reason = should_skip_system_file(item)
+                    if should_skip_sys:
+                        skipped_files.append({
+                            'path': str(item),
+                            'reason': sys_reason,
+                            'type': 'system_file'
                         })
                         # 记录跳过文件到TSV
                         if index_dir_path:
-                            record_skipped_file(index_dir_path, str(item), f"文件过大 - {large_reason}")
-                        continue
-                                
-                    # 检查是否跳过系统文件
-                    if skip_system_files:
-                        should_skip_sys, sys_reason = should_skip_system_file(item)
-                        if should_skip_sys:
-                            skipped_files.append({
-                                'path': str(item),
-                                'reason': sys_reason,
-                                'type': 'system_file'
-                            })
-                            # 记录跳过文件到TSV
-                            if index_dir_path:
                                 record_skipped_file(index_dir_path, str(item), f"系统文件 - {sys_reason}")
-                            continue
-                    
-                    # 根据文件类别添加到相应列表
-                    if file_category == "full_index":
-                        found_files.append(item)
-                        processed_paths.add(normalized_path)
-                    elif file_category == "filename_only":
-                        filename_only_files.append(item)
-                        processed_paths.add(normalized_path)
+                        continue
+                
+                # 根据文件类别添加到相应列表
+                if file_category == "full_index":
+                    found_files.append(item)
+                    processed_paths.add(normalized_path)
+                elif file_category == "filename_only":
+                    filename_only_files.append(item)
+                    processed_paths.add(normalized_path)
 
         except InterruptedError:
             # 重新抛出取消异常
